@@ -51,6 +51,13 @@
 		"vitest": "^4.0.5",
 		"vitest-browser-svelte": "^2.0.1"
 	},
+	"dependencies": {
+		"@tensorflow/tfjs": "^4.11.0",
+		"@tensorflow-models/mobilenet": "^2.1.0",
+		"jszip": "^3.10.1",
+		"file-saver": "^2.0.5",
+		"chart.js": "^4.3.0"
+	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"esbuild"

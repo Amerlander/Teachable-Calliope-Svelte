@@ -25,6 +25,31 @@ npm run dev
 npm run dev -- --open
 ```
 
+## Migrating legacy index.html
+
+This project contains a port of the legacy `legacy/index.html` to SvelteKit.
+
+Key files and components created during the migration:
+
+- `src/lib/styles/legacy.css` — global CSS adapted from the legacy file
+- `src/lib/components/Header.svelte` — top navigation and logo
+- `src/lib/components/training/TrainingLeft.svelte` — left panel: class list, capture, model controls
+- `src/lib/components/training/TrainingRight.svelte` — right panel: video, tabs, and prediction UI
+- `src/lib/components/tryout/TryoutLeft.svelte` — tryout left panel with bluetooth controls
+- `src/lib/components/tryout/TryoutRight.svelte` — MakeCode iframe container
+- `src/lib/components/Thumbs.svelte` — thumbnail gallery for captured images
+- `src/lib/components/ModelDetailsDialog.svelte` — modal with model statistics and charts
+- `src/lib/components/ImportDialog.svelte` — basic import dialog wrapper
+- `src/lib/machine.ts` — pure-client helper wrappers for camera, TensorFlow, and saving/loading
+- `src/lib/stores.ts` — central Svelte stores for app state
+
+Routes:
+- `/training` — main training UI (left/right split)
+- `/tryout` — tryout view with MakeCode embedding and Calliope integration
+
+I removed the single-file JS/HTML approach and split the UI into modular Svelte components, with a central `machine.ts` helper and Svelte stores for shared state. This makes it easier to maintain and create tests/stories per component.
+
+
 ## Building
 
 To create a production version of your app:
