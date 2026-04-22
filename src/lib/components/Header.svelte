@@ -59,7 +59,7 @@
 
       {#if $appMode}
         <span class="mode-badge mode-badge-{$appMode}">
-          {$appMode === 'pose' ? 'POSE' : 'IMAGE'}
+          {$appMode === 'pose' ? 'POSE' : 'OBJEKT'}
         </span>
       {/if}
     </div>
