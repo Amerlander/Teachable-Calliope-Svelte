@@ -8,8 +8,12 @@ import {
   setTrainingHistory,
   appendTrainingEpoch,
   updateModelMetadata as storeUpdateMeta,
-  setModelArtifacts
+  setModelArtifacts,
+  trainingHistory,
+  modelMetadata,
+  trainingOptions
 } from './stores';
+import { recordTrainedModel } from './stores/projects';
 import type { ModelMetadata } from './stores';
 
 // We will dynamically import TensorFlow and other libs on the client side
@@ -189,9 +193,26 @@ export async function trainModel(
     updateModelMetadata({ classes: get(classes), date: new Date().toISOString(), params: computed.params, layers: computed.layers, sizeBytes: computed.sizeBytes });
   } catch (e) { /* ignore */ }
 
-  // Persist model artifacts into current project
+  // Persist artifacts into the current project slot, and record a history entry
   try {
     await persistClassifierArtifacts(model);
+    const tfMod = await import('@tensorflow/tfjs');
+    const ex = get(examples);
+    const counts: Record<string, number> = {};
+    for (const c of get(classes)) counts[c] = ex[c]?.length ?? 0;
+    await model.save(
+      tfMod.io.withSaveHandler(async (a: any) => {
+        recordTrainedModel(
+          { topology: a.modelTopology, weightSpecs: a.weightSpecs, weightData: a.weightData },
+          get(modelMetadata),
+          get(trainingHistory),
+          get(trainingOptions),
+          [...get(classes)],
+          counts
+        );
+        return { modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' } } as any;
+      })
+    );
   } catch (e) { /* ignore */ }
 
   return model;

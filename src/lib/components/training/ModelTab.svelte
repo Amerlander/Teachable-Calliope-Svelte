@@ -25,8 +25,11 @@
   import InfoTooltip from '$lib/components/ui/InfoTooltip.svelte';
   import ModelStats from './ModelStats.svelte';
   import ModelCharts from './ModelCharts.svelte';
+  import ModelHistory from './ModelHistory.svelte';
+  import ModelDetailsModal from './ModelDetailsModal.svelte';
 
   let loadModelEl: HTMLInputElement = $state()!;
+  let detailsOpen = $state(false);
 
   const enoughClasses = $derived($classes.length >= 3);
   const hasArtifacts = $derived(!!$classifierModel);
@@ -140,7 +143,19 @@
 
   <!-- Model stats -->
   <section class="card">
+    <div class="card-head">
+      <h3>Überblick</h3>
+      <button class="ghost small" onclick={() => (detailsOpen = true)} disabled={!hasArtifacts}>
+        Details…
+      </button>
+    </div>
     <ModelStats />
+  </section>
+
+  <!-- Model history -->
+  <section class="card">
+    <h3>Trainings-Historie</h3>
+    <ModelHistory />
   </section>
 
   <!-- Training options -->
@@ -232,6 +247,8 @@
   </section>
 </div>
 
+<ModelDetailsModal bind:isOpen={detailsOpen} />
+
 <style lang="scss">
   .model-tab {
     display: flex;
@@ -266,6 +283,15 @@
       font-size: 14px;
       font-weight: 600;
       color: rgb(var(--md-on-surface));
+    }
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    h3 {
+      margin: 0;
     }
   }
   .opt-grid {

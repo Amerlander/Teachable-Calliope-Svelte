@@ -41,6 +41,18 @@ export const DEFAULT_TRAINING_OPTIONS: TrainingOptions = {
 
 export type ProjectMode = 'image' | 'pose';
 
+export type TrainedModel = {
+  id: string;
+  trainedAt: number;
+  label?: string;
+  artifacts: ModelArtifacts;
+  metadata: ModelMetadata;
+  history: TrainingHistory;
+  options: TrainingOptions;
+  classesSnapshot: string[];
+  exampleCounts: Record<string, number>;
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -54,6 +66,8 @@ export type Project = {
   trainingHistory: TrainingHistory;
   modelMetadata: ModelMetadata;
   modelArtifacts: ModelArtifacts | null;
+  modelHistory: TrainedModel[];
+  currentModelId: string | null;
 };
 
 export type ProjectSummary = {
@@ -92,8 +106,17 @@ export function createBlankProject(name?: string, mode: ProjectMode = 'image'): 
     trainingOptions: { ...DEFAULT_TRAINING_OPTIONS },
     trainingHistory: { epochs: [], accuracy: [], loss: [] },
     modelMetadata: { name: 'Teachable Machine Model', date: new Date().toISOString(), version: '1.0', classes: [] },
-    modelArtifacts: null
+    modelArtifacts: null,
+    modelHistory: [],
+    currentModelId: null
   };
+}
+
+// Backfill fields introduced after earlier projects were saved
+function hydrate(p: Project): Project {
+  if (!p.modelHistory) p.modelHistory = [];
+  if (p.currentModelId === undefined) p.currentModelId = null;
+  return p;
 }
 
 function summarize(p: Project): ProjectSummary {
@@ -115,7 +138,7 @@ export const hasProject = derived(currentProject, (p) => p !== null);
 
 export async function refreshProjectList(): Promise<void> {
   const all = await idbGetAll<Project>(STORES.projects);
-  const summaries = all.map(summarize).sort((a, b) => b.updatedAt - a.updatedAt);
+  const summaries = all.map((p) => summarize(hydrate(p))).sort((a, b) => b.updatedAt - a.updatedAt);
   projectList.set(summaries);
 }
 
@@ -137,8 +160,9 @@ export async function saveCurrentProject(): Promise<void> {
 }
 
 export async function loadProject(id: string): Promise<Project | null> {
-  const p = await idbGet<Project>(STORES.projects, id);
-  if (!p) return null;
+  const raw = await idbGet<Project>(STORES.projects, id);
+  if (!raw) return null;
+  const p = hydrate(raw);
   currentProject.set(p);
   try {
     localStorage.setItem(LAST_PROJECT_KEY, id);
@@ -192,6 +216,78 @@ export function getLastProjectId(): string | null {
   }
 }
 
+export function recordTrainedModel(
+  artifacts: ModelArtifacts,
+  metadata: ModelMetadata,
+  history: TrainingHistory,
+  options: TrainingOptions,
+  classesSnapshot: string[],
+  exampleCounts: Record<string, number>
+): string | null {
+  const id = `mdl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  let created: string | null = null;
+  updateProject((p) => {
+    p.modelHistory.push({
+      id,
+      trainedAt: Date.now(),
+      artifacts,
+      metadata,
+      history,
+      options,
+      classesSnapshot,
+      exampleCounts
+    });
+    // Cap history at 20 most recent runs to keep storage bounded
+    if (p.modelHistory.length > 20) {
+      p.modelHistory = p.modelHistory.slice(-20);
+    }
+    p.currentModelId = id;
+    created = id;
+  });
+  return created;
+}
+
+export function setCurrentModel(id: string): TrainedModel | null {
+  let chosen: TrainedModel | null = null;
+  updateProject((p) => {
+    const m = p.modelHistory.find((x) => x.id === id);
+    if (!m) return;
+    p.currentModelId = id;
+    p.modelArtifacts = m.artifacts;
+    p.modelMetadata = m.metadata;
+    p.trainingHistory = m.history;
+    p.trainingOptions = m.options;
+    chosen = m;
+  });
+  return chosen;
+}
+
+export function deleteTrainedModel(id: string): void {
+  updateProject((p) => {
+    p.modelHistory = p.modelHistory.filter((m) => m.id !== id);
+    if (p.currentModelId === id) {
+      const last = p.modelHistory[p.modelHistory.length - 1];
+      if (last) {
+        p.currentModelId = last.id;
+        p.modelArtifacts = last.artifacts;
+        p.modelMetadata = last.metadata;
+        p.trainingHistory = last.history;
+      } else {
+        p.currentModelId = null;
+        p.modelArtifacts = null;
+        p.trainingHistory = { epochs: [], accuracy: [], loss: [] };
+      }
+    }
+  });
+}
+
+export function renameTrainedModel(id: string, label: string): void {
+  updateProject((p) => {
+    const m = p.modelHistory.find((x) => x.id === id);
+    if (m) m.label = label.trim() || undefined;
+  });
+}
+
 export function updateProject(mutator: (p: Project) => void): void {
   currentProject.update((p) => {
     if (!p) return p;
@@ -215,7 +311,9 @@ export async function importProjectFromJson(data: Project): Promise<Project> {
       version: '1.0',
       classes: data.classes || []
     },
-    modelArtifacts: data.modelArtifacts || null
+    modelArtifacts: data.modelArtifacts || null,
+    modelHistory: data.modelHistory || [],
+    currentModelId: data.currentModelId ?? null
   };
   await idbPut(STORES.projects, p);
   currentProject.set(p);
