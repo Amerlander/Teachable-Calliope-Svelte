@@ -68,9 +68,9 @@
         <button class="header-btn" class:active={active === 'apply'} onclick={() => navTo('apply')}>
           {t('header.apply', lang)}
         </button>
-        <button class="header-btn ghost-tab" onclick={() => navTo('')} title="Projektübersicht">
+        <!-- <button class="header-btn ghost-tab" onclick={() => navTo('')} title="Projektübersicht">
           ⌂
-        </button>
+        </button> -->
       {/if}
 
       <Dropdown bind:isOpen={settingsOpen} minWidth="200px">

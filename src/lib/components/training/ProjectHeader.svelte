@@ -14,6 +14,7 @@
   import { classifierModel } from '$lib/stores';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
+  import { goto } from '$app/navigation';
 
   let editing = $state(false);
   let nameInput = $state('');
@@ -75,6 +76,7 @@
   function onBackToStart() {
     classifierModel.set(null);
     closeCurrentProject();
+    goto(`/`);
   }
 
   async function onDelete() {

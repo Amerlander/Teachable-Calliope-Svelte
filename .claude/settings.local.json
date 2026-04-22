@@ -8,7 +8,8 @@
       "Bash(git commit -m ' *)",
       "Bash(git rm *)",
       "Bash(npx vite *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(git -C c:/GIT/Calliope/Teachable-Calliope-Svelte diff src/lib/components/ui/DropdownItem.svelte src/lib/components/ui/Dropdown.svelte)"
     ]
   }
 }

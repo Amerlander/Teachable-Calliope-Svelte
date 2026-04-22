@@ -5,6 +5,7 @@
   
   let {
     onselected,
+    onclick: onclickProp,
     disabled = false,
     selected = false,
     href,
@@ -17,6 +18,7 @@
     ...restProps
   }: {
     onselected?: (event: MouseEvent) => void;
+    onclick?: (event: MouseEvent) => void;
     disabled?: boolean;
     selected?: boolean;
     href?: string;
@@ -41,10 +43,9 @@
     if (closeOnClick) {
       closeAllDropdowns();
     }
-    
-    if (onselected) {
-      onselected(event);
-    }
+
+    onclickProp?.(event);
+    onselected?.(event);
   }
 </script>
 

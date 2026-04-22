@@ -44,7 +44,7 @@
       color: rgb(var(--md-on-primary));
     }
   }
-  :global(.dropdown-menu) .tip {
+  :global(.dropdown-content) .tip {
     padding: 10px 14px;
     max-width: 280px;
     font-size: 12px;

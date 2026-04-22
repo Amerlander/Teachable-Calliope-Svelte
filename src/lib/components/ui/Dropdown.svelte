@@ -553,8 +553,6 @@
 {/if}
 
 <style>
-  @layer components {
-
     .dropdown-trigger {
       display: flex;
     }
@@ -632,5 +630,4 @@
         transform: translateY(0);
       }
     }
-  }
 </style>
