@@ -1,7 +1,8 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, beforeEach } from 'vitest';
 import { computeModelMetadataFromModel, updateModelMetadata } from './machine';
 import { get } from 'svelte/store';
 import { modelMetadata } from './stores';
+import { currentProject, createBlankProject } from './stores/projects';
 
 describe('computeModelMetadataFromModel', () => {
   test('computes params, layers, and sizeBytes from getWeights', () => {
@@ -36,8 +37,13 @@ describe('computeModelMetadataFromModel', () => {
 
 
 describe('updateModelMetadata', () => {
+  beforeEach(() => {
+    const p = createBlankProject('Test');
+    p.modelMetadata = { name: 'Test', date: '2020-01-01', version: '1.0', classes: [] };
+    currentProject.set(p);
+  });
+
   test('merges metadata fields into the store', () => {
-    modelMetadata.set({ name: 'Test', date: '2020-01-01', version: '1.0', classes: [] });
     updateModelMetadata({ params: 1000, layers: 2 });
     const value = get(modelMetadata);
     expect(value.params).toBe(1000);

@@ -1,6 +1,15 @@
 import { get } from 'svelte/store';
 import { dev } from '$app/environment';
-import { examples, classes, mobilenetModel, classifierModel, trainingHistory, modelMetadata } from './stores';
+import {
+  examples,
+  classes,
+  mobilenetModel,
+  classifierModel,
+  setTrainingHistory,
+  appendTrainingEpoch,
+  updateModelMetadata as storeUpdateMeta,
+  setModelArtifacts
+} from './stores';
 import type { ModelMetadata } from './stores';
 
 // We will dynamically import TensorFlow and other libs on the client side
@@ -106,7 +115,7 @@ export async function trainModel(epochs = 20, onEpochEnd?: (epoch: number, logs:
 
   classifierModel.set(model);
   // reset training history for new training session
-  trainingHistory.set({ epochs: [], accuracy: [], loss: [] });
+  setTrainingHistory({ epochs: [], accuracy: [], loss: [] });
 
   await model.fit(data.xs, data.ys, {
     epochs,
@@ -114,7 +123,7 @@ export async function trainModel(epochs = 20, onEpochEnd?: (epoch: number, logs:
         onEpochEnd: (e: number, logs: any) => {
         const acc = (logs && (logs.acc ?? logs.accuracy)) ?? 0;
         const loss = (logs && (logs.loss ?? 0)) ?? 0;
-        trainingHistory.update(h => ({ ...h, epochs: [...h.epochs, e + 1], accuracy: [...h.accuracy, acc], loss: [...h.loss, loss] }));
+        appendTrainingEpoch(e + 1, acc, loss);
         onEpochEnd?.(e, logs);
       }
     }
@@ -129,11 +138,47 @@ export async function trainModel(epochs = 20, onEpochEnd?: (epoch: number, logs:
     updateModelMetadata({ classes: get(classes), date: new Date().toISOString(), params: computed.params, layers: computed.layers, sizeBytes: computed.sizeBytes });
   } catch (e) { /* ignore */ }
 
+  // Persist model artifacts into current project
+  try {
+    await persistClassifierArtifacts(model);
+  } catch (e) { /* ignore */ }
+
   return model;
 }
 
 export function updateModelMetadata(meta: Partial<ModelMetadata>) {
-  modelMetadata.update(m => ({ ...m, ...meta }));
+  storeUpdateMeta(meta);
+}
+
+async function persistClassifierArtifacts(model: any): Promise<void> {
+  const tfModule = await import('@tensorflow/tfjs');
+  await model.save(
+    tfModule.io.withSaveHandler(async (artifacts: any) => {
+      setModelArtifacts({
+        topology: artifacts.modelTopology,
+        weightSpecs: artifacts.weightSpecs,
+        weightData: artifacts.weightData
+      });
+      return { modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' } } as any;
+    })
+  );
+}
+
+export async function loadClassifierFromArtifacts(artifacts: {
+  topology: unknown;
+  weightSpecs: unknown[];
+  weightData: ArrayBuffer;
+}): Promise<any> {
+  const tfModule = await import('@tensorflow/tfjs');
+  const model = await tfModule.loadLayersModel(
+    tfModule.io.fromMemory({
+      modelTopology: artifacts.topology as any,
+      weightSpecs: artifacts.weightSpecs as any,
+      weightData: artifacts.weightData
+    })
+  );
+  classifierModel.set(model);
+  return model;
 }
 
 export async function processZipFile(file: File): Promise<{ images: string[]; detectedClass?: string; files?: string[] }> {
@@ -278,6 +323,9 @@ export async function loadModelFromZip(file: File) {
   try {
     const computed = computeModelMetadataFromModel(model);
     updateModelMetadata({ params: computed.params, layers: computed.layers, sizeBytes: computed.sizeBytes });
+  } catch (e) { /* ignore */ }
+  try {
+    await persistClassifierArtifacts(model);
   } catch (e) { /* ignore */ }
   return model;
 }
