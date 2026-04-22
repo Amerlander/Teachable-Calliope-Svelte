@@ -97,8 +97,6 @@
 <style lang="scss">
   #main-header {
     background: #1b1c1d;
-    position: fixed;
-    top: 0; left: 0;
     width: 100%;
     z-index: 100000000;
     padding: 8px 24px;

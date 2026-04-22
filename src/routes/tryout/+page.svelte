@@ -30,7 +30,7 @@
 <style lang="scss">
   .tryout-view {
     width: 100%;
-    height: 100vh;
+    height: 100%;
     padding: 16px;
     padding-left: 16px;
   }

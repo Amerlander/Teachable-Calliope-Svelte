@@ -105,7 +105,7 @@
 <style lang="scss">
   .apply-view {
     width: 100%;
-    height: 100vh;
+    height: 100%;
     padding: 16px;
     position: relative;
     display: flex;

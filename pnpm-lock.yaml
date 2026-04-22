@@ -35,6 +35,12 @@ importers:
       svelte-portal:
         specifier: ^2.2.1
         version: 2.2.1
+      svelte-splitpanes:
+        specifier: ^8.0.12
+        version: 8.0.12(svelte@5.43.12)
+      svelte-tiny-virtual-list:
+        specifier: ^3.0.1
+        version: 3.0.1(svelte@5.43.12)
     devDependencies:
       '@chromatic-com/storybook':
         specifier: ^4.1.3
@@ -2111,6 +2117,17 @@ packages:
 
   svelte-portal@2.2.1:
     resolution: {integrity: sha512-uF7is5sM4aq5iN7QF/67XLnTUvQCf2iiG/B1BHTqLwYVY1dsVmTeXZ/LeEyU6dLjApOQdbEG9lkqHzxiQtOLEQ==}
+
+  svelte-splitpanes@8.0.12:
+    resolution: {integrity: sha512-HJ07HgbtY0Q/35TEuJquGy47dtgCVavV7ay9r1FhWRx3boyUs3RpeiHlwMKliznCKy2ZotNeT+8GG+mIoNjgRA==}
+    peerDependencies:
+      svelte: ^5.43.0
+
+  svelte-tiny-virtual-list@3.0.1:
+    resolution: {integrity: sha512-KUvqkY5Sw+6tHjjsJFTV2bahtqiKKkV5+aDq/wialp76tWD7WuNY2ymufVkRAa+AMbPhmJ/VgmOGbsp2FMrNIg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      svelte: ^4.2.19
 
   svelte2tsx@0.7.45:
     resolution: {integrity: sha512-cSci+mYGygYBHIZLHlm/jYlEc1acjAHqaQaDFHdEBpUueM9kSTnPpvPtSl5VkJOU1qSJ7h1K+6F/LIUYiqC8VA==}
@@ -4291,6 +4308,14 @@ snapshots:
       '@floating-ui/dom': 1.7.6
 
   svelte-portal@2.2.1: {}
+
+  svelte-splitpanes@8.0.12(svelte@5.43.12):
+    dependencies:
+      svelte: 5.43.12
+
+  svelte-tiny-virtual-list@3.0.1(svelte@5.43.12):
+    dependencies:
+      svelte: 5.43.12
 
   svelte2tsx@0.7.45(svelte@5.43.12)(typescript@5.9.3):
     dependencies:

@@ -62,7 +62,9 @@
 		"jszip": "^3.10.1",
 		"runed": "^0.37.1",
 		"svelte-floating-ui": "^1.6.2",
-		"svelte-portal": "^2.2.1"
+		"svelte-portal": "^2.2.1",
+		"svelte-splitpanes": "^8.0.12",
+		"svelte-tiny-virtual-list": "^3.0.1"
 	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
