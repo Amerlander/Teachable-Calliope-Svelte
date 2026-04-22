@@ -1,5 +1,6 @@
 <script lang="ts">
   import { modelMetadata, trainingHistory, classes, examples } from '$lib/stores';
+  import InfoTooltip from '$lib/components/ui/InfoTooltip.svelte';
 
   function formatNumber(n: number | undefined) {
     if (n == null) return '–';
@@ -33,31 +34,79 @@
 
 <div class="stats-grid">
   <div class="stat">
-    <div class="label">Genauigkeit</div>
+    <div class="label">
+      Genauigkeit
+      <InfoTooltip
+        title="Genauigkeit"
+        text="Anteil der Trainingsbilder, die das Modell nach dem Training richtig erkennt. 100 % heißt: alle Trainingsbilder korrekt klassifiziert — das bedeutet nicht automatisch, dass es mit neuen Bildern auch so gut funktioniert."
+      />
+    </div>
     <div class="value highlight">{finalAccuracy}</div>
   </div>
+
   <div class="stat">
-    <div class="label">Klassen</div>
+    <div class="label">
+      Klassen
+      <InfoTooltip
+        title="Klassen"
+        text="Anzahl der Kategorien, die dein Modell unterscheidet. Mehr Klassen = schwieriger zu trainieren. Mindestens 3 Klassen sind nötig."
+      />
+    </div>
     <div class="value">{$classes.length}</div>
   </div>
+
   <div class="stat">
-    <div class="label">Beispiele</div>
+    <div class="label">
+      Beispiele
+      <InfoTooltip
+        title="Trainingsbeispiele"
+        text="Gesamtzahl der aufgenommenen Bilder über alle Klassen. Je mehr und vielfältiger, desto robuster wird das Modell. Faustregel: mindestens 30 Bilder pro Klasse, in verschiedenen Positionen und bei unterschiedlichem Licht."
+      />
+    </div>
     <div class="value">{totalExamples}</div>
   </div>
+
   <div class="stat">
-    <div class="label">Epochen</div>
+    <div class="label">
+      Epochen
+      <InfoTooltip
+        title="Epochen"
+        text="Wie oft das Modell während des Trainings durch alle Beispiele gelaufen ist. Mehr Epochen = mehr Lernzeit, aber bei zu vielen kann Überanpassung entstehen (Modell merkt sich Bilder statt Muster)."
+      />
+    </div>
     <div class="value">{$trainingHistory.epochs.length || '–'}</div>
   </div>
+
   <div class="stat">
-    <div class="label">Parameter</div>
+    <div class="label">
+      Parameter
+      <InfoTooltip
+        title="Parameter"
+        text="Anzahl der einstellbaren Werte (Gewichte + Bias) im neuronalen Netz. Mehr Parameter = theoretisch mehr Kapazität, aber auch größeres Modell und mehr Gefahr von Überanpassung."
+      />
+    </div>
     <div class="value">{formatNumber($modelMetadata.params)}</div>
   </div>
+
   <div class="stat">
-    <div class="label">Größe</div>
+    <div class="label">
+      Größe
+      <InfoTooltip
+        title="Modellgröße"
+        text="Speicherbedarf des Modells (ungefähr, basierend auf Parametern × 4 Bytes für float32). Wichtig, wenn du das Modell später auf ein Gerät mit wenig Speicher exportierst."
+      />
+    </div>
     <div class="value">{formatBytes($modelMetadata.sizeBytes)}</div>
   </div>
+
   <div class="stat wide">
-    <div class="label">Trainiert am</div>
+    <div class="label">
+      Trainiert am
+      <InfoTooltip
+        title="Trainingszeitpunkt"
+        text="Wann das aktuell geladene Modell trainiert wurde. Ändern sich Klassen oder Beispiele nach dem Training, sollte neu trainiert werden — das Datum hilft dabei, den Überblick zu behalten."
+      />
+    </div>
     <div class="value small">{trainedOn}</div>
   </div>
 </div>
@@ -82,6 +131,8 @@
     letter-spacing: 0.5px;
     color: rgb(var(--md-on-surface-variant));
     margin-bottom: 2px;
+    display: flex;
+    align-items: center;
   }
   .value {
     font-size: 18px;
