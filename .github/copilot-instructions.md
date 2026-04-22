@@ -1,5 +1,7 @@
 <SYSTEM>This is the abridged developer documentation for Svelte and SvelteKit.</SYSTEM>
 
+DONT BUILD DONT TEST. Thats done manually by the user.
+
 # Start of Svelte documentation
 
 
