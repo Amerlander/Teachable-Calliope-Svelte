@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { classes, activeClass, examples, classifierModel, mobilenetModel, setVideoRef } from '$lib/stores';
-  import { initSharedCamera, loadMobilenetModel, captureFrameFromVideo } from '$lib/machine';
-  import { currentLang, t, isTesting, appMode } from '$lib/stores/app';
+  import { classes, classifierModel, mobilenetModel, setVideoRef } from '$lib/stores';
+  import { initSharedCamera, loadMobilenetModel } from '$lib/machine';
+  import { selectedCameraId } from '$lib/stores/camera';
+  import { currentLang, t, isTesting } from '$lib/stores/app';
+  import CameraSelect from '$lib/components/CameraSelect.svelte';
 
   const lang = $derived($currentLang);
 
@@ -13,17 +15,12 @@
   let activeTab = $state<'train' | 'test'>('train');
   let testRunning = $state(false);
   let prediction = $state<{ label: string; confidence: number } | null>(null);
-  let predicting = $state(false);
   let predInterval: ReturnType<typeof setInterval> | null = null;
-  let cameraSelectEl: HTMLSelectElement;
-  let cameras = $state<MediaDeviceInfo[]>([]);
-  let selectedCamera = $state('');
 
   onMount(async () => {
-    await loadCameraList();
     setVideoRef('webcam', webcamEl);
     setVideoRef('webcamTest', webcamTestEl);
-    await initSharedCamera({ webcam: webcamEl, webcamTest: webcamTestEl });
+    await initSharedCamera({ webcam: webcamEl, webcamTest: webcamTestEl }, get(selectedCameraId) ?? undefined);
     try {
       await loadMobilenetModel();
       statusText = 'Bereit';
@@ -36,24 +33,21 @@
     stopTest();
   });
 
-  async function loadCameraList() {
-    if (typeof navigator === 'undefined') return;
-    try {
-      await navigator.mediaDevices.getUserMedia({ video: true });
-      const devs = await navigator.mediaDevices.enumerateDevices();
-      cameras = devs.filter(d => d.kind === 'videoinput');
-    } catch { /* ignore */ }
-  }
-
   function switchTab(tab: 'train' | 'test') {
     activeTab = tab;
     if (tab !== 'test') stopTest();
   }
 
   async function toggleTest() {
-    if (testRunning) { stopTest(); return; }
+    if (testRunning) {
+      stopTest();
+      return;
+    }
     const model = get(classifierModel);
-    if (!model) { statusText = 'Bitte erst trainieren'; return; }
+    if (!model) {
+      statusText = 'Bitte erst trainieren';
+      return;
+    }
     testRunning = true;
     isTesting.set(true);
     prediction = null;
@@ -74,7 +68,9 @@
         const clsList = get(classes);
         const topIdx = arr.indexOf(Math.max(...arr));
         prediction = { label: clsList[topIdx] || '?', confidence: arr[topIdx] };
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }, 150);
   }
 
@@ -87,16 +83,7 @@
 </script>
 
 <div class="right-panel">
-  <!-- Camera selector -->
-  {#if cameras.length > 1}
-    <div class="camera-selector">
-      <select bind:value={selectedCamera}>
-        {#each cameras as cam}
-          <option value={cam.deviceId}>{cam.label || `Kamera ${cam.deviceId.slice(0, 8)}`}</option>
-        {/each}
-      </select>
-    </div>
-  {/if}
+  <CameraSelect />
 
   <!-- Tabs -->
   <div class="tab-bar">
@@ -151,9 +138,6 @@
     flex-direction: column;
     gap: 8px;
     min-height: 0;
-  }
-  .camera-selector {
-    select { width: 100%; font-size: 13px; }
   }
   .tab-bar {
     display: flex;

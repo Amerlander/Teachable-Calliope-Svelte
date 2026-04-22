@@ -14,11 +14,29 @@ import type { ModelMetadata } from './stores';
 
 // We will dynamically import TensorFlow and other libs on the client side
 
-export async function initSharedCamera(videoElements: { webcam?: HTMLVideoElement | null; webcamTest?: HTMLVideoElement | null; webcamTryout?: HTMLVideoElement | null } = {}) {
-  // Attach camera stream to specified video element refs.
+type CameraVideoRefs = {
+  webcam?: HTMLVideoElement | null;
+  webcamTest?: HTMLVideoElement | null;
+  webcamTryout?: HTMLVideoElement | null;
+};
+
+let currentStream: MediaStream | null = null;
+
+export async function initSharedCamera(
+  videoElements: CameraVideoRefs = {},
+  deviceId?: string
+): Promise<MediaStream | null> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices) return null;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    if (currentStream) {
+      currentStream.getTracks().forEach((t) => t.stop());
+      currentStream = null;
+    }
+    const constraints: MediaStreamConstraints = {
+      video: deviceId ? { deviceId: { exact: deviceId } } : true
+    };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    currentStream = stream;
     const els = [videoElements.webcam, videoElements.webcamTest, videoElements.webcamTryout];
     for (const vid of els) {
       if (!vid) continue;
@@ -33,6 +51,21 @@ export async function initSharedCamera(videoElements: { webcam?: HTMLVideoElemen
   } catch (err) {
     console.error('Could not start camera', err);
     return null;
+  }
+}
+
+export async function listCameras(): Promise<MediaDeviceInfo[]> {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices) return [];
+  try {
+    // Probe once so device labels become available
+    if (!currentStream) {
+      const probe = await navigator.mediaDevices.getUserMedia({ video: true });
+      probe.getTracks().forEach((t) => t.stop());
+    }
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    return devs.filter((d) => d.kind === 'videoinput');
+  } catch {
+    return [];
   }
 }
 

@@ -6,9 +6,11 @@
     setVideoRef
   } from '$lib/stores';
   import { initSharedCamera } from '$lib/machine';
+  import { selectedCameraId } from '$lib/stores/camera';
   import { currentLang, t, applyRunning, applyPrediction, btConnected, sendEveryPrediction, appMode } from '$lib/stores/app';
   import { showNotification } from '$lib/stores/notifications';
   import ModelLoaderPanel from '$lib/components/apply/ModelLoaderPanel.svelte';
+  import CameraSelect from '$lib/components/CameraSelect.svelte';
 
   const lang = $derived($currentLang);
 
@@ -19,7 +21,7 @@
 
   onMount(async () => {
     setVideoRef('webcam', webcamEl);
-    await initSharedCamera({ webcam: webcamEl });
+    await initSharedCamera({ webcam: webcamEl }, get(selectedCameraId) ?? undefined);
     startPrediction();
   });
 
@@ -59,6 +61,7 @@
 </script>
 
 <div class="apply-view">
+  <div class="camera-row"><CameraSelect /></div>
   <div class="video-wrap">
     <video bind:this={webcamEl} autoplay playsinline muted>
       <track kind="captions" />
@@ -105,10 +108,16 @@
     height: 100vh;
     padding: 16px;
     position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .camera-row {
+    max-width: 320px;
   }
   .video-wrap {
     width: 100%;
-    height: 100%;
+    flex: 1;
     position: relative;
     border-radius: var(--md-radius-lg);
     overflow: hidden;
