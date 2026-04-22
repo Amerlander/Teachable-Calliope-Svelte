@@ -4,7 +4,8 @@
     projectList,
     refreshProjectList,
     loadProject,
-    deleteProject
+    deleteProject,
+    type ProjectMode
   } from '$lib/stores/projects';
   import {
     newProject,
@@ -12,21 +13,25 @@
     importModelAsNewProject
   } from '$lib/projects-io';
   import { loadClassifierFromArtifacts } from '$lib/machine';
-  import { currentProject } from '$lib/stores/projects';
   import { showNotification } from '$lib/stores/notifications';
-  import { get } from 'svelte/store';
+  import NewProjectDialog from './NewProjectDialog.svelte';
 
   let importProjectEl: HTMLInputElement;
   let importModelEl: HTMLInputElement;
+  let dialogOpen = $state(false);
 
   onMount(() => {
     void refreshProjectList();
   });
 
-  async function onCreate() {
+  function onCreate() {
+    dialogOpen = true;
+  }
+
+  async function onDialogSubmit(name: string, mode: ProjectMode) {
     try {
-      await newProject();
-    } catch (err) {
+      await newProject(name, mode);
+    } catch {
       showNotification('Projekt konnte nicht erstellt werden', { type: 'error' });
     }
   }
@@ -83,6 +88,8 @@
   }
 </script>
 
+<NewProjectDialog bind:isOpen={dialogOpen} onsubmit={onDialogSubmit} />
+
 <div class="start-screen">
   <div class="hero">
     <h1>Projekt wählen</h1>
@@ -133,6 +140,7 @@
               <div class="row-main">
                 <span class="project-name">{prj.name}</span>
                 <div class="row-meta">
+                  <span class="mode-chip mode-{prj.mode}">{prj.mode === 'pose' ? 'Pose' : 'Objekt'}</span>
                   <span>{prj.classCount} Klassen</span>
                   {#if prj.hasModel}<span class="badge">Modell</span>{/if}
                 </div>
@@ -284,6 +292,20 @@
       border-radius: 99px;
       font-weight: 600;
       font-size: 11px;
+    }
+    .mode-chip {
+      padding: 1px 8px;
+      border-radius: 99px;
+      font-weight: 600;
+      font-size: 11px;
+      &.mode-image {
+        background: rgba(158, 196, 26, 0.25);
+        color: #5a7d00;
+      }
+      &.mode-pose {
+        background: rgba(0, 229, 255, 0.25);
+        color: #006a7a;
+      }
     }
     .row-date {
       font-size: 12px;

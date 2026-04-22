@@ -1,15 +1,15 @@
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
+import { currentProject } from './projects';
 
-// --- App mode ---
+// --- App mode (derived from current project — fixed per project) ---
 export type AppMode = 'image' | 'pose';
-export const appMode = writable<AppMode | null>(null);
+export const appMode = derived(currentProject, (p): AppMode | null => p?.mode ?? null);
 
 // --- Language ---
 export type Lang = 'de' | 'en' | 'fr' | 'es' | 'it' | 'el';
 export const currentLang = writable<Lang>('de');
 
 // --- UI overlays ---
-export const showWelcome = writable(true);
 export const showLanguageOverlay = writable(false);
 export const showAIInfoOverlay = writable(false);
 

@@ -5,7 +5,6 @@
   import DropdownItem from './ui/DropdownItem.svelte';
   import {
     appMode,
-    showWelcome,
     showLanguageOverlay,
     showAIInfoOverlay,
     currentLang,
@@ -33,13 +32,6 @@
   function openAIInfo() {
     settingsOpen = false;
     showAIInfoOverlay.set(true);
-  }
-  function switchMode() {
-    settingsOpen = false;
-    if (confirm(t('welcome.switchModeConfirm', lang))) {
-      appMode.set(null);
-      showWelcome.set(true);
-    }
   }
 </script>
 
@@ -87,7 +79,6 @@
         {#snippet children()}
           <DropdownItem onclick={openLanguage}>{t('settings.language', lang)}</DropdownItem>
           <DropdownItem onclick={openAIInfo}>{t('settings.aiInfo', lang)}</DropdownItem>
-          <DropdownItem onclick={switchMode}>{t('settings.switchMode', lang)}</DropdownItem>
         {/snippet}
       </Dropdown>
     </div>

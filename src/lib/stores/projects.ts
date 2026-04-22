@@ -39,9 +39,12 @@ export const DEFAULT_TRAINING_OPTIONS: TrainingOptions = {
   augmentation: false
 };
 
+export type ProjectMode = 'image' | 'pose';
+
 export type Project = {
   id: string;
   name: string;
+  mode: ProjectMode;
   createdAt: number;
   updatedAt: number;
   classes: string[];
@@ -56,6 +59,7 @@ export type Project = {
 export type ProjectSummary = {
   id: string;
   name: string;
+  mode: ProjectMode;
   createdAt: number;
   updatedAt: number;
   classCount: number;
@@ -74,11 +78,12 @@ function defaultName(): string {
   return `Neues Projekt ${d}`;
 }
 
-export function createBlankProject(name?: string): Project {
+export function createBlankProject(name?: string, mode: ProjectMode = 'image'): Project {
   const now = Date.now();
   return {
     id: genId(),
     name: name || defaultName(),
+    mode,
     createdAt: now,
     updatedAt: now,
     classes: [],
@@ -95,6 +100,7 @@ function summarize(p: Project): ProjectSummary {
   return {
     id: p.id,
     name: p.name,
+    mode: p.mode ?? 'image',
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     classCount: p.classes.length,
@@ -142,8 +148,8 @@ export async function loadProject(id: string): Promise<Project | null> {
   return p;
 }
 
-export async function newProject(name?: string): Promise<Project> {
-  const p = createBlankProject(name);
+export async function newProject(name?: string, mode: ProjectMode = 'image'): Promise<Project> {
+  const p = createBlankProject(name, mode);
   await idbPut(STORES.projects, p);
   currentProject.set(p);
   try {
@@ -197,7 +203,7 @@ export function updateProject(mutator: (p: Project) => void): void {
 
 export async function importProjectFromJson(data: Project): Promise<Project> {
   const p: Project = {
-    ...createBlankProject(data.name),
+    ...createBlankProject(data.name, data.mode ?? 'image'),
     classes: data.classes || [],
     examples: data.examples || {},
     activeClass: data.activeClass || null,
