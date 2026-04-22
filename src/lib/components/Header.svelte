@@ -1,23 +1,163 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  $: active = $page.url.pathname.startsWith('/tryout') ? 'tryout' : 'training';
-  function navTo(view: string) {
-    goto(`/${view}`);
+  import Dropdown from './ui/Dropdown.svelte';
+  import DropdownItem from './ui/DropdownItem.svelte';
+  import {
+    appMode,
+    showWelcome,
+    showLanguageOverlay,
+    showAIInfoOverlay,
+    currentLang,
+    t
+  } from '$lib/stores/app';
+
+  let settingsOpen = $state(false);
+
+  const active = $derived(
+    $page.url.pathname.startsWith('/apply')
+      ? 'apply'
+      : $page.url.pathname.startsWith('/tryout')
+        ? 'tryout'
+        : 'training'
+  );
+
+  const lang = $derived($currentLang);
+
+  function navTo(view: string) { goto(`/${view}`); }
+
+  function openLanguage() {
+    settingsOpen = false;
+    showLanguageOverlay.set(true);
+  }
+  function openAIInfo() {
+    settingsOpen = false;
+    showAIInfoOverlay.set(true);
+  }
+  function switchMode() {
+    settingsOpen = false;
+    if (confirm(t('welcome.switchModeConfirm', lang))) {
+      appMode.set(null);
+      showWelcome.set(true);
+    }
   }
 </script>
 
 <header id="main-header">
   <div class="header-inner">
     <div class="header-left">
-      <!-- Original SVG from legacy -->
-      <svg width="35px" height="35px" viewBox="0 0 27 26" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;" class="logo-icon"><g transform="matrix(1,0,0,1,-168.819,-43.654)"><g transform="matrix(1,0,0,1,0,1)"><g transform="matrix(1,0,0,1,0,-1001.5)"><path d="M188.739,1046.34L193.961,1046.34L193.961,1052.77L188.739,1052.77L188.739,1046.34ZM182.705,1056.02L183.882,1052.23L185.841,1056.02L182.705,1056.02ZM179.473,1056.02L181.44,1052.26L182.609,1056.02L179.473,1056.02ZM180.501,1047.53L184.839,1047.53L184.839,1050.46C184.839,1051.41 184.072,1052.18 183.125,1052.18L182.215,1052.18C181.268,1052.18 180.501,1051.41 180.501,1050.46L180.501,1047.53ZM193.658,1044.68L189.041,1044.68C188.347,1044.68 187.784,1045.25 187.784,1045.94C187.784,1045.94 187.776,1049.88 187.776,1049.42C187.776,1046.52 185.42,1044.16 182.513,1044.16C179.606,1044.16 177.249,1046.52 177.249,1049.42L177.249,1055.21L171.006,1059.88C166.797,1063.1 169.069,1069.82 174.364,1069.82L175.618,1069.82C176.145,1065.94 177.356,1061.15 179.813,1058.25L185.528,1058.25C188.016,1061.19 189.074,1065.92 189.59,1069.82L191.358,1069.82C193.322,1069.82 194.915,1068.22 194.915,1066.26L194.915,1045.94C194.915,1045.25 194.353,1044.68 193.658,1044.68" style="fill:#ffffff;fill-rule:nonzero;"></path></g></g></g></svg>
+      <svg width="35" height="35" xmlns="http://www.w3.org/2000/svg" xml:space="preserve"
+        style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2"
+        viewBox="0 0 27 26" class="logo-icon">
+        <path d="M24.84.52h-4.62c-.69 0-1.26.56-1.26 1.26v3.48A5.26 5.26 0 0 0 13.7 0c-2.9 0-5.26 2.36-5.26 5.26v5.78L2.2 15.72c-4.21 3.21-1.94 9.93 3.36 9.93h1.25c.53-3.87 1.74-8.66 4.19-11.56h5.71c2.49 2.94 3.55 7.67 4.06 11.56h1.77c1.96 0 3.56-1.59 3.56-3.56V1.78c0-.69-.56-1.26-1.26-1.26M11.68 3.37h4.34V6.3c0 .95-.77 1.71-1.71 1.71h-.91c-.95 0-1.71-.77-1.71-1.71V3.37zm-1.03 8.49 1.97-3.76 1.17 3.76zm3.24 0 1.18-3.79 1.96 3.79zm11.25-3.25h-5.22V2.18h5.22z"
+          style="fill:#fff;fill-rule:nonzero" transform="translate(-.012)" />
+        <path d="M11.14 14.09v11.56h6.91c-2.79-2-5.07-7.24-6.91-11.56"
+          style="fill:#fff;fill-rule:nonzero" transform="translate(-.012)" />
+      </svg>
+
       <span class="header-title">Calliope Teachable Machine</span>
+
+      {#if $appMode}
+        <span class="mode-badge mode-badge-{$appMode}">
+          {$appMode === 'pose' ? 'POSE' : 'IMAGE'}
+        </span>
+      {/if}
     </div>
 
     <div class="header-right">
-      <button class="header-btn" class:active={active === 'training'} on:click={() => navTo('training')}>Training/Test</button>
-      <button class="header-btn" class:active={active === 'tryout'}  on:click={() => navTo('tryout')}>Ausprobieren</button>
+      <button class="header-btn" class:active={active === 'training'} onclick={() => navTo('training')}>
+        {t('header.training', lang)}
+      </button>
+      <button class="header-btn" class:active={active === 'tryout'} onclick={() => navTo('tryout')}>
+        {t('header.tryout', lang)}
+      </button>
+      <button class="header-btn" class:active={active === 'apply'} onclick={() => navTo('apply')}>
+        {t('header.apply', lang)}
+      </button>
+
+      <Dropdown bind:isOpen={settingsOpen} minWidth="200px">
+        {#snippet trigger()}
+          <button class="settings-btn" aria-label={t('header.settings', lang)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+        {/snippet}
+        {#snippet children()}
+          <DropdownItem onclick={openLanguage}>{t('settings.language', lang)}</DropdownItem>
+          <DropdownItem onclick={openAIInfo}>{t('settings.aiInfo', lang)}</DropdownItem>
+          <DropdownItem onclick={switchMode}>{t('settings.switchMode', lang)}</DropdownItem>
+        {/snippet}
+      </Dropdown>
     </div>
   </div>
 </header>
+
+<style lang="scss">
+  #main-header {
+    background: #1b1c1d;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%;
+    z-index: 100000000;
+    padding: 8px 24px;
+  }
+  .header-inner {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: clamp(30px, 5vw, 35px);
+    height: clamp(30px, 5vw, 35px);
+    flex-shrink: 0;
+  }
+  .header-title {
+    font-size: clamp(15px, 2.6vw, 18px);
+    color: white;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .mode-badge {
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    &.mode-badge-image {
+      background: rgba(255, 255, 255, 0.18);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+    }
+    &.mode-badge-pose {
+      background: #00e5ff;
+      color: #003040;
+      border: 1px solid #00b8cc;
+    }
+  }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .settings-btn {
+    padding: 8px 18px;
+    border-radius: 20px;
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: rgba(255, 255, 255, 0.93);
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+    display: flex; align-items: center; justify-content: center;
+    min-height: unset;
+    box-shadow: none;
+    &:hover { background-color: rgba(250, 250, 250, 0.6); color: black; }
+  }
+
+  @media (max-width: 720px) {
+    #main-header { padding: 6px 10px; }
+    .header-inner { flex-wrap: wrap; row-gap: 4px; column-gap: 8px; justify-content: center; }
+    .header-left { flex: 1 1 100%; justify-content: center; gap: 8px; }
+    .header-right { flex: 1 1 100%; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  }
+</style>

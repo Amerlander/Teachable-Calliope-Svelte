@@ -1,0 +1,64 @@
+// Design tokens — Calliope Teachable Machine
+// Uses CSS custom properties with RGB triplets for rgba() compositing
+
+:root {
+  // Primary — black
+  --md-primary: 0, 0, 0;
+  --md-on-primary: 255, 255, 255;
+  --md-primary-container: 0, 0, 0, 0.2;
+
+  // Secondary — Calliope blue
+  --md-secondary: 67, 160, 219;
+  --md-on-secondary: 255, 255, 255;
+  --md-secondary-container: 173, 245, 76;
+  --md-on-secondary-container: 8, 37, 52;
+
+  // Tertiary — Calliope neon green
+  --md-tertiary: 187, 239, 83;
+  --md-on-tertiary: 0, 0, 0;
+  --md-tertiary-container: 187, 239, 83;
+
+  // Hover
+  --md-hover: 152, 163, 167;
+
+  // Error
+  --md-error: 186, 26, 26;
+  --md-on-error: 255, 255, 255;
+  --md-error-container: 255, 218, 214;
+
+  // Surface
+  --md-surface: 255, 255, 255;
+  --md-on-surface: 28, 27, 31;
+  --md-surface-variant: 232, 234, 237;
+  --md-on-surface-variant: 70, 70, 79;
+  --md-outline: 118, 118, 128;
+  --md-outline-variant: 202, 204, 211;
+
+  // Background
+  --md-background: 250, 250, 253;
+  --md-on-background: 28, 27, 31;
+
+  // Elevation shadows
+  --md-elevation-1: 0 1px 3px 1px rgba(0, 0, 0, 0.15), 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --md-elevation-2: 0 2px 6px 2px rgba(0, 0, 0, 0.15), 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --md-elevation-3: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+
+  // Typography
+  --md-font: 'Inter', system-ui, -apple-system, sans-serif;
+  --md-font-size-body: 14px;
+  --md-line-height-body: 20px;
+  --md-font-size-label: 14px;
+  --md-font-size-title: 16px;
+  --md-line-height-title: 24px;
+
+  // Shape
+  --md-radius-sm: 8px;
+  --md-radius-md: 12px;
+  --md-radius-lg: 16px;
+  --md-radius-xl: 28px;
+
+  // Brand green button
+  --btn-green: hsl(83, 100%, 48%);
+  --btn-green-hover: hsl(83, 100%, 58%);
+  --header-height: 50px;
+}
