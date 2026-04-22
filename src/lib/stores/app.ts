@@ -19,6 +19,10 @@ export const isTraining = writable(false);
 export const isTesting = writable(false);
 export const modelTrained = writable(false);
 
+// --- Workspace sidebar tab: drives the camera panel mode ---
+export type WorkspaceTab = 'classes' | 'model';
+export const workspaceTab = writable<WorkspaceTab>('classes');
+
 // --- Apply UI state ---
 export const applyRunning = writable(false);
 export const applyPrediction = writable<{ label: string; confidence: number } | null>(null);

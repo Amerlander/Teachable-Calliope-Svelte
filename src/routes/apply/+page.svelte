@@ -1,13 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import {
-    classifierModel, mobilenetModel, classes,
-    setVideoRef
-  } from '$lib/stores';
-  import { initSharedCamera } from '$lib/machine';
+  import { setVideoRef } from '$lib/stores';
+  import { initSharedCamera, predictFromVideo } from '$lib/machine';
   import { selectedCameraId } from '$lib/stores/camera';
   import { currentLang, t, applyRunning, applyPrediction, btConnected, sendEveryPrediction, appMode } from '$lib/stores/app';
+  import { currentProject } from '$lib/stores/projects';
+  import { goto } from '$app/navigation';
   import { showNotification } from '$lib/stores/notifications';
   import ModelLoaderPanel from '$lib/components/apply/ModelLoaderPanel.svelte';
   import CameraSelect from '$lib/components/CameraSelect.svelte';
@@ -20,6 +19,10 @@
   let showPoseLayers = $state({ classes: true, detection: false, angles: false, distances: false, coords: false });
 
   onMount(async () => {
+    if (!get(currentProject)) {
+      goto('/');
+      return;
+    }
     setVideoRef('webcam', webcamEl);
     await initSharedCamera({ webcam: webcamEl }, get(selectedCameraId) ?? undefined);
     startPrediction();
@@ -30,22 +33,11 @@
   async function startPrediction() {
     applyRunning.set(true);
     predInterval = setInterval(async () => {
-      const model = get(classifierModel);
-      const mn = get(mobilenetModel);
-      if (!model || !mn || !webcamEl) return;
+      if (!webcamEl) return;
       try {
-        const tf = await import('@tensorflow/tfjs');
-        const img = tf.browser.fromPixels(webcamEl)
-          .toFloat().div(127.5).sub(1)
-          .resizeBilinear([224, 224]).expandDims(0);
-        const emb = mn.infer(img, true) as any;
-        const preds = model.predict(emb) as any;
-        const arr: number[] = await preds.data();
-        img.dispose(); emb.dispose(); preds.dispose();
-        const clsList = get(classes);
-        const topIdx = arr.indexOf(Math.max(...arr));
-        const result = { label: clsList[topIdx] || '?', confidence: arr[topIdx] };
-        applyPrediction.set(result);
+        const res = await predictFromVideo(webcamEl);
+        if (!res) return;
+        applyPrediction.set({ label: res.className, confidence: res.probability });
       } catch { /* ignore */ }
     }, 150);
   }

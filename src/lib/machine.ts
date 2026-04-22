@@ -447,7 +447,12 @@ export async function predictFromVideo(video: HTMLVideoElement) {
       maxIndex = i;
     }
   }
-    return { className: classesList[maxIndex] || `class_${maxIndex}`, probability: maxProb, index: maxIndex };
+    return {
+      className: classesList[maxIndex] || `class_${maxIndex}`,
+      probability: maxProb,
+      index: maxIndex,
+      allProbs: Array.from(preds as Float32Array | number[]) as number[]
+    };
   } catch (e) {
     console.error('predictFromVideo failed', e);
     return null;

@@ -10,6 +10,7 @@
     currentLang,
     t
   } from '$lib/stores/app';
+  import { currentProject } from '$lib/stores/projects';
 
   let settingsOpen = $state(false);
 
@@ -57,15 +58,20 @@
     </div>
 
     <div class="header-right">
-      <button class="header-btn" class:active={active === 'training'} onclick={() => navTo('training')}>
-        {t('header.training', lang)}
-      </button>
-      <button class="header-btn" class:active={active === 'tryout'} onclick={() => navTo('tryout')}>
-        {t('header.tryout', lang)}
-      </button>
-      <button class="header-btn" class:active={active === 'apply'} onclick={() => navTo('apply')}>
-        {t('header.apply', lang)}
-      </button>
+      {#if $currentProject}
+        <button class="header-btn" class:active={active === 'training'} onclick={() => navTo('training')}>
+          {t('header.training', lang)}
+        </button>
+        <button class="header-btn" class:active={active === 'tryout'} onclick={() => navTo('tryout')}>
+          {t('header.tryout', lang)}
+        </button>
+        <button class="header-btn" class:active={active === 'apply'} onclick={() => navTo('apply')}>
+          {t('header.apply', lang)}
+        </button>
+        <button class="header-btn ghost-tab" onclick={() => navTo('')} title="Projektübersicht">
+          ⌂
+        </button>
+      {/if}
 
       <Dropdown bind:isOpen={settingsOpen} minWidth="200px">
         {#snippet trigger()}

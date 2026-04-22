@@ -2,25 +2,24 @@
   import ProjectHeader from './ProjectHeader.svelte';
   import ClassesTab from './ClassesTab.svelte';
   import ModelTab from './ModelTab.svelte';
-
-  let tab = $state<'classes' | 'model'>('classes');
+  import { workspaceTab } from '$lib/stores/app';
 </script>
 
-<div class="workspace panel">
+<div class="workspace">
   <ProjectHeader />
 
   <div class="tabs">
-    <button class="tab" class:active={tab === 'classes'} onclick={() => (tab = 'classes')}>
+    <button class="tab" class:active={$workspaceTab === 'classes'} onclick={() => workspaceTab.set('classes')}>
       Klassen
     </button>
-    <button class="tab" class:active={tab === 'model'} onclick={() => (tab = 'model')}>
+    <button class="tab" class:active={$workspaceTab === 'model'} onclick={() => workspaceTab.set('model')}>
       Modell
     </button>
   </div>
 
   <div class="tab-content">
-    {#if tab === 'classes'}
-      <ClassesTab ontraintab={() => (tab = 'model')} />
+    {#if $workspaceTab === 'classes'}
+      <ClassesTab ontraintab={() => workspaceTab.set('model')} />
     {:else}
       <ModelTab />
     {/if}

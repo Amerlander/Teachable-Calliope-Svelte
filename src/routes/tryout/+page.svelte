@@ -1,13 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
+  import { goto } from '$app/navigation';
   import { setMakecodeIframe } from '$lib/makecode';
   import { currentLang } from '$lib/stores/app';
+  import { currentProject } from '$lib/stores/projects';
 
   const lang = $derived($currentLang);
 
   let iframeEl: HTMLIFrameElement;
 
   onMount(() => {
+    if (!get(currentProject)) {
+      goto('/');
+      return;
+    }
     setMakecodeIframe(iframeEl);
     return () => setMakecodeIframe(null);
   });

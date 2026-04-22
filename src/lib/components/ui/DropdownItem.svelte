@@ -1,48 +1,142 @@
+<!-- DropdownItem.svelte - Reusable dropdown item component -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-
+  import { closeAllDropdowns } from './Dropdown.svelte';
+  
   let {
-    onclick,
-    active = false,
+    onselected,
     disabled = false,
-    children
+    selected = false,
+    href,
+    target,
+    role = 'menuitem',
+    ariaLabel,
+    title,
+    children,
+    closeOnClick = true,
+    ...restProps
   }: {
-    onclick?: (e: MouseEvent) => void;
-    active?: boolean;
+    onselected?: (event: MouseEvent) => void;
     disabled?: boolean;
+    selected?: boolean;
+    href?: string;
+    target?: string;
+    role?: string;
+    ariaLabel?: string;
+    title?: string;
     children?: Snippet;
+    closeOnClick?: boolean;
   } = $props();
+
+  // Determine if this should be a link or button
+  let isLink = $derived(!!href);
+
+  function handleClick(event: MouseEvent) {
+    if (disabled) {
+      event.preventDefault();
+      return;
+    }
+    
+    // Close all dropdowns when item is clicked (unless disabled)
+    if (closeOnClick) {
+      closeAllDropdowns();
+    }
+    
+    if (onselected) {
+      onselected(event);
+    }
+  }
 </script>
 
-<button
-  class="item"
-  class:active
-  class:disabled
-  {disabled}
-  onclick={disabled ? undefined : onclick}
-  role="menuitem"
->
-  {#if children}{@render children()}{/if}
-</button>
+{#if isLink}
+  <a
+    {href}
+    {target}
+    {role}
+    aria-label={ariaLabel}
+    {title}
+    class="dropdown-item"
+    class:selected
+    class:disabled
+    onclick={handleClick}
+    {...restProps}
+  >
+    {#if children}
+        {@render children?.()}
+    {:else}
+        {title}
+    {/if}
+  </a>
+{:else}
+  <button
+    onclick={handleClick}
+    {disabled}
+    {role}
+    aria-label={ariaLabel}
+    {title}
+    class="dropdown-item"
+    class:selected
+    {...restProps}
+  >
+    {#if children}
+        {@render children?.()}
+    {:else}
+        {title}
+    {/if}
+  </button>
+{/if}
 
-<style lang="scss">
-  .item {
-    display: block;
+<style>
+  .dropdown-item {
+    display: flex;
+    align-items: center;
     width: 100%;
-    padding: 12px 24px;
+    padding: 0.5rem 1rem;
     border: none;
     background: transparent;
-    color: rgb(var(--md-on-surface));
-    font-size: var(--md-font-size-label);
-    font-weight: 500;
+    color: hsl(210, 4%, 11%); /* #1B1C1D dark text on white background */
+    font-size: 0.875rem;
     text-align: left;
     cursor: pointer;
-    transition: background 0.15s;
-    box-shadow: none;
-    min-height: unset;
-    border-radius: 0;
-    &:hover:not(.disabled)    { background: rgba(var(--md-primary), 0.08); }
-    &.active  { background: rgb(var(--md-secondary-container)); color: rgb(var(--md-on-secondary-container)); }
-    &.disabled { opacity: 0.4; cursor: not-allowed; }
+    transition: background-color 0.15s ease-in-out;
+    font-family: 'Roboto', sans-serif;
+    text-decoration: none;
+  }
+
+  .dropdown-item:hover:not(:disabled) {
+    background: hsl(156, 12%, 92%); /* #E8EDEB light grey hover */
+  }
+
+  .dropdown-item.selected,
+  .dropdown-item:disabled {
+    background: hsl(190, 12%, 61%); /* #90A4A8 decent grey for active item */
+    color: hsl(210, 4%, 11%); /* #1B1C1D */
+    cursor: not-allowed;
+  }
+  .dropdown-item:focus-visible {
+    outline: 2px solid hsl(181, 57%, 53%); /* Calliope brand cyan for focus */
+    outline-offset: 2px;
+  }
+
+  /* Global styles for icons in dropdown items */
+  .dropdown-item :global(svg) {
+    flex-shrink: 0;
+    margin-right: 0.5rem;
+    width: 1rem;
+    height: 1rem;
+    vertical-align: middle;
+  }
+
+  /* Mobile responsive */
+  @media (max-width: 768px) {
+    .dropdown-item {
+      padding: 0.625rem 0.75rem;
+    }
+    
+    .dropdown-item :global(svg) {
+      width: 0.875rem;
+      height: 0.875rem;
+      margin-right: 0.375rem;
+    }
   }
 </style>

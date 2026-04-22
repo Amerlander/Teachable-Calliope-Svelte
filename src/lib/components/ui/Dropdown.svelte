@@ -1,99 +1,636 @@
-<script lang="ts">
-  import type { Snippet } from 'svelte';
+<!-- Enhanced Dropdown Component using svelte-floating-ui -->
+<script module>
+  const openDropdowns = new Set();
+
+  export function closeAllDropdowns() {
+    openDropdowns.forEach((dropdown) => {
+      dropdown.close();
+    });
+  }
+</script>
+
+<script>
   import { onMount } from 'svelte';
+  import { onClickOutside } from 'runed';
+  import { createFloatingActions } from 'svelte-floating-ui';
+  import { offset, flip, shift } from 'svelte-floating-ui/dom';
   import Portal from 'svelte-portal';
 
+  /** @typedef {'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end'} FloatingPlacement */
+  /** @typedef {'click' | 'hover' | 'rightclick' | 'both' | 'controlled' | 'none'} TriggerMode */
+  /** @typedef {'left' | 'right' | 'center'} StandardPosition */
+  /** @typedef {'outside' | 'behind'} CloseTrigger */
+  /** @typedef {'element' | 'mouse'} PositionMode */
+  /** @typedef {'default' | 'basic'} DropdownStyling */
+  /** @typedef {{ x: number, y: number } | undefined} MousePosition */
+  /**
+   * @typedef {{
+   *   isOpen?: boolean,
+   *   trigger: import('svelte').Snippet,
+   *   children: import('svelte').Snippet,
+   *   tooltip?: import('svelte').Snippet,
+   *   position?: StandardPosition,
+   *   minWidth?: string,
+   *   closeOnClick?: boolean,
+   *   closeTrigger?: CloseTrigger,
+   *   usePortal?: boolean,
+   *   useFloating?: boolean,
+   *   placement?: FloatingPlacement,
+   *   offsetDistance?: number,
+   *   triggerMode?: TriggerMode,
+   *   hoverShowDelay?: number,
+   *   hoverHideDelay?: number,
+   *   positionMode?: PositionMode,
+   *   disabled?: boolean,
+   *   mousePosition?: MousePosition,
+   *   styling?: DropdownStyling,
+   *   doCloseOtherDropdowns?: boolean
+   * }} DropdownProps
+   */
+
+
+    //   isOpen?: boolean;
+    // trigger: Snippet; 
+    // children: Snippet;
+    // tooltip?: Snippet;
+    // position?: 'left' | 'right' | 'center';
+    // minWidth?: string;
+    // closeOnClick?: boolean;
+    // closeTrigger?: 'outside' | 'behind';
+    // usePortal?: boolean;
+    // useFloating?: boolean;
+    // placement?: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end';
+    // offsetDistance?: number;
+    // triggerMode?: 'click' | 'hover' | 'rightclick' | 'both' | 'controlled' | 'none';
+    // hoverShowDelay?: number;
+    // hoverHideDelay?: number;
+    // positionMode?: 'element' | 'mouse';
+    // mousePosition?: { x: number, y: number };
+    // styling?: 'default' | 'basic';
+    // doCloseOtherDropdowns?: boolean;
+  /** @type {DropdownProps} */
   let {
-    isOpen = $bindable(false),
+    isOpen = $bindable(),
     trigger,
     children,
+    tooltip = undefined,
+    position = 'right',
+    minWidth = '120px',
+    closeOnClick = true,
+    closeTrigger = 'outside',
+    usePortal = true,
+    useFloating = true,
     placement = 'bottom-end',
-    minWidth = '180px',
-    closeOnClick = true
-  }: {
-    isOpen?: boolean;
-    trigger: Snippet;
-    children: Snippet;
-    placement?: string;
-    minWidth?: string;
-    closeOnClick?: boolean;
+    offsetDistance = 8,
+    triggerMode = 'click',
+    hoverShowDelay = 100,
+    hoverHideDelay = 150,
+    positionMode = 'element',
+    disabled = false,
+    mousePosition = $bindable(),// $bindable({ x: 0, y: 0 }),
+    styling = 'default',
+    doCloseOtherDropdowns = true,
+    ...restProps
   } = $props();
+  let triggerElement = $state();
+  let dropdownElement = $state();
+  let hoverTimeout = $state(null);
+  let isHoverMode = $state(false); // Track if we're showing tooltip (hover) or menu (click)
 
-  let triggerEl: HTMLElement = $state()!;
-  let menuEl: HTMLElement = $state()!;
-  let menuStyle = $state('');
+  const isControlledTriggerMode = () => triggerMode === 'controlled' || triggerMode === 'none';
 
-  function toggle(e: Event) {
-    e.stopPropagation();
-    isOpen = !isOpen;
-    if (isOpen) tick_position();
+  // Create a dropdown instance object for the registry
+  const dropdownInstance = {
+    close: () => {
+      isOpen = false;
+    }
+  };
+  // Hover event handlers
+  function handleMouseEnter() {
+    if (disabled || isControlledTriggerMode()) {
+      return;
+    }
+
+    if (triggerMode === 'hover' && !disabled) {
+      // Clear any existing timeout
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+      }
+      // Small delay to prevent flickering
+      hoverTimeout = setTimeout(() => {
+        if (!isOpen) {
+          if (doCloseOtherDropdowns) closeOtherDropdowns();
+        }
+        isHoverMode = true;
+        isOpen = true;
+      }, hoverShowDelay);
+    }
   }
 
-  function close() { isOpen = false; }
+  function handleMouseLeave() {
+    if (disabled || isControlledTriggerMode()) {
+      return;
+    }
 
-  function onMenuClick() { if (closeOnClick) close(); }
+    if (triggerMode === 'hover' && !disabled) {
+      // Clear the timeout if we're leaving before it triggered
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+        hoverTimeout = null;
+      }
+      // Delay before closing to allow moving to dropdown
+      hoverTimeout = setTimeout(() => {
+        isOpen = false;
+      }, hoverHideDelay);
+    }
+  }
+  // Register this dropdown instance on mount
+  onMount(() => {
+    openDropdowns.add(dropdownInstance);
+    return () => openDropdowns.delete(dropdownInstance);
+  });
 
-  function onKeyDown(e: KeyboardEvent) { if (e.key === 'Escape') close(); }
-
-  function tick_position() {
-    // position after DOM update
-    requestAnimationFrame(() => {
-      if (!triggerEl || !menuEl) return;
-      const rect = triggerEl.getBoundingClientRect();
-      const mw = menuEl.getBoundingClientRect().width || 0;
-      let left = rect.right - mw;
-      let top = rect.bottom + 8;
-      if (left < 8) left = 8;
-      menuStyle = `position:fixed;top:${top}px;left:${left}px;min-width:${minWidth};z-index:100000001;`;
+  function closeOtherDropdowns() {
+    openDropdowns.forEach((dropdown) => {
+      if (dropdown !== dropdownInstance) {
+        dropdown.close();
+      }
     });
   }
 
-  function onDocClick(e: MouseEvent) {
-    if (!isOpen) return;
-    const target = e.target as Node;
-    if (!menuEl?.contains(target) && !triggerEl?.contains(target)) close();
+  // Setup click outside detection with iframe support
+  const clickOutside = onClickOutside(
+    () => dropdownElement,
+    () => {
+      if (isOpen) {
+        isOpen = false;
+      }
+    },
+    {
+      immediate: false, // We'll start/stop this manually
+      detectIframe: true // This handles iframe clicks!
+    }
+  );
+
+  // Start/stop click outside detection when dropdown opens/closes
+  $effect(() => {
+    if (isOpen && closeTrigger === 'outside') {
+      clickOutside.start();
+    } else {
+      clickOutside.stop();
+    }
+  });
+
+  $effect(() => {
+    if (disabled && isOpen) {
+      isOpen = false;
+    }
+  });
+
+  const floatingOptions = $derived(/** @type {import('svelte-floating-ui').ComputeConfig} */ ({
+    placement,
+    middleware: [
+      offset(offsetDistance),
+      flip(),
+      shift({ padding: 8 })
+    ]
+  }));
+
+  // Create floating UI actions when useFloating is enabled
+  const [floatingRef, floatingContent] = createFloatingActions({
+    strategy: 'fixed'
+  });
+
+  // Create mouse-based floating actions when needed
+  const [mouseFloatingRef, mouseFloatingContent] = createFloatingActions({
+    strategy: 'fixed',
+    placement: 'bottom-start',
+    middleware: [
+      offset({ mainAxis: 10, crossAxis: 10 }),
+      flip(),
+      shift({ padding: 8 })
+    ]
+  });
+
+  // Virtual element for mouse positioning (only create once when needed)
+  let virtualElement = $state(null);
+
+  // Update virtual element position only when mouse position changes and we're in mouse mode
+  $effect(() => {
+    if (positionMode === 'mouse' && mousePosition && isOpen) {
+      // Only update if position actually changed or if virtualElement doesn't exist
+      if (!virtualElement || 
+          virtualElement.getBoundingClientRect().x !== mousePosition?.x || 
+          virtualElement.getBoundingClientRect().y !== mousePosition?.y) {
+        
+        virtualElement = {
+          getBoundingClientRect() {
+            return {
+              width: 0,
+              height: 0,
+              top: mousePosition?.y,
+              right: mousePosition?.x,
+              bottom: mousePosition?.y,
+              left: mousePosition?.x,
+              x: mousePosition?.x,
+              y: mousePosition?.y,
+            };
+          },
+          contextElement: triggerElement
+        };
+      }
+      // Set the virtual element as reference
+      mouseFloatingRef(virtualElement);
+    }
+  });
+
+  function handleMenuClick() {
+    if (closeOnClick) {
+      isOpen = false;
+    }
   }
 
-  onMount(() => {
-    document.addEventListener('click', onDocClick, true);
-    return () => document.removeEventListener('click', onDocClick, true);
-  });
+  /** @param {KeyboardEvent} event */
+  function handleKeydown(event) {
+    if (disabled) {
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      isOpen = false;
+      triggerElement?.focus();
+    }
+  }
+
+  /** @param {KeyboardEvent} event */
+  function handleTriggerKeydown(event) {
+    if (event.key === 'Enter') {
+      toggleDropdown(event);
+    }
+  }
+
+  // Right-click event handler
+  /** @param {MouseEvent} event */
+  function handleRightClick(event) {
+    if (disabled || isControlledTriggerMode()) {
+      return;
+    }
+
+    if (event.altKey) {
+      isOpen = false;
+      return;
+    }
+
+    if (triggerMode === 'rightclick' || triggerMode === 'both') {
+      event.preventDefault(); // Prevent default context menu
+      event.stopPropagation();
+
+      if (positionMode === 'mouse') {
+        mousePosition = { x: event.clientX, y: event.clientY };
+        virtualElement = {
+          getBoundingClientRect() {
+            return {
+              width: 0,
+              height: 0,
+              top: event.clientY,
+              right: event.clientX,
+              bottom: event.clientY,
+              left: event.clientX,
+              x: event.clientX,
+              y: event.clientY,
+            };
+          },
+          contextElement: triggerElement
+        };
+        mouseFloatingRef(virtualElement);
+      }
+
+      if (!isOpen) {
+        if (doCloseOtherDropdowns) closeOtherDropdowns();
+      }
+      isHoverMode = false; // Right-click always shows menu content
+      isOpen = !isOpen;
+    }
+  }
+
+  /** @param {MouseEvent | KeyboardEvent} event */
+  function toggleDropdown(event) {
+    if (disabled || isControlledTriggerMode()) {
+      return;
+    }
+
+    // Only handle click events for click or both modes
+    if (triggerMode === 'hover' || triggerMode === 'rightclick') {
+      return;
+    }
+    
+    event.stopPropagation(); // Prevent event bubbling
+    
+    if (positionMode === 'mouse') {
+      mousePosition = { x: event.clientX, y: event.clientY };
+      virtualElement = {
+        getBoundingClientRect() {
+          return {
+            width: 0,
+            height: 0,
+            top: event.clientY,
+            right: event.clientX,
+            bottom: event.clientY,
+            left: event.clientX,
+            x: event.clientX,
+            y: event.clientY,
+          };
+        },
+        contextElement: triggerElement
+      };
+      mouseFloatingRef(virtualElement);
+    }
+    
+    if (!isOpen) {
+      // Close other dropdowns before opening this one
+      if (doCloseOtherDropdowns) closeOtherDropdowns();
+      isHoverMode = false; // Click mode shows menu content
+    }
+    
+    isOpen = !isOpen;
+  }
 </script>
 
-<div class="dropdown-wrap" bind:this={triggerEl}>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div role="button" tabindex="0"
-    onclick={toggle}
-    onkeydown={(e) => e.key === 'Enter' && toggle(e)}
-  >
-    {@render trigger()}
-  </div>
-</div>
+{#if useFloating}
+  <!-- Floating UI Implementation -->
+  <div class="dropdown-container" {...restProps}>
+    {#if positionMode === 'element'}
+      <!-- Element-based positioning (default) -->
+      <!-- Trigger -->
+      <div 
+        class="dropdown-trigger"
+        role="button" 
+        tabindex="0"
+        bind:this={triggerElement}
+        use:floatingRef
+        onclick={toggleDropdown}
+        oncontextmenu={handleRightClick}
+        onkeydown={handleTriggerKeydown}
+        onmouseenter={handleMouseEnter}
+        onmouseleave={handleMouseLeave}
+      >
+        {@render trigger()}
+      </div>
 
-{#if isOpen}
-  <Portal>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      bind:this={menuEl}
-      class="dropdown-menu"
-      style={menuStyle}
-      role="menu"
-      tabindex="-1"
-      onclick={onMenuClick}
-      onkeydown={onKeyDown}
+      <!-- Dropdown Content -->
+      {#if isOpen}
+        {#if closeTrigger === 'behind'}
+          <!-- Background overlay for 'behind' closeTrigger -->
+          <button
+            type="button"
+            class="dropdown-bg"
+            aria-label="Close dropdown"
+            onclick={() => { isOpen = false; }}
+          ></button>
+        {/if}
+        {#if usePortal}
+          <Portal>
+            <div 
+              bind:this={dropdownElement}
+              use:floatingContent={floatingOptions}
+              role="menu"
+              tabindex="-1"
+              onclick={handleMenuClick}
+              onkeydown={handleKeydown}
+              onmouseenter={handleMouseEnter}
+              onmouseleave={handleMouseLeave}
+              class:basic={styling === 'basic'}
+              class="dropdown-content floating"
+              style="min-width: {minWidth};"
+            >
+              {@render children()}
+            </div>
+          </Portal>
+        {:else}
+          <div 
+            bind:this={dropdownElement}
+            use:floatingContent={floatingOptions}
+            role="menu"
+            tabindex="-1"
+            onclick={handleMenuClick}
+            onkeydown={handleKeydown}
+            onmouseenter={handleMouseEnter}
+            onmouseleave={handleMouseLeave}
+            class:basic={styling === 'basic'}
+            class="dropdown-content floating"
+            style="min-width: {minWidth};"
+          >
+            {@render children()}
+          </div>
+        {/if}
+      {/if}
+    {:else}
+      <!-- Mouse-based positioning -->
+      <!-- Trigger (still needed for events, but invisible for positioning) -->
+      <div 
+        role="button" 
+        tabindex="0"
+        bind:this={triggerElement}
+        onclick={toggleDropdown}
+        oncontextmenu={handleRightClick}
+        onkeydown={handleTriggerKeydown}
+        onmouseenter={handleMouseEnter}
+        onmouseleave={handleMouseLeave}
+      >
+        {@render trigger()}
+      </div>
+
+      <!-- Mouse-positioned Dropdown Content -->
+      {#if isOpen}
+        {#if closeTrigger === 'behind'}
+          <!-- Background overlay for 'behind' closeTrigger -->
+          <button
+            type="button"
+            class="dropdown-bg"
+            aria-label="Close dropdown"
+            onclick={() => { isOpen = false; }}
+          ></button>
+        {/if}
+        {#if usePortal}
+          <Portal>
+            <div 
+              bind:this={dropdownElement}
+              use:mouseFloatingContent 
+              role="menu"
+              tabindex="-1"
+              onclick={handleMenuClick}
+              onkeydown={handleKeydown}
+              onmouseenter={handleMouseEnter}
+              onmouseleave={handleMouseLeave}
+              class:basic={styling === 'basic'}
+              class="dropdown-content floating mouse-positioned"
+              style="min-width: {minWidth};"
+            >
+              {@render children()}
+            </div>
+          </Portal>
+        {:else}
+          <div 
+            bind:this={dropdownElement}
+            use:mouseFloatingContent 
+            role="menu"
+            tabindex="-1"
+            onclick={handleMenuClick}
+            onkeydown={handleKeydown}
+            onmouseenter={handleMouseEnter}
+            onmouseleave={handleMouseLeave}
+            class:basic={styling === 'basic'}
+            class="dropdown-content floating mouse-positioned"
+            style="min-width: {minWidth};"
+          >
+            {@render children()}
+          </div>
+        {/if}
+      {/if}
+    {/if}
+  </div>
+{:else}
+  <!-- Standard CSS-only Implementation -->
+  <div class="dropdown-container" {...restProps}>    <!-- Trigger -->
+    <div 
+      role="button" 
+      tabindex="0"
+      bind:this={triggerElement}
+      onclick={toggleDropdown}
+      oncontextmenu={handleRightClick}
+      onkeydown={handleTriggerKeydown}
+      onmouseenter={handleMouseEnter}
+      onmouseleave={handleMouseLeave}
     >
-      {@render children()}
+      {@render trigger()}
     </div>
-  </Portal>
+
+    <!-- Dropdown Content -->
+    {#if isOpen}
+      {#if closeTrigger === 'behind'}
+        <!-- Background overlay for 'behind' closeTrigger -->
+        <button
+          type="button"
+          class="dropdown-bg"
+          aria-label="Close dropdown"
+          onclick={() => { isOpen = false; }}
+        ></button>
+      {/if}
+      {#if usePortal}
+        <Portal>
+          <div 
+            bind:this={dropdownElement}
+            role="menu"
+            tabindex="-1"
+            onclick={handleMenuClick}
+            onkeydown={handleKeydown}
+            onmouseenter={handleMouseEnter}
+            onmouseleave={handleMouseLeave}
+            class:basic={styling === 'basic'}
+            class="dropdown-content standard {position}"
+            style="min-width: {minWidth};"
+          >
+            {@render children()}
+          </div>
+        </Portal>
+      {:else}        <div 
+          bind:this={dropdownElement}
+          role="menu"
+          tabindex="-1"
+          onclick={handleMenuClick}
+          onkeydown={handleKeydown}
+          onmouseenter={handleMouseEnter}
+          onmouseleave={handleMouseLeave}
+          class:basic={styling === 'basic'}
+          class="dropdown-content standard {position}"
+          style="min-width: {minWidth};"
+        >
+          {@render children()}
+        </div>
+      {/if}
+    {/if}
+  </div>
 {/if}
 
-<style lang="scss">
-  .dropdown-wrap { position: relative; display: inline-block; }
-  .dropdown-menu {
-    background: #fff;
-    border-radius: var(--md-radius-md);
-    box-shadow: var(--md-elevation-3);
-    overflow: hidden;
-    animation: menuSlideIn 0.15s ease-out;
+<style>
+  @layer components {
+
+    .dropdown-trigger {
+      display: flex;
+    }
+
+    .dropdown-container {
+      position: relative;
+      display: inline-block;
+    }
+    .dropdown-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.1);
+      border: 0;
+      padding: 0;
+      z-index: 99997;
+    }
+    .dropdown-content {
+      background: hsl(0, 0%, 98%); /* #FAFAFA - white background */
+      border-radius: 0.5rem; /* Pill designed - no sharp corners */
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); /* Decent shadow for menus */
+      z-index: 99998;
+      overflow: hidden;
+      animation: dropdownIn 0.15s ease-out;
+    }
+
+    .dropdown-content.basic {
+      /* Basic dropdown styles */
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem; /* 14px */
+      color: hsl(0, 0%, 20%); /* Darker text color */
+      line-height: 1.5;
+      max-height: 300px; /* Limit height for long menus */
+      overflow-y: auto; /* Scroll for long content */
+      min-width: 200px; /* Minimum width for basic dropdowns */
+    }
+
+    .dropdown-content.floating {
+      /* Floating UI handles positioning automatically */
+      position: fixed;
+      z-index: 99998;
+    }
+
+    .dropdown-content.floating.mouse-positioned {
+      /* Additional styles for mouse positioning */
+      pointer-events: auto;
+      max-width: 820px;
+      min-width: 280px;
+    }
+    .dropdown-content.standard {
+      position: absolute;
+      top: 100%;
+      margin-top: 0.25rem;
+      z-index: 999999;
+    }
+
+    .dropdown-content.standard.left {
+      left: 0;
+    }
+
+    .dropdown-content.standard.right {
+      right: 0;
+    }
+
+    .dropdown-content.standard.center {
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    @keyframes dropdownIn {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
   }
 </style>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
   import {
     projectList,
     refreshProjectList,
@@ -31,6 +32,7 @@
   async function onDialogSubmit(name: string, mode: ProjectMode) {
     try {
       await newProject(name, mode);
+      await goto('/training');
     } catch {
       showNotification('Projekt konnte nicht erstellt werden', { type: 'error' });
     }
@@ -42,6 +44,7 @@
     try {
       await importProjectFromFile(input.files[0]);
       showNotification('Projekt importiert', { type: 'success' });
+      await goto('/training');
     } catch (err) {
       showNotification((err as Error).message, { type: 'error' });
     }
@@ -54,6 +57,7 @@
     try {
       await importModelAsNewProject(input.files[0]);
       showNotification('Modell importiert', { type: 'success' });
+      await goto('/training');
     } catch (err) {
       showNotification((err as Error).message, { type: 'error' });
     }
@@ -69,6 +73,7 @@
         /* ignore */
       }
     }
+    await goto('/training');
   }
 
   async function onDelete(id: string, name: string) {
