@@ -3,13 +3,43 @@
     name,
     count,
     selected,
-    onselect
+    onselect,
+    onrename
   }: {
     name: string;
     count: number;
     selected: boolean;
     onselect: () => void;
+    onrename?: (next: string) => void;
   } = $props();
+
+  let editing = $state(false);
+  let draft = $state('');
+
+  function startEdit(e: Event) {
+    e.stopPropagation();
+    draft = name;
+    editing = true;
+  }
+
+  function commit() {
+    const next = draft.trim();
+    editing = false;
+    if (next && next !== name) onrename?.(next);
+  }
+
+  function cancel() {
+    editing = false;
+    draft = '';
+  }
+
+  function onInputKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+    if (e.key === 'Escape') {
+      cancel();
+    }
+    e.stopPropagation();
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -22,7 +52,26 @@
   aria-pressed={selected}
   tabindex="0"
 >
-  <span class="name">{name}</span>
+  {#if editing}
+    <!-- svelte-ignore a11y_autofocus -->
+    <input
+      class="name-edit"
+      bind:value={draft}
+      onkeydown={onInputKey}
+      onblur={commit}
+      onclick={(e) => e.stopPropagation()}
+      autofocus
+    />
+  {:else}
+    <button
+      class="name"
+      onclick={startEdit}
+      onkeydown={(e) => e.key === 'Enter' && startEdit(e)}
+      title="Umbenennen"
+    >
+      {name}
+    </button>
+  {/if}
   <span class="count">{count}</span>
 </div>
 
@@ -50,13 +99,37 @@
     }
   }
   .name {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font: inherit;
     font-weight: 500;
     color: rgb(var(--md-on-surface));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: text;
+    box-shadow: none;
+    min-height: unset;
+    border-radius: 0;
+    &:hover {
+      text-decoration: underline dotted;
+      text-underline-offset: 3px;
+    }
+  }
+  .name-edit {
     flex: 1;
     min-width: 0;
+    padding: 2px 6px;
+    border: 1.5px solid rgb(var(--md-primary));
+    border-radius: var(--md-radius-sm);
+    background: rgb(var(--md-surface));
+    font: inherit;
+    font-weight: 500;
+    color: rgb(var(--md-on-surface));
   }
   .count {
     font-size: 12px;

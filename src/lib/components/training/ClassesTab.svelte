@@ -9,7 +9,8 @@
     pushExample,
     clearClass,
     videoRefs,
-    removeClass
+    removeClass,
+    renameClass
   } from '$lib/stores';
   import { updateProject } from '$lib/stores/projects';
   import { showNotification } from '$lib/stores/notifications';
@@ -177,26 +178,11 @@
 </script>
 
 <div class="classes-tab">
-  <!-- New class input -->
+  <!-- Class list (empty allowed, input is always the last row) -->
   <div class="section">
-    <label for="new-class-name">Neue Klasse</label>
-    <div class="row">
-      <input
-        id="new-class-name"
-        type="text"
-        placeholder="z. B. Hand"
-        bind:value={newClassName}
-        onkeydown={onNewClassKey}
-      />
-      <button onclick={createClass} style="min-width:40px;">+</button>
-    </div>
-  </div>
-
-  <!-- Class list -->
-  {#if $classes.length}
-    <div class="section">
-      <div class="row-between">
-        <span class="section-label">Klassen</span>
+    <div class="row-between">
+      <span class="section-label">Klassen</span>
+      {#if $classes.length}
         <Dropdown placement="bottom-end">
           {#snippet trigger()}
             <button class="ghost small" aria-label="Klassen-Menü" title="Mehr Aktionen">⋯</button>
@@ -213,26 +199,46 @@
             </DropdownItem>
           {/snippet}
         </Dropdown>
-        <input
-          bind:this={importAllEl}
-          type="file"
-          accept=".zip"
-          style="display:none"
-          onchange={onImportAll}
+      {/if}
+      <input
+        bind:this={importAllEl}
+        type="file"
+        accept=".zip"
+        style="display:none"
+        onchange={onImportAll}
+      />
+    </div>
+    <div class="class-list">
+      {#each $classes as cls (cls)}
+        <ClassItem
+          name={cls}
+          count={($examples[cls] || []).length}
+          selected={$activeClass === cls}
+          onselect={() => setActiveClass(cls)}
+          onrename={(next) => renameClass(cls, next)}
         />
-      </div>
-      <div class="class-list">
-        {#each $classes as cls}
-          <ClassItem
-            name={cls}
-            count={($examples[cls] || []).length}
-            selected={$activeClass === cls}
-            onselect={() => setActiveClass(cls)}
-          />
-        {/each}
+      {/each}
+
+      <!-- New class input styled like a list row -->
+      <div class="new-class-row">
+        <input
+          class="new-class-input"
+          type="text"
+          placeholder="Neue Klasse hinzufügen"
+          bind:value={newClassName}
+          onkeydown={onNewClassKey}
+        />
+        <button
+          class="add-btn"
+          onclick={createClass}
+          disabled={!newClassName.trim()}
+          aria-label="Klasse hinzufügen"
+        >
+          +
+        </button>
       </div>
     </div>
-  {/if}
+  </div>
 
   <!-- Active class capture section -->
   {#if $activeClass}
@@ -343,7 +349,6 @@
     display: flex;
     flex-direction: column;
     margin-bottom: 12px;
-    label,
     .section-label {
       font-size: 13px;
       font-weight: 600;
@@ -351,10 +356,44 @@
       margin-bottom: 4px;
     }
   }
-  .row {
+  .new-class-row {
     display: flex;
-    gap: 8px;
     align-items: center;
+    gap: 6px;
+    padding: 4px 4px;
+    border: 1px dashed rgba(var(--md-outline), 0.7);
+    border-radius: var(--md-radius-md);
+    margin-top: 4px;
+    &:focus-within {
+      border-color: rgb(var(--md-primary));
+      background: rgba(var(--md-primary-container), 0.3);
+    }
+  }
+  .new-class-input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    padding: 6px 8px;
+    font: inherit;
+    color: rgb(var(--md-on-surface));
+    &:focus {
+      outline: none;
+      border: none;
+      padding: 6px 8px;
+    }
+  }
+  .add-btn {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0;
+    font-size: 18px;
+    font-weight: 500;
+    line-height: 1;
+    flex-shrink: 0;
+    box-shadow: none;
   }
   .row-between {
     display: flex;

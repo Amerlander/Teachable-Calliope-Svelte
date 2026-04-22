@@ -83,6 +83,24 @@ export function removeClass(name: string): void {
   });
 }
 
+export function renameClass(oldName: string, newName: string): boolean {
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === oldName) return false;
+  let ok = false;
+  updateProject((p) => {
+    if (!p.classes.includes(oldName)) return;
+    if (p.classes.includes(trimmed)) return;
+    p.classes = p.classes.map((c) => (c === oldName ? trimmed : c));
+    if (p.examples[oldName]) {
+      p.examples[trimmed] = p.examples[oldName];
+      delete p.examples[oldName];
+    }
+    if (p.activeClass === oldName) p.activeClass = trimmed;
+    ok = true;
+  });
+  return ok;
+}
+
 // --- Model/history mutation actions ---
 export function setTrainingHistory(h: TrainingHistory): void {
   updateProject((p) => {
