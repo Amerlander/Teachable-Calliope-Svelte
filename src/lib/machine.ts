@@ -101,7 +101,24 @@ export async function prepareDatasetForTraining() {
   return { xs: stackedX, ys: stackedY };
 }
 
-export async function trainModel(epochs = 20, onEpochEnd?: (epoch: number, logs: any) => void) {
+export type TrainOptions = {
+  epochs?: number;
+  batchSize?: number;
+  learningRate?: number;
+  hiddenUnits?: number;
+};
+
+export async function trainModel(
+  optsOrEpochs: number | TrainOptions = 20,
+  onEpochEnd?: (epoch: number, logs: any) => void
+) {
+  const opts: TrainOptions =
+    typeof optsOrEpochs === 'number' ? { epochs: optsOrEpochs } : optsOrEpochs;
+  const epochs = opts.epochs ?? 20;
+  const batchSize = opts.batchSize ?? 16;
+  const learningRate = opts.learningRate ?? 0.001;
+  const hiddenUnits = opts.hiddenUnits ?? 64;
+
   const tfModule = await import('@tensorflow/tfjs');
   const data = await prepareDatasetForTraining();
 
@@ -109,9 +126,9 @@ export async function trainModel(epochs = 20, onEpochEnd?: (epoch: number, logs:
   const xsShape = (data.xs as any).shape as number[] | undefined;
   if (!xsShape || xsShape.length < 2) throw new Error('Unexpected xs tensor shape');
   const featureCount = xsShape[xsShape.length - 1];
-  model.add(tfModule.layers.dense({ inputShape: [featureCount as number], units: 64, activation: 'relu' }));
+  model.add(tfModule.layers.dense({ inputShape: [featureCount as number], units: hiddenUnits, activation: 'relu' }));
   model.add(tfModule.layers.dense({ units: get(classes).length, activation: 'softmax' }));
-  model.compile({ optimizer: 'adam', loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
+  model.compile({ optimizer: tfModule.train.adam(learningRate), loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
 
   classifierModel.set(model);
   // reset training history for new training session
@@ -119,6 +136,7 @@ export async function trainModel(epochs = 20, onEpochEnd?: (epoch: number, logs:
 
   await model.fit(data.xs, data.ys, {
     epochs,
+    batchSize,
     callbacks: {
         onEpochEnd: (e: number, logs: any) => {
         const acc = (logs && (logs.acc ?? logs.accuracy)) ?? 0;

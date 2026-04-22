@@ -1,9 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import TrainingPanel from '$lib/components/training/TrainingPanel.svelte';
+  import ProjectWorkspace from '$lib/components/training/ProjectWorkspace.svelte';
   import VideoPanel from '$lib/components/training/VideoPanel.svelte';
   import ProjectStartScreen from '$lib/components/training/ProjectStartScreen.svelte';
-  import { currentProject, getLastProjectId, loadProject, refreshProjectList } from '$lib/stores/projects';
+  import {
+    currentProject,
+    getLastProjectId,
+    loadProject,
+    refreshProjectList
+  } from '$lib/stores/projects';
   import { loadClassifierFromArtifacts } from '$lib/machine';
 
   onMount(async () => {
@@ -24,7 +29,7 @@
 
 <div class="view training-view">
   {#if $currentProject}
-    <TrainingPanel />
+    <ProjectWorkspace />
     <VideoPanel />
   {:else}
     <ProjectStartScreen />
