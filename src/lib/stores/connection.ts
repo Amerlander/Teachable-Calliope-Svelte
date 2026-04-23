@@ -124,6 +124,24 @@ export async function disconnectCalliope(): Promise<void> {
   }
 }
 
+/**
+ * MakeCode appends its own metadata records (compressed project source, header)
+ * after the Intel-HEX EOF record so the `.hex` file can be re-imported as a
+ * project. dapjs's parser rejects any records after EOF ("there is data after
+ * an eof record"). Strip everything from the first EOF record onward, keeping
+ * the EOF line itself.
+ */
+function stripMakeCodeMetadata(hex: string): string {
+  const EOF = ':00000001FF';
+  const idx = hex.indexOf(EOF);
+  if (idx < 0) return hex;
+  // Keep the EOF record itself, plus its trailing newline if any.
+  let end = idx + EOF.length;
+  if (hex[end] === '\r') end++;
+  if (hex[end] === '\n') end++;
+  return hex.slice(0, end);
+}
+
 export async function flashCalliope(
   hex: string,
   name: string = 'project',
@@ -158,8 +176,17 @@ export async function flashCalliope(
     lastFlashName: name,
   }));
 
+  const cleanHex = stripMakeCodeMetadata(hex);
+  // eslint-disable-next-line no-console
+  console.log('[calliope] flashing', {
+    name,
+    rawLen: hex.length,
+    cleanLen: cleanHex.length,
+    stripped: hex.length - cleanHex.length,
+    eofFound: cleanHex.endsWith(':00000001FF') || cleanHex.endsWith(':00000001FF\n') || cleanHex.endsWith(':00000001FF\r\n'),
+  });
   try {
-    await c.flash(async () => hex, {
+    await c.flash(async () => cleanHex, {
       partial: true,
       progress: (pct: number | undefined, partial: boolean) => {
         state.update((s) => ({
