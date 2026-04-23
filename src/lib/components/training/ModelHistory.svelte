@@ -10,10 +10,39 @@
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
 
+  let { onselect }: { onselect?: (id: string) => void } = $props();
+
   const history = $derived($currentProject?.modelHistory ?? []);
   const currentId = $derived($currentProject?.currentModelId ?? null);
 
   const sorted = $derived([...history].sort((a, b) => b.trainedAt - a.trainedAt));
+
+  let editingId = $state<string | null>(null);
+  let draft = $state('');
+
+  function startEdit(id: string, currentLabel: string | undefined, e?: Event) {
+    e?.stopPropagation();
+    draft = currentLabel ?? '';
+    editingId = id;
+  }
+
+  function commitEdit() {
+    if (!editingId) return;
+    renameTrainedModel(editingId, draft);
+    editingId = null;
+    draft = '';
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    draft = '';
+  }
+
+  function onInputKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+    if (e.key === 'Escape') cancelEdit();
+    e.stopPropagation();
+  }
 
   function accuracyOf(epochs: number[], accuracy: number[]): number | null {
     if (!accuracy.length) return null;
@@ -26,6 +55,7 @@
 
   async function onLoad(id: string) {
     const m = setCurrentModel(id);
+    onselect?.(id);
     if (!m) return;
     try {
       await loadClassifierFromArtifacts(m.artifacts);
@@ -33,12 +63,6 @@
     } catch (err) {
       showNotification('Fehler beim Laden: ' + (err as Error).message, { type: 'error' });
     }
-  }
-
-  function onRename(id: string, currentLabel?: string) {
-    const label = prompt('Name für diesen Trainingslauf:', currentLabel || '');
-    if (label == null) return;
-    renameTrainedModel(id, label);
   }
 
   function onDelete(id: string) {
@@ -53,9 +77,39 @@
     {#each sorted as run (run.id)}
       {@const acc = accuracyOf(run.history.epochs, run.history.accuracy)}
       <li class="history-row" class:active={run.id === currentId}>
-        <button class="main" onclick={() => onLoad(run.id)}>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="main"
+          role="button"
+          tabindex="0"
+          onclick={() => onLoad(run.id)}
+          onkeydown={(e) => e.key === 'Enter' && onLoad(run.id)}
+        >
           <div class="title">
-            {run.label || formatDate(run.trainedAt)}
+            {#if editingId === run.id}
+              <!-- svelte-ignore a11y_autofocus -->
+              <input
+                class="title-edit"
+                bind:value={draft}
+                onkeydown={onInputKey}
+                onblur={commitEdit}
+                onclick={(e) => e.stopPropagation()}
+                autofocus
+              />
+            {:else}
+              <span class="title-text">{run.label || formatDate(run.trainedAt)}</span>
+              <button
+                type="button"
+                class="edit-btn"
+                onclick={(e) => startEdit(run.id, run.label, e)}
+                title="Umbenennen"
+                aria-label="Umbenennen"
+              >
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                  <path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                </svg>
+              </button>
+            {/if}
             {#if run.id === currentId}
               <span class="chip">aktiv</span>
             {/if}
@@ -69,14 +123,14 @@
             <span>·</span>
             <span>{Object.values(run.exampleCounts).reduce((a, b) => a + b, 0)} Bilder</span>
           </div>
-        </button>
+        </div>
         <Dropdown placement="bottom-end">
           {#snippet trigger()}
-            <button class="menu ghost" aria-label="Aktionen" title="Mehr">⋯</button>
+            <button type="button" class="menu" aria-label="Aktionen" title="Mehr">⋯</button>
           {/snippet}
           {#snippet children()}
             <DropdownItem onclick={() => onLoad(run.id)}>Dieses Modell laden</DropdownItem>
-            <DropdownItem onclick={() => onRename(run.id, run.label)}>Umbenennen</DropdownItem>
+            <DropdownItem onclick={() => startEdit(run.id, run.label)}>Umbenennen</DropdownItem>
             <DropdownItem onclick={() => onDelete(run.id)}>Löschen</DropdownItem>
           {/snippet}
         </Dropdown>
@@ -100,26 +154,30 @@
   }
   .history-row {
     display: flex;
-    align-items: stretch;
-    gap: 2px;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 0;
     border-radius: var(--md-radius-md);
-    background: rgba(var(--md-surface-variant), 0.4);
+    background: rgba(var(--md-surface-variant), 0.3);
     border: 2px solid transparent;
-    transition: background 0.15s;
+    cursor: pointer;
+    transition: all 0.2s;
     &:hover {
-      background: rgba(var(--md-surface-variant), 0.7);
+      background: rgb(var(--md-surface-variant));
+      box-shadow: var(--md-elevation-1);
     }
     &.active {
       border-color: rgb(var(--md-primary));
-      background: rgba(var(--md-primary-container), 0.5);
+      background: rgba(var(--md-primary-container));
     }
   }
   .main {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 8px 12px;
+    padding: 10px 12px;
     background: transparent;
     border: none;
     text-align: left;
@@ -127,13 +185,61 @@
     color: rgb(var(--md-on-surface));
     box-shadow: none;
     min-height: unset;
+    font: inherit;
   }
   .title {
     font-size: 13px;
     font-weight: 600;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    min-width: 0;
+  }
+  .title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .title-edit {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px;
+    border: 1.5px solid rgb(var(--md-primary));
+    border-radius: var(--md-radius-sm);
+    background: rgb(var(--md-surface));
+    font: inherit;
+    font-weight: 600;
+    color: rgb(var(--md-on-surface));
+  }
+  .edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: rgb(var(--md-on-surface-variant));
+    border-radius: 999px;
+    cursor: pointer;
+    opacity: 0;
+    transition: background 0.15s, opacity 0.15s, color 0.15s;
+    &:focus-visible {
+      opacity: 1;
+      outline: 2px solid rgb(var(--md-primary));
+      outline-offset: 1px;
+    }
+    &:hover {
+      background: rgba(var(--md-on-surface), 0.08);
+      color: rgb(var(--md-on-surface));
+    }
+  }
+  .history-row:hover .edit-btn,
+  .history-row.active .edit-btn {
+    opacity: 0.7;
+    &:hover { opacity: 1; }
   }
   .chip {
     font-size: 10px;
@@ -157,13 +263,26 @@
     }
   }
   .menu {
-    width: 36px;
+    width: 28px;
+    height: 28px;
+    min-height: unset;
     padding: 0;
     box-shadow: none;
-    border-radius: 0;
+    border: none;
+    border-radius: 999px;
     background: transparent;
+    color: rgb(var(--md-on-surface-variant));
+    cursor: pointer;
+    font-size: 16px;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
     &:hover {
-      background: rgba(var(--md-surface-variant), 0.5);
+      background: rgba(var(--md-on-surface), 0.08);
+      color: rgb(var(--md-on-surface));
     }
   }
   .empty {

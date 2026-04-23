@@ -63,13 +63,16 @@
       autofocus
     />
   {:else}
+    <span class="name">{name}</span>
     <button
-      class="name"
+      class="edit-btn"
       onclick={startEdit}
-      onkeydown={(e) => e.key === 'Enter' && startEdit(e)}
       title="Umbenennen"
+      aria-label="Umbenennen"
     >
-      {name}
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+        <path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+      </svg>
     </button>
   {/if}
   <span class="count">{count}</span>
@@ -101,24 +104,40 @@
   .name {
     flex: 1;
     min-width: 0;
-    text-align: left;
-    background: transparent;
-    border: none;
-    padding: 0;
-    font: inherit;
     font-weight: 500;
     color: rgb(var(--md-on-surface));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    cursor: text;
-    box-shadow: none;
-    min-height: unset;
-    border-radius: 0;
-    &:hover {
-      text-decoration: underline dotted;
-      text-underline-offset: 3px;
+  }
+  .edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: rgb(var(--md-on-surface-variant));
+    border-radius: 999px;
+    cursor: pointer;
+    opacity: 0;
+    transition: background 0.15s, opacity 0.15s, color 0.15s;
+    &:focus-visible {
+      opacity: 1;
+      outline: 2px solid rgb(var(--md-primary));
+      outline-offset: 1px;
     }
+    &:hover {
+      background: rgba(var(--md-on-surface), 0.08);
+      color: rgb(var(--md-on-surface));
+    }
+  }
+  .class-item:hover .edit-btn,
+  .class-item.selected .edit-btn {
+    opacity: 0.7;
+    &:hover { opacity: 1; }
   }
   .name-edit {
     flex: 1;

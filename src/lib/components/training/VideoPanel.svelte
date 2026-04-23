@@ -11,7 +11,7 @@
 
   let webcamEl: HTMLVideoElement = $state()!;
   let webcamTestEl: HTMLVideoElement = $state()!;
-  let statusText = $state('Lädt…');
+  let cameraReady = $state(false);
   let prediction = $state<{ label: string; confidence: number; all: number[] } | null>(null);
   let predInterval: ReturnType<typeof setInterval> | null = null;
   let lastTickAt = 0;
@@ -24,7 +24,7 @@
     setVideoRef('webcam', webcamEl);
     setVideoRef('webcamTest', webcamTestEl);
     await initSharedCamera({ webcam: webcamEl, webcamTest: webcamTestEl }, get(selectedCameraId) ?? undefined);
-    statusText = 'Bereit';
+    cameraReady = true;
   });
 
   onDestroy(() => {
@@ -77,29 +77,31 @@
 </script>
 
 <div class="right-panel">
-  <CameraSelect />
-
-  <!-- Mode indicator (replaces old tab buttons) -->
-  <div class="mode-indicator" class:test={mode === 'test'}>
-    <span class="dot"></span>
-    <span class="label">
-      {mode === 'test' ? 'Test' : 'Aufnahme'}
-    </span>
-    <span class="hint">
-      {mode === 'test'
-        ? (!$classifierModel ? 'Kein Modell – bitte erst trainieren' : 'Live-Vorhersage aktiv')
-        : 'Bild wird zur aktiven Klasse aufgenommen'}
-    </span>
-  </div>
-
   <!-- Train view -->
   <div class="video-wrap" class:hidden={mode !== 'train'}>
     <video bind:this={webcamEl} autoplay playsinline muted>
       <track kind="captions" />
     </video>
-    <div class="overlay">
-      <div class="status">{statusText}</div>
+
+    <div class="top-bar">
+      <div class="mode-indicator" class:test={mode === 'test'}>
+        <span class="dot"></span>
+        <span class="label">{mode === 'test' ? 'Test' : 'Aufnahme'}</span>
+        <span class="hint">
+          {mode === 'test'
+            ? (!$classifierModel ? 'Kein Modell – bitte erst trainieren' : 'Live-Vorhersage aktiv')
+            : 'Bild wird zur aktiven Klasse aufgenommen'}
+        </span>
+      </div>
+      <CameraSelect />
     </div>
+
+    {#if !cameraReady}
+      <div class="loading-overlay">
+        <span class="spinner"></span>
+        <span>Kamera wird geladen…</span>
+      </div>
+    {/if}
   </div>
 
   <!-- Test view -->
@@ -107,6 +109,26 @@
     <video bind:this={webcamTestEl} autoplay playsinline muted>
       <track kind="captions" />
     </video>
+
+    <div class="top-bar">
+      <div class="mode-indicator" class:test={mode === 'test'}>
+        <span class="dot"></span>
+        <span class="label">{mode === 'test' ? 'Test' : 'Aufnahme'}</span>
+        <span class="hint">
+          {mode === 'test'
+            ? (!$classifierModel ? 'Kein Modell – bitte erst trainieren' : 'Live-Vorhersage aktiv')
+            : 'Bild wird zur aktiven Klasse aufgenommen'}
+        </span>
+      </div>
+      <CameraSelect />
+    </div>
+
+    {#if !cameraReady}
+      <div class="loading-overlay">
+        <span class="spinner"></span>
+        <span>Kamera wird geladen…</span>
+      </div>
+    {/if}
 
     {#if prediction}
       <div class="prediction-display">
@@ -156,13 +178,28 @@
     gap: 8px;
     min-height: 0;
   }
-  .mode-indicator {
+  .top-bar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
     display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    z-index: 3;
+    pointer-events: none;
+    > :global(*) { pointer-events: auto; }
+  }
+  .mode-indicator {
+    display: inline-flex;
     align-items: center;
     gap: 10px;
     padding: 6px 12px;
     border-radius: var(--md-radius-md);
-    background: rgba(var(--md-surface-variant), 0.4);
+    background: rgba(var(--md-surface), 0.85);
+    backdrop-filter: blur(10px);
+    box-shadow: var(--md-elevation-1);
     font-size: 13px;
     color: rgb(var(--md-on-surface-variant));
     .dot {
@@ -184,6 +221,19 @@
       box-shadow: 0 0 0 3px rgba(173, 245, 76, 0.25);
       animation: pulse 1.4s ease-in-out infinite;
     }
+  }
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 14px;
+    z-index: 4;
+    backdrop-filter: blur(4px);
   }
   @keyframes pulse {
     0%, 100% { box-shadow: 0 0 0 3px rgba(173, 245, 76, 0.25); }

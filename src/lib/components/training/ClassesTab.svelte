@@ -25,6 +25,7 @@
   import ImportDialog from '$lib/components/ImportDialog.svelte';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
 
   let { ontraintab }: { ontraintab?: () => void } = $props();
 
@@ -185,7 +186,7 @@
       {#if $classes.length}
         <Dropdown placement="bottom-end">
           {#snippet trigger()}
-            <button class="ghost small" aria-label="Klassen-Menü" title="Mehr Aktionen">⋯</button>
+            <Button variant="ghost" size="small" aria-label="Klassen-Menü" title="Mehr Aktionen">⋯</Button>
           {/snippet}
           {#snippet children()}
             <DropdownItem onclick={() => downloadAllClassImages($examples)}>
@@ -228,14 +229,15 @@
           bind:value={newClassName}
           onkeydown={onNewClassKey}
         />
-        <button
+        <Button
           class="add-btn"
+          size="small"
           onclick={createClass}
           disabled={!newClassName.trim()}
           aria-label="Klasse hinzufügen"
         >
           +
-        </button>
+        </Button>
       </div>
     </div>
   </div>
@@ -244,15 +246,11 @@
   {#if $activeClass}
     <hr />
     <div class="section">
-      <div class="row-between">
-        <span class="section-label">{$activeClass}</span>
-        <span class="capture-count">{rawExamples().length} Bilder</span>
-      </div>
 
       <div class="capture-actions">
-        <button
+        <Button
           class="capture-btn"
-          class:active-btn={isCapturing}
+          active={isCapturing}
           onmousedown={startCapture}
           onmouseup={stopCapture}
           onmouseleave={stopCapture}
@@ -260,11 +258,11 @@
           ontouchend={stopCapture}
         >
           {isCapturing ? 'Aufnahme stoppen' : 'Aufnahme starten'}
-        </button>
+        </Button>
 
         <Dropdown placement="bottom-end">
           {#snippet trigger()}
-            <button class="icon-btn ghost" aria-label="Klassen-Aktionen" title="Mehr Aktionen">⋯</button>
+            <Button class="icon-btn" variant="ghost" aria-label="Klassen-Aktionen" title="Mehr Aktionen">⋯</Button>
           {/snippet}
           {#snippet children()}
             <DropdownItem
@@ -315,14 +313,15 @@
 
   <!-- Train model CTA -->
   <div class="train-cta">
-    <button
+    <Button
       class="train-btn"
+      fullWidth
       disabled={!hasEnoughForTraining}
       onclick={() => ontraintab?.()}
       title={hasEnoughForTraining ? 'Zum Modell-Tab wechseln' : 'Mindestens 3 Klassen erforderlich'}
     >
       Modell trainieren
-    </button>
+    </Button>
     {#if !hasEnoughForTraining}
       <div class="hint">Mindestens 3 Klassen erforderlich ({$classes.length}/3)</div>
     {/if}
@@ -383,7 +382,7 @@
       padding: 6px 8px;
     }
   }
-  .add-btn {
+  :global(.add-btn) {
     width: 32px;
     min-width: 32px;
     height: 32px;
@@ -422,10 +421,10 @@
     align-items: center;
     margin-top: 4px;
   }
-  .capture-btn {
+  :global(.capture-btn) {
     flex: 1;
   }
-  .icon-btn {
+  :global(.icon-btn) {
     width: 40px;
     min-width: 40px;
     padding: 0;
@@ -444,8 +443,7 @@
     flex-direction: column;
     gap: 6px;
   }
-  .train-btn {
-    width: 100%;
+  :global(.train-btn) {
     font-weight: 600;
   }
   .hint {
