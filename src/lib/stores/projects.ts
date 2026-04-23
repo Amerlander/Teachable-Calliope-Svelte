@@ -41,7 +41,7 @@ export type AugmentationSettings = {
 };
 
 export const DEFAULT_AUGMENTATION: AugmentationSettings = {
-  horizontalFlip: true,
+  horizontalFlip: false,
   rotationDegrees: 10,
   brightnessJitter: 0.15,
   zoomJitter: 0.1,
