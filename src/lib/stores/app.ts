@@ -27,13 +27,16 @@ export const workspaceTab = writable<WorkspaceTab>('classes');
 export type ModelTabView = 'model' | 'new';
 export const modelTabView = writable<ModelTabView>('new');
 
-// --- Draft ROI for the next training run (normalized 0..1) ---
+// --- Draft ROI for the next training run (normalized to video frame, 0..1) ---
 export type Roi = { x: number; y: number; w: number; h: number };
 export const draftRoi = writable<Roi | null>(null);
 
-// --- Apply UI state ---
-export const applyRunning = writable(false);
-export const applyPrediction = writable<{ label: string; confidence: number } | null>(null);
+// --- When true, the prep video shows an editable ROI overlay ---
+export const roiEditing = writable(false);
+
+// --- Training phase indicator: what's happening right now ---
+export type TrainPhase = 'idle' | 'preparing' | 'training' | 'done' | 'error';
+export const trainPhase = writable<TrainPhase>('idle');
 
 // --- Bluetooth ---
 export const btConnected = writable(false);

@@ -9,8 +9,8 @@
     setModelArtifacts
   } from '$lib/stores';
   import type { TrainingOptions } from '$lib/stores';
-  import { updateProject, currentProject, renameTrainedModel } from '$lib/stores/projects';
-  import { isTraining, trainStatus, modelTrained, modelTabView } from '$lib/stores/app';
+  import { updateProject, currentProject, renameTrainedModel, setTrainedModelRoi } from '$lib/stores/projects';
+  import { isTraining, trainStatus, modelTrained, modelTabView, draftRoi, roiEditing, trainPhase } from '$lib/stores/app';
   import {
     trainModel,
     saveModelToZip,
@@ -54,7 +54,8 @@
     trainEpoch = 0;
     trainTotalEpochs = opts.epochs;
     isTraining.set(true);
-    trainStatus.set('Training läuft…');
+    trainPhase.set('preparing');
+    trainStatus.set('Bilder werden vorbereitet…');
     try {
       await trainModel(
         {
@@ -64,18 +65,20 @@
           hiddenUnits: opts.hiddenUnits
         },
         (ep) => {
+          if (get(trainPhase) !== 'training') trainPhase.set('training');
           trainEpoch = ep + 1;
           trainStatus.set(`Epoche ${ep + 1}/${opts.epochs}`);
         }
       );
       modelTrained.set(true);
+      trainPhase.set('done');
       trainStatus.set('Training abgeschlossen');
       showNotification('Training abgeschlossen', { type: 'success' });
+      const id = get(currentProject)?.currentModelId;
       const label = newModelName.trim();
-      if (label) {
-        const id = get(currentProject)?.currentModelId;
-        if (id) renameTrainedModel(id, label);
-      }
+      if (id && label) renameTrainedModel(id, label);
+      const roi = get(draftRoi);
+      if (id && roi) setTrainedModelRoi(id, roi);
       newModelName = '';
       modelTabView.set('model');
       try {
@@ -85,6 +88,7 @@
         /* ignore */
       }
     } catch (err) {
+      trainPhase.set('error');
       trainStatus.set('Fehler beim Training');
       showNotification('Fehler: ' + (err as Error).message, { type: 'error' });
     } finally {
@@ -195,13 +199,32 @@
   <!-- Body: depends on view / training state -->
   {#if $isTraining}
     <section class="card training-card">
-      <h3>Training läuft…</h3>
-      <div class="progress-wrap">
-        <div class="progress-bar"><div class="progress-fill" style="width:{trainProgress}%"></div></div>
-        <div class="progress-label">
-          Epoche {trainEpoch} / {trainTotalEpochs} · {trainProgress}%
+      <h3>{$trainPhase === 'preparing' ? 'Vorbereitung…' : 'Training läuft…'}</h3>
+      <div class="phase-steps">
+        <div class="phase-step" class:done={$trainPhase !== 'preparing'} class:active={$trainPhase === 'preparing'}>
+          <span class="phase-dot"></span>
+          <span>Bilder vorbereiten (Feature-Extraktion)</span>
+          {#if $trainPhase === 'preparing'}<span class="spinner"></span>{/if}
+        </div>
+        <div class="phase-step" class:active={$trainPhase === 'training'}>
+          <span class="phase-dot"></span>
+          <span>Modell trainieren</span>
         </div>
       </div>
+
+      {#if $trainPhase === 'training'}
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" style="width:{trainProgress}%"></div></div>
+          <div class="progress-label">
+            Epoche {trainEpoch} / {trainTotalEpochs} · {trainProgress}%
+          </div>
+        </div>
+      {:else}
+        <div class="progress-wrap">
+          <div class="progress-bar indeterminate"><div class="progress-fill"></div></div>
+          <div class="progress-label">Features werden aus deinen Bildern berechnet…</div>
+        </div>
+      {/if}
       <div class="training-detail">{$trainStatus}</div>
       <div class="training-hint">
         Das Modell lernt gerade aus deinen Bildern. Das kann je nach Anzahl der Klassen
@@ -295,6 +318,41 @@
             onchange={(e) => updateOpt('hiddenUnits', +((e.target as HTMLInputElement).value))}
           />
         </label>
+      </div>
+
+      <div class="roi-section">
+        <div class="roi-head">
+          <span class="opt-label">
+            Bildbereich (ROI)
+            <InfoTooltip
+              text="Begrenzt den Trainings- und Erkennungsbereich auf einen Ausschnitt des Kamerabildes. Wird mit dem trainierten Modell gespeichert."
+            />
+          </span>
+          <Button
+            variant={$roiEditing ? 'active' : 'ghost'}
+            size="small"
+            onclick={() => roiEditing.update((v) => !v)}
+          >
+            {$roiEditing ? 'Fertig' : $draftRoi ? 'ROI ändern' : 'ROI wählen'}
+          </Button>
+        </div>
+        {#if $draftRoi}
+          <div class="roi-meta">
+            <span class="roi-chip">
+              {Math.round($draftRoi.w * 100)}×{Math.round($draftRoi.h * 100)}%
+              &nbsp;@&nbsp;({Math.round($draftRoi.x * 100)}, {Math.round($draftRoi.y * 100)})
+            </span>
+            <button
+              type="button"
+              class="roi-clear"
+              onclick={() => { draftRoi.set(null); roiEditing.set(false); }}
+            >
+              Entfernen
+            </button>
+          </div>
+        {:else}
+          <div class="hint">Kein ROI – gesamtes Kamerabild wird verwendet.</div>
+        {/if}
       </div>
 
       <div class="train-row">
@@ -414,6 +472,88 @@
     background: rgb(var(--md-primary));
     border-radius: 999px;
     transition: width 0.3s;
+  }
+  .progress-bar.indeterminate {
+    overflow: hidden;
+    .progress-fill {
+      width: 40%;
+      animation: indeterminate 1.4s ease-in-out infinite;
+    }
+  }
+  @keyframes indeterminate {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+  }
+  .phase-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+    .phase-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: rgb(var(--md-on-surface-variant));
+      &.active { color: rgb(var(--md-on-surface)); font-weight: 600; }
+      &.done { color: rgb(var(--md-on-surface-variant)); opacity: 0.7; }
+    }
+    .phase-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      flex-shrink: 0;
+    }
+    .phase-step.active .phase-dot { background: rgb(var(--md-primary)); border-color: rgb(var(--md-primary)); }
+    .phase-step.done .phase-dot   { background: rgb(var(--md-tertiary)); border-color: rgb(var(--md-tertiary)); }
+  }
+  .roi-section {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(var(--md-surface-variant), 0.35);
+    border-radius: var(--md-radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    .roi-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .opt-label {
+      font-size: 12px;
+      color: rgb(var(--md-on-surface-variant));
+      display: inline-flex;
+      align-items: center;
+    }
+    .roi-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .roi-chip {
+      flex: 1;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      padding: 4px 8px;
+      background: rgb(var(--md-surface));
+      border: 1px solid rgb(var(--md-outline-variant));
+      border-radius: var(--md-radius-sm);
+    }
+    .roi-clear {
+      background: transparent;
+      border: none;
+      color: rgb(var(--md-on-surface-variant));
+      font: inherit;
+      font-size: 12px;
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 0 4px;
+      min-height: unset;
+      box-shadow: none;
+      &:hover { color: rgb(var(--md-primary)); }
+    }
   }
   .progress-label {
     font-size: 12px;

@@ -12,6 +12,7 @@
     workspaceTab,
     modelTabView,
     draftRoi,
+    roiEditing,
     type Roi
   } from '$lib/stores/app';
   import CameraSelect from '$lib/components/CameraSelect.svelte';
@@ -28,6 +29,13 @@
   let cameraReady = $state(false);
 
   const thresholds = $derived($currentProject?.classThresholds ?? {});
+  const currentModelRoi = $derived.by(() => {
+    const p = $currentProject;
+    if (!p?.currentModelId) return null;
+    const m = p.modelHistory.find((x) => x.id === p.currentModelId);
+    return m?.roi ?? null;
+  });
+  let videoAspect = $state(4 / 3);
   const topLabel = $derived.by(() => {
     if (!prediction) return null;
     const t = thresholds[prediction.label] ?? 0;
@@ -57,6 +65,14 @@
         el.srcObject = stream;
         el.onloadedmetadata = () => el.play().catch(() => {});
       }
+    }
+    const capture = webcamPrepEl ?? webcamEl;
+    if (capture) {
+      capture.addEventListener('loadedmetadata', () => {
+        if (capture.videoWidth && capture.videoHeight) {
+          videoAspect = capture.videoWidth / capture.videoHeight;
+        }
+      });
     }
     cameraReady = true;
   });
@@ -207,6 +223,40 @@
   function fullRoi() {
     roi = { x: 0, y: 0, w: 1, h: 1 };
   }
+
+  // ---------- Threshold drag (directly on the sub-bar) ----------
+  function setThresholdFromEvent(cls: string, el: HTMLElement, clientX: number) {
+    const r = el.getBoundingClientRect();
+    const v = clamp((clientX - r.left) / r.width);
+    setClassThreshold(cls, v);
+  }
+
+  function startThresholdDrag(cls: string, e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    setThresholdFromEvent(cls, el, e.clientX);
+    const onMove = (ev: PointerEvent) => setThresholdFromEvent(cls, el, ev.clientX);
+    const onUp = (ev: PointerEvent) => {
+      el.releasePointerCapture?.(ev.pointerId);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onUp);
+    };
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+  }
+
+  function onThresholdKey(cls: string, thr: number, e: KeyboardEvent) {
+    let next = thr;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = clamp(thr - 0.05);
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = clamp(thr + 0.05);
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = 1;
+    else return;
+    e.preventDefault();
+    setClassThreshold(cls, next);
+  }
 </script>
 
 <div class="right-panel">
@@ -291,25 +341,25 @@
             <li class:top={triggered}>
               <div class="row1">
                 <span class="name">{cls}</span>
-                <span class="sub-pct">{Math.round(p * 100)}%</span>
+                <span class="sub-pct">
+                  <span class="pct-val">{Math.round(p * 100)}%</span>
+                  <span class="thr-val">· {Math.round(thr * 100)}%</span>
+                </span>
               </div>
-              <span class="sub-bar">
+              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+              <div
+                class="sub-bar"
+                role="slider"
+                tabindex="0"
+                aria-label="Schwellwert für {cls}"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow={Math.round(thr * 100)}
+                onpointerdown={(e) => startThresholdDrag(cls, e)}
+                onkeydown={(e) => onThresholdKey(cls, thr, e)}
+              >
                 <span class="sub-fill" style="width:{p * 100}%"></span>
                 <span class="threshold-marker" style="left:{thr * 100}%" title="Schwellwert {Math.round(thr * 100)}%"></span>
-              </span>
-              <div class="row3">
-                <input
-                  class="thr-slider"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={Math.round(thr * 100)}
-                  oninput={(e) => setClassThreshold(cls, (+(e.target as HTMLInputElement).value) / 100)}
-                  aria-label="Schwellwert für {cls}"
-                  title="Schwellwert {Math.round(thr * 100)}%"
-                />
-                <span class="thr-val">{Math.round(thr * 100)}%</span>
               </div>
             </li>
           {/each}
@@ -320,6 +370,16 @@
     {#if mode === 'test' && !$classifierModel}
       <div class="overlay">
         <div class="status warning">{t('training.testStatus', lang)}</div>
+      </div>
+    {/if}
+
+    {#if currentModelRoi && mode === 'test'}
+      <div class="roi-container readonly" style="aspect-ratio: {videoAspect};">
+        <div
+          class="roi-rect readonly"
+          style="left:{currentModelRoi.x * 100}%; top:{currentModelRoi.y * 100}%; width:{currentModelRoi.w * 100}%; height:{currentModelRoi.h * 100}%;"
+          title="Aktiver Modell-ROI"
+        ></div>
       </div>
     {/if}
   </div>
@@ -341,39 +401,49 @@
         </div>
       {/if}
 
-      <!-- ROI overlay -->
-      <div class="roi-container" bind:this={roiContainer}>
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <div
-          class="roi-rect"
-          role="region"
-          aria-label="Trainingsbereich"
-          style="left:{roi.x * 100}%; top:{roi.y * 100}%; width:{roi.w * 100}%; height:{roi.h * 100}%;"
-          onpointerdown={(e) => onPointerDown('move', e)}
-          onpointermove={onPointerMove}
-          onpointerup={onPointerUp}
-          onpointercancel={onPointerUp}
-        >
-          {#each ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as h (h)}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <span
-              class="handle {h}"
-              onpointerdown={(e) => onPointerDown(h as DragMode, e)}
-              onpointermove={onPointerMove}
-              onpointerup={onPointerUp}
-              onpointercancel={onPointerUp}
-            ></span>
-          {/each}
+      {#if $roiEditing}
+        <!-- ROI overlay (editable) -->
+        <div class="roi-container editing" style="aspect-ratio: {videoAspect};" bind:this={roiContainer}>
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div
+            class="roi-rect"
+            role="region"
+            aria-label="Trainingsbereich"
+            style="left:{roi.x * 100}%; top:{roi.y * 100}%; width:{roi.w * 100}%; height:{roi.h * 100}%;"
+            onpointerdown={(e) => onPointerDown('move', e)}
+            onpointermove={onPointerMove}
+            onpointerup={onPointerUp}
+            onpointercancel={onPointerUp}
+          >
+            {#each ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as h (h)}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <span
+                class="handle {h}"
+                onpointerdown={(e) => onPointerDown(h as DragMode, e)}
+                onpointermove={onPointerMove}
+                onpointerup={onPointerUp}
+                onpointercancel={onPointerUp}
+              ></span>
+            {/each}
+          </div>
         </div>
-      </div>
 
-      <div class="roi-actions">
-        <button type="button" class="roi-btn" onclick={resetRoi}>Zurücksetzen</button>
-        <button type="button" class="roi-btn" onclick={fullRoi}>Ganzes Bild</button>
-        <span class="roi-readout">
-          {Math.round(roi.w * 100)}×{Math.round(roi.h * 100)}% @ ({Math.round(roi.x * 100)},{Math.round(roi.y * 100)})
-        </span>
-      </div>
+        <div class="roi-actions">
+          <button type="button" class="roi-btn" onclick={resetRoi}>Zurücksetzen</button>
+          <button type="button" class="roi-btn" onclick={fullRoi}>Ganzes Bild</button>
+          <span class="roi-readout">
+            {Math.round(roi.w * 100)}×{Math.round(roi.h * 100)}% @ ({Math.round(roi.x * 100)},{Math.round(roi.y * 100)})
+          </span>
+        </div>
+      {:else if $draftRoi}
+        <!-- Read-only preview of the currently chosen ROI -->
+        <div class="roi-container readonly" style="aspect-ratio: {videoAspect};">
+          <div
+            class="roi-rect readonly"
+            style="left:{$draftRoi.x * 100}%; top:{$draftRoi.y * 100}%; width:{$draftRoi.w * 100}%; height:{$draftRoi.h * 100}%;"
+          ></div>
+        </div>
+      {/if}
     </div>
 
     <div class="prep-classes">
@@ -473,8 +543,13 @@
   .roi-container {
     position: absolute;
     inset: 0;
+    margin: auto;
+    max-width: 100%;
+    max-height: 100%;
+    aspect-ratio: 4 / 3;
     z-index: 4;
     pointer-events: none;
+    &.readonly { pointer-events: none; }
   }
   .roi-rect {
     position: absolute;
@@ -484,6 +559,14 @@
     pointer-events: auto;
     touch-action: none;
     box-sizing: border-box;
+    &.readonly {
+      cursor: default;
+      pointer-events: none;
+      box-shadow: none;
+      border-style: dashed;
+      border-color: rgb(var(--md-tertiary));
+      background: rgba(var(--md-tertiary), 0.08);
+    }
     .handle {
       position: absolute;
       width: 12px;
@@ -747,50 +830,45 @@
         }
         .sub-bar {
           position: relative;
-          height: 6px;
+          height: 12px;
           background: rgb(var(--md-surface-variant));
-          border-radius: 3px;
+          border-radius: 6px;
           overflow: visible;
+          cursor: pointer;
+          touch-action: none;
+          user-select: none;
+          outline: none;
+          &:focus-visible {
+            box-shadow: 0 0 0 2px rgb(var(--md-primary));
+          }
         }
         .sub-fill {
           display: block;
           height: 100%;
           background: rgb(var(--md-outline));
-          border-radius: 3px;
-          transition: width 0.2s;
+          border-radius: 6px;
+          transition: width 0.15s;
+          pointer-events: none;
         }
         .threshold-marker {
           position: absolute;
-          top: -2px;
-          bottom: -2px;
-          width: 2px;
+          top: -3px;
+          bottom: -3px;
+          width: 4px;
           background: rgb(var(--md-on-surface));
-          border-radius: 1px;
+          border-radius: 2px;
           pointer-events: none;
           transform: translateX(-50%);
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
         }
         .sub-pct {
           font-variant-numeric: tabular-nums;
           font-size: 11px;
           color: rgb(var(--md-on-surface-variant));
-        }
-        .row3 {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .thr-slider {
-          flex: 1;
-          accent-color: rgb(var(--md-primary));
-          margin: 0;
-          height: 12px;
-        }
-        .thr-val {
-          font-variant-numeric: tabular-nums;
-          font-size: 10px;
-          color: rgb(var(--md-on-surface-variant));
-          width: 32px;
-          text-align: right;
+          display: inline-flex;
+          gap: 4px;
+          .pct-val { color: rgb(var(--md-on-surface)); font-weight: 600; }
+          .thr-val { opacity: 0.7; }
         }
         &.top {
           .name { color: rgb(var(--md-primary)); font-weight: 700; }

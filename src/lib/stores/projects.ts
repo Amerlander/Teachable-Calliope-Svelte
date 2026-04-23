@@ -41,6 +41,8 @@ export const DEFAULT_TRAINING_OPTIONS: TrainingOptions = {
 
 export type ProjectMode = 'image' | 'pose';
 
+export type Roi = { x: number; y: number; w: number; h: number };
+
 export type TrainedModel = {
   id: string;
   trainedAt: number;
@@ -51,6 +53,7 @@ export type TrainedModel = {
   options: TrainingOptions;
   classesSnapshot: string[];
   exampleCounts: Record<string, number>;
+  roi?: Roi;
 };
 
 export type Project = {
@@ -125,6 +128,14 @@ function hydrate(p: Project): Project {
 export function setClassThreshold(cls: string, threshold: number): void {
   updateProject((p) => {
     p.classThresholds = { ...(p.classThresholds || {}), [cls]: threshold };
+  });
+}
+
+export function setTrainedModelRoi(id: string, roi: Roi | null): void {
+  updateProject((p) => {
+    p.modelHistory = p.modelHistory.map((m) =>
+      m.id === id ? { ...m, roi: roi ?? undefined } : m
+    );
   });
 }
 

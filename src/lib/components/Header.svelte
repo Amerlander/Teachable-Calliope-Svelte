@@ -15,11 +15,7 @@
   let settingsOpen = $state(false);
 
   const active = $derived(
-    $page.url.pathname.startsWith('/apply')
-      ? 'apply'
-      : $page.url.pathname.startsWith('/tryout')
-        ? 'tryout'
-        : 'training'
+    $page.url.pathname.startsWith('/tryout') ? 'tryout' : 'training'
   );
 
   const lang = $derived($currentLang);
@@ -64,9 +60,6 @@
         </button>
         <button class="header-btn" class:active={active === 'tryout'} onclick={() => navTo('tryout')}>
           {t('header.tryout', lang)}
-        </button>
-        <button class="header-btn" class:active={active === 'apply'} onclick={() => navTo('apply')}>
-          {t('header.apply', lang)}
         </button>
         <!-- <button class="header-btn ghost-tab" onclick={() => navTo('')} title="Projektübersicht">
           ⌂

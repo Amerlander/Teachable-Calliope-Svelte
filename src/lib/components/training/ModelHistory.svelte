@@ -122,6 +122,11 @@
             <span>{run.classesSnapshot.length} Klassen</span>
             <span>·</span>
             <span>{Object.values(run.exampleCounts).reduce((a, b) => a + b, 0)} Bilder</span>
+            {#if run.roi}
+              <span class="roi-badge" title="Trainiert mit ROI {Math.round(run.roi.w * 100)}×{Math.round(run.roi.h * 100)}% @ ({Math.round(run.roi.x * 100)}, {Math.round(run.roi.y * 100)})">
+                ROI {Math.round(run.roi.w * 100)}×{Math.round(run.roi.h * 100)}%
+              </span>
+            {/if}
           </div>
         </div>
         <Dropdown placement="bottom-end">
@@ -260,6 +265,17 @@
     .acc {
       color: rgb(var(--md-primary));
       font-weight: 600;
+    }
+    .roi-badge {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      padding: 1px 6px;
+      border-radius: 99px;
+      background: rgb(var(--md-tertiary-container, var(--md-surface-variant)));
+      color: rgb(var(--md-on-tertiary-container, var(--md-on-surface)));
+      font-variant-numeric: tabular-nums;
     }
   }
   .menu {
