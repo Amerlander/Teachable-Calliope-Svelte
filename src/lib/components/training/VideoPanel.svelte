@@ -1,16 +1,36 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { classes, classifierModel, examples, setVideoRef } from '$lib/stores';
+  import {
+    classes,
+    classifierModel,
+    examples,
+    setVideoRef,
+    activeClass,
+    setActiveClass,
+    addClass,
+    pushExample,
+    clearClass,
+    removeClass,
+    renameClass,
+    videoRefs
+  } from '$lib/stores';
   import {
     initSharedCamera,
     predictFromVideo,
     estimatePose,
     drawPoseSkeleton,
     setLastPoseCanvas,
-    loadPoseDetector
+    loadPoseDetector,
+    captureFrameFromVideo,
+    capturePoseFrameFromVideo,
+    downloadClassImages
   } from '$lib/machine';
   import { selectedCameraId } from '$lib/stores/camera';
+  import { showNotification } from '$lib/stores/notifications';
+  import Button from '$lib/components/ui/Button.svelte';
+  import Dropdown from '$lib/components/ui/Dropdown.svelte';
+  import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
   import {
     currentLang,
     t,
@@ -307,6 +327,81 @@
     el.addEventListener('pointercancel', onUp);
   }
 
+  // ---------- Interactive class list (replaces sidebar Klassen tab) ----------
+  let newClassName = $state('');
+  let editingClass = $state<string | null>(null);
+  let editDraft = $state('');
+  let capturingClass = $state<string | null>(null);
+  let captureInterval: ReturnType<typeof setInterval> | null = null;
+
+  function createClass() {
+    const name = newClassName.trim();
+    if (!name) return;
+    addClass(name);
+    newClassName = '';
+  }
+
+  function onNewClassKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') createClass();
+  }
+
+  function startEditClass(cls: string) {
+    editingClass = cls;
+    editDraft = cls;
+  }
+
+  function commitEditClass() {
+    if (!editingClass) return;
+    const next = editDraft.trim();
+    const prev = editingClass;
+    editingClass = null;
+    if (next && next !== prev) renameClass(prev, next);
+  }
+
+  function onEditKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+    else if (e.key === 'Escape') {
+      editingClass = null;
+      editDraft = '';
+    }
+  }
+
+  function activeCaptureVideo(): HTMLVideoElement | null {
+    const vids = get(videoRefs);
+    return (mode === 'prep' ? webcamPrepEl : vids.webcam) ?? null;
+  }
+
+  function startRecord(cls: string) {
+    if (capturingClass) return;
+    setActiveClass(cls);
+    capturingClass = cls;
+    const poseMode = isPose;
+    const doCapture = async () => {
+      const v = activeCaptureVideo();
+      if (!v) return;
+      const data = poseMode ? await capturePoseFrameFromVideo(v) : captureFrameFromVideo(v);
+      if (data) pushExample(cls, data);
+    };
+    void doCapture();
+    captureInterval = setInterval(() => { void doCapture(); }, 120);
+  }
+
+  function stopRecord() {
+    capturingClass = null;
+    if (captureInterval) {
+      clearInterval(captureInterval);
+      captureInterval = null;
+    }
+  }
+
+  function confirmClear(cls: string) {
+    if (confirm(`"${cls}" leeren?`)) clearClass(cls);
+  }
+
+  function confirmDelete(cls: string) {
+    if (confirm(`"${cls}" löschen?`)) removeClass(cls);
+  }
+
   function onThresholdKey(cls: string, thr: number, e: KeyboardEvent) {
     let next = thr;
     if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = clamp(thr - 0.05);
@@ -520,28 +615,89 @@
         <span>Klassen &amp; Bilder</span>
         <span class="hint">werden mit der gewählten ROI trainiert</span>
       </div>
-      {#if $classes.length === 0}
-        <div class="prep-empty">Noch keine Klassen. Wechsle in den Klassen-Tab, um welche hinzuzufügen.</div>
-      {:else}
-        {#each $classes as cls (cls)}
-          {@const imgs = $examples[cls] ?? []}
-          <div class="prep-class">
-            <div class="prep-class-head">
-              <span class="prep-class-name">{cls}</span>
-              <span class="prep-class-count">{imgs.length} Bilder</span>
-            </div>
-            {#if imgs.length}
-              <div class="prep-thumbs">
+      {#each $classes as cls (cls)}
+        {@const imgs = $examples[cls] ?? []}
+        <div class="prep-class">
+          <div class="prep-class-head">
+            {#if editingClass === cls}
+              <!-- svelte-ignore a11y_autofocus -->
+              <input
+                class="class-name-edit"
+                bind:value={editDraft}
+                onkeydown={onEditKey}
+                onblur={commitEditClass}
+                autofocus
+              />
+            {:else}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <span
+                class="prep-class-name"
+                role="button"
+                tabindex="0"
+                onclick={() => startEditClass(cls)}
+                onkeydown={(e) => e.key === 'Enter' && startEditClass(cls)}
+                title="Umbenennen"
+              >{cls}</span>
+            {/if}
+            <span class="prep-class-count">{imgs.length}</span>
+            <Dropdown placement="bottom-end">
+              {#snippet trigger()}
+                <Button variant="ghost" size="small" aria-label="Klassen-Aktionen" title="Mehr Aktionen">⋯</Button>
+              {/snippet}
+              {#snippet children()}
+                <DropdownItem onclick={() => startEditClass(cls)}>Umbenennen</DropdownItem>
+                <DropdownItem onclick={() => downloadClassImages(cls, imgs)}>Dateien herunterladen</DropdownItem>
+                <DropdownItem onclick={() => confirmClear(cls)}>Klasse leeren</DropdownItem>
+                <DropdownItem onclick={() => confirmDelete(cls)}>Klasse löschen</DropdownItem>
+              {/snippet}
+            </Dropdown>
+          </div>
+
+          <div class="prep-thumbs-row">
+            <div class="prep-thumbs-scroll">
+              {#if imgs.length}
                 {#each imgs as ex, i (cls + '_' + i)}
                   <img src={ex.data} alt="" />
                 {/each}
-              </div>
-            {:else}
-              <div class="prep-class-empty">Keine Bilder</div>
-            {/if}
+              {:else}
+                <div class="prep-class-empty">Keine Bilder</div>
+              {/if}
+            </div>
+            <button
+              type="button"
+              class="record-btn"
+              class:recording={capturingClass === cls}
+              aria-label="Bild aufnehmen"
+              title="Halten zum Aufnehmen"
+              onpointerdown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); startRecord(cls); }}
+              onpointerup={stopRecord}
+              onpointercancel={stopRecord}
+              onpointerleave={stopRecord}
+            >
+              <span class="record-dot"></span>
+            </button>
           </div>
-        {/each}
-      {/if}
+        </div>
+      {/each}
+
+      <div class="new-class-row">
+        <input
+          class="new-class-input"
+          type="text"
+          placeholder="Neue Klasse hinzufügen"
+          bind:value={newClassName}
+          onkeydown={onNewClassKey}
+        />
+        <Button
+          class="add-btn"
+          size="small"
+          onclick={createClass}
+          disabled={!newClassName.trim()}
+          aria-label="Klasse hinzufügen"
+        >
+          +
+        </Button>
+      </div>
     </div>
   </div>
 </div>
@@ -727,28 +883,143 @@
   }
   .prep-class-head {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
     font-size: 12px;
     .prep-class-name {
+      flex: 1;
+      min-width: 0;
       font-weight: 600;
       color: rgb(var(--md-on-surface));
+      cursor: text;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 2px 4px;
+      border-radius: var(--md-radius-sm);
+      &:hover { background: rgba(var(--md-on-surface), 0.06); }
     }
     .prep-class-count {
+      font-size: 11px;
       color: rgb(var(--md-on-surface-variant));
+      background: rgba(var(--md-surface-variant), 0.6);
+      padding: 1px 6px;
+      border-radius: 99px;
     }
   }
-  .prep-thumbs {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  .class-name-edit {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px;
+    border: 1.5px solid rgb(var(--md-primary));
+    border-radius: var(--md-radius-sm);
+    background: rgb(var(--md-surface));
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgb(var(--md-on-surface));
+  }
+  .prep-thumbs-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .prep-thumbs-scroll {
+    flex: 1;
+    min-width: 0;
+    display: flex;
     gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    padding-bottom: 2px;
     img {
-      width: 100%;
-      aspect-ratio: 1;
+      flex: 0 0 auto;
+      width: 56px;
+      height: 56px;
       object-fit: cover;
       border-radius: 4px;
       background: #000;
     }
+  }
+  .record-btn {
+    flex: 0 0 auto;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid rgb(var(--md-outline));
+    background: rgba(var(--md-surface), 0.9);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    touch-action: none;
+    transition: border-color 0.15s, transform 0.1s, background 0.15s;
+    .record-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #e53935;
+      transition: all 0.15s;
+    }
+    &:hover {
+      border-color: rgb(var(--md-primary));
+      background: rgba(var(--md-primary-container), 0.3);
+    }
+    &.recording {
+      border-color: #e53935;
+      background: rgba(229, 57, 53, 0.15);
+      .record-dot {
+        border-radius: 4px;
+        width: 14px;
+        height: 14px;
+        animation: recordPulse 0.9s ease-in-out infinite;
+      }
+    }
+  }
+  @keyframes recordPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(0.85); opacity: 0.7; }
+  }
+  .new-class-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 4px;
+    border: 1px dashed rgba(var(--md-outline), 0.7);
+    border-radius: var(--md-radius-md);
+    margin-top: 4px;
+    &:focus-within {
+      border-color: rgb(var(--md-primary));
+      background: rgba(var(--md-primary-container), 0.3);
+    }
+  }
+  .new-class-input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    padding: 6px 8px;
+    font: inherit;
+    color: rgb(var(--md-on-surface));
+    &:focus {
+      outline: none;
+      border: none;
+    }
+  }
+  :global(.add-btn) {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0;
+    font-size: 18px;
+    font-weight: 500;
+    line-height: 1;
+    flex-shrink: 0;
+    box-shadow: none;
   }
   .loading-overlay {
     position: absolute;
