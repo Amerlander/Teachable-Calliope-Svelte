@@ -13,8 +13,14 @@ import {
   modelMetadata,
   trainingOptions
 } from './stores';
-import { recordTrainedModel, currentProject, type Roi, type FeatureExtractor, type Optimizer } from './stores/projects';
-import { showNotification } from './stores/notifications';
+import {
+  recordTrainedModel,
+  currentProject,
+  type Roi,
+  type FeatureExtractor,
+  type Optimizer,
+  type AugmentationSettings
+} from './stores/projects';
 import type { ModelMetadata } from './stores';
 
 // We will dynamically import TensorFlow and other libs on the client side
@@ -86,50 +92,85 @@ export async function loadMobilenetModel(version: 1 | 2 = 1) {
   return model;
 }
 
-/** Map a FeatureExtractor choice to an actually-supported MobileNet version.
- *  Unsupported extractors fall back to v1 with a warning. */
-async function ensureExtractor(extractor: FeatureExtractor | undefined) {
-  const desired: 1 | 2 =
-    extractor === 'mobilenet-v2' ? 2 :
-    extractor === 'mobilenet-v1' ? 1 :
-    (extractor ? 1 : loadedMobilenetVersion);
-  if (extractor && !['mobilenet-v1', 'mobilenet-v2'].includes(extractor)) {
-    try {
-      showNotification(
-        `Feature-Extraktor "${extractor}" ist noch nicht verfügbar – verwende MobileNet v1.`,
-        { type: 'warning' }
-      );
-    } catch { /* ignore */ }
-  }
+async function ensureExtractor(extractor: FeatureExtractor) {
+  const desired: 1 | 2 = extractor === 'mobilenet-v2' ? 2 : 1;
   if (desired !== loadedMobilenetVersion || !get(mobilenetModel)) {
     await loadMobilenetModel(desired);
   }
 }
 
-/** Draw a (video|image|canvas) source into `canvas`, cropped to ROI (normalized 0..1). */
+type DrawSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
+
+function sourceSize(source: DrawSource): { w: number; h: number } {
+  const w = (source as HTMLVideoElement).videoWidth
+    || (source as HTMLImageElement).naturalWidth
+    || (source as HTMLCanvasElement).width;
+  const h = (source as HTMLVideoElement).videoHeight
+    || (source as HTMLImageElement).naturalHeight
+    || (source as HTMLCanvasElement).height;
+  return { w: w || 224, h: h || 224 };
+}
+
+/** Draw a source into `canvas`, cropped to ROI (normalized 0..1) and scaled to `size`. */
 function drawWithRoi(
-  source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement,
+  source: DrawSource,
   roi: Roi | null | undefined,
   canvas: HTMLCanvasElement,
   size = 224
 ) {
-  const sw = (source as HTMLVideoElement).videoWidth
-    || (source as HTMLImageElement).naturalWidth
-    || (source as HTMLCanvasElement).width
-    || size;
-  const sh = (source as HTMLVideoElement).videoHeight
-    || (source as HTMLImageElement).naturalHeight
-    || (source as HTMLCanvasElement).height
-    || size;
+  const { w: sw, h: sh } = sourceSize(source);
   const r = roi && roi.w > 0 && roi.h > 0 ? roi : null;
-  const sx = r ? r.x * sw : 0;
-  const sy = r ? r.y * sh : 0;
-  const srcW = r ? r.w * sw : sw;
-  const srcH = r ? r.h * sh : sh;
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(source, sx, sy, srcW, srcH, 0, 0, size, size);
+  ctx.drawImage(
+    source,
+    r ? r.x * sw : 0,
+    r ? r.y * sh : 0,
+    r ? r.w * sw : sw,
+    r ? r.h * sh : sh,
+    0, 0, size, size
+  );
+}
+
+/** Draw `source` with ROI + random augmentation (flip/rotation/brightness/zoom) into `canvas`. */
+function drawAugmented(
+  source: DrawSource,
+  roi: Roi | null | undefined,
+  aug: AugmentationSettings,
+  canvas: HTMLCanvasElement,
+  size = 224
+) {
+  const { w: sw, h: sh } = sourceSize(source);
+  const base = roi && roi.w > 0 && roi.h > 0 ? roi : { x: 0, y: 0, w: 1, h: 1 };
+
+  // Random zoom: shrink ROI by up to zoomJitter and shift inside the base.
+  const zoom = 1 - Math.random() * Math.max(0, Math.min(0.5, aug.zoomJitter));
+  const zw = base.w * zoom;
+  const zh = base.h * zoom;
+  const offX = Math.random() * (base.w - zw);
+  const offY = Math.random() * (base.h - zh);
+
+  const sx = (base.x + offX) * sw;
+  const sy = (base.y + offY) * sh;
+  const srcW = zw * sw;
+  const srcH = zh * sh;
+
+  const flip = aug.horizontalFlip && Math.random() < 0.5;
+  const deg = (Math.random() * 2 - 1) * Math.max(0, aug.rotationDegrees);
+  const bright = 1 + (Math.random() * 2 - 1) * Math.max(0, Math.min(1, aug.brightnessJitter));
+
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.save();
+  ctx.filter = `brightness(${bright.toFixed(3)})`;
+  ctx.translate(size / 2, size / 2);
+  ctx.rotate((deg * Math.PI) / 180);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(source, sx, sy, srcW, srcH, -size / 2, -size / 2, size, size);
+  ctx.restore();
+  ctx.filter = 'none';
 }
 
 export async function initApp() {
@@ -150,7 +191,10 @@ export function captureFrameFromVideo(video: HTMLVideoElement) {
   return canvas.toDataURL('image/png');
 }
 
-export async function prepareDatasetForTraining(roi?: Roi | null) {
+export async function prepareDatasetForTraining(
+  roi?: Roi | null,
+  aug?: AugmentationSettings | null
+) {
   const tfModule = await import('@tensorflow/tfjs');
   const mobilenet = get(mobilenetModel);
   if (!mobilenet) throw new Error('Mobilenet not loaded');
@@ -161,20 +205,34 @@ export async function prepareDatasetForTraining(roi?: Roi | null) {
   const xs: any[] = [];
   const ys: any[] = [];
   const canvas = document.createElement('canvas');
+  const augMultiplier = aug ? Math.max(0, Math.floor(aug.multiplier)) : 0;
 
-  for (let i = 0; i < classesList.length; i++) {
+  const embedCanvas = () => {
+    const input = tfModule.browser.fromPixels(canvas).toFloat().div(127.5).sub(1).expandDims(0);
+    const emb = mobilenet.infer(input, true);
+    xs.push(emb.squeeze());
+    ys.push(tfModule.oneHot([i], classesList.length).squeeze());
+    input.dispose();
+  };
+
+  let i = 0;
+  for (i = 0; i < classesList.length; i++) {
     const className = classesList[i];
     const classExamples = ex[className] || [];
     for (const example of classExamples) {
       const img = new Image();
       img.src = example.data;
       await new Promise<void>(r => (img.onload = () => r()));
+
+      // Always include the (ROI-cropped) original.
       drawWithRoi(img, roi ?? null, canvas, 224);
-      const input = tfModule.browser.fromPixels(canvas).toFloat().div(127.5).sub(1).expandDims(0);
-      const emb = mobilenet.infer(input, true);
-      xs.push(emb.squeeze());
-      ys.push(tfModule.oneHot([i], classesList.length).squeeze());
-      input.dispose();
+      embedCanvas();
+
+      // Augmented copies.
+      for (let k = 0; k < augMultiplier; k++) {
+        drawAugmented(img, roi ?? null, aug!, canvas, 224);
+        embedCanvas();
+      }
     }
   }
 
@@ -195,13 +253,14 @@ export type TrainOptions = {
   batchSize?: number;
   learningRate?: number;
   hiddenUnits?: number;
-  // advanced / new
   featureExtractor?: FeatureExtractor;
   optimizer?: Optimizer;
   dropout?: number;
   validationSplit?: number;
   earlyStopLoss?: number;
   roi?: Roi | null;
+  augmentation?: boolean;
+  augmentationSettings?: AugmentationSettings;
 };
 
 export async function trainModel(
@@ -221,7 +280,10 @@ export async function trainModel(
 
   const tfModule = await import('@tensorflow/tfjs');
   await ensureExtractor(featureExtractor);
-  const data = await prepareDatasetForTraining(opts.roi ?? null);
+  const aug = opts.augmentation && opts.augmentationSettings
+    ? opts.augmentationSettings
+    : null;
+  const data = await prepareDatasetForTraining(opts.roi ?? null, aug);
 
   const model = tfModule.sequential();
   const xsShape = (data.xs as any).shape as number[] | undefined;

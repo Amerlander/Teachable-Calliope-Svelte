@@ -23,14 +23,25 @@ export type ModelArtifacts = {
   weightData: ArrayBuffer;
 };
 
-export type FeatureExtractor =
-  | 'mobilenet-v1'
-  | 'mobilenet-v2'
-  | 'squeezenet'
-  | 'resnet50'
-  | 'inception-v3';
+export type FeatureExtractor = 'mobilenet-v1' | 'mobilenet-v2';
 
 export type Optimizer = 'adam' | 'sgd' | 'rmsprop';
+
+export type AugmentationSettings = {
+  horizontalFlip: boolean;
+  rotationDegrees: number;    // +/- deg
+  brightnessJitter: number;   // +/- fraction
+  zoomJitter: number;         // +/- fraction (random crop size)
+  multiplier: number;         // extra copies per original (0..6)
+};
+
+export const DEFAULT_AUGMENTATION: AugmentationSettings = {
+  horizontalFlip: true,
+  rotationDegrees: 10,
+  brightnessJitter: 0.15,
+  zoomJitter: 0.1,
+  multiplier: 2
+};
 
 export type TrainingOptions = {
   epochs: number;
@@ -38,12 +49,12 @@ export type TrainingOptions = {
   learningRate: number;
   hiddenUnits: number;
   augmentation: boolean;
-  // Advanced / not yet applied at training time but persisted for the next pipeline round.
-  featureExtractor?: FeatureExtractor;
-  optimizer?: Optimizer;
-  dropout?: number;           // 0..1
-  validationSplit?: number;   // 0..0.5
-  earlyStopLoss?: number;     // stop when training loss drops below this
+  augmentationSettings: AugmentationSettings;
+  featureExtractor: FeatureExtractor;
+  optimizer: Optimizer;
+  dropout: number;           // 0..0.9
+  validationSplit: number;   // 0..0.5
+  earlyStopLoss: number;     // 0 = off
 };
 
 export const DEFAULT_TRAINING_OPTIONS: TrainingOptions = {
@@ -51,11 +62,12 @@ export const DEFAULT_TRAINING_OPTIONS: TrainingOptions = {
   batchSize: 16,
   learningRate: 0.001,
   hiddenUnits: 64,
-  augmentation: false,
+  augmentation: true,
+  augmentationSettings: { ...DEFAULT_AUGMENTATION },
   featureExtractor: 'mobilenet-v1',
   optimizer: 'adam',
-  dropout: 0,
-  validationSplit: 0,
+  dropout: 0.2,
+  validationSplit: 0.15,
   earlyStopLoss: 0
 };
 

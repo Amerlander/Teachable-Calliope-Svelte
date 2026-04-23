@@ -142,6 +142,16 @@
   function updateOpt<K extends keyof TrainingOptions>(key: K, value: TrainingOptions[K]) {
     setTrainingOptions({ [key]: value } as Partial<TrainingOptions>);
   }
+
+  let augSettingsOpen = $state(false);
+
+  function updateAug<K extends keyof TrainingOptions['augmentationSettings']>(
+    key: K,
+    value: TrainingOptions['augmentationSettings'][K]
+  ) {
+    const curr = get(trainingOptions).augmentationSettings;
+    setTrainingOptions({ augmentationSettings: { ...curr, [key]: value } });
+  }
 </script>
 
 <div class="model-tab">
@@ -333,28 +343,20 @@
 
       <details class="advanced">
         <summary>Erweiterte Optionen</summary>
-        <div class="adv-note">
-          Hinweis: einige dieser Parameter werden in der aktuellen Trainings-Pipeline
-          noch nicht angewendet. Sie werden mit dem Projekt gespeichert und für die
-          kommende, erweiterte Pipeline vorbereitet.
-        </div>
         <div class="opt-grid">
           <label class="opt">
             <span class="opt-label">
               Feature-Extraktor
               <InfoTooltip
-                text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. MobileNet v1 ist schnell und klein und läuft auch im Browser gut. Andere Extraktoren sind vorbereitet, aber noch nicht aktiv."
+                text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. MobileNet v1 ist klein und schnell, v2 etwas genauer bei ähnlicher Größe."
               />
             </span>
             <select
-              value={$trainingOptions.featureExtractor ?? 'mobilenet-v1'}
+              value={$trainingOptions.featureExtractor}
               onchange={(e) => updateOpt('featureExtractor', (e.target as HTMLSelectElement).value as any)}
             >
-              <option value="mobilenet-v1">MobileNet v1 (aktiv)</option>
+              <option value="mobilenet-v1">MobileNet v1</option>
               <option value="mobilenet-v2">MobileNet v2</option>
-              <option value="squeezenet">SqueezeNet</option>
-              <option value="resnet50">ResNet-50</option>
-              <option value="inception-v3">Inception v3</option>
             </select>
           </label>
 
@@ -362,11 +364,11 @@
             <span class="opt-label">
               Optimierer
               <InfoTooltip
-                text="Algorithmus, der die Gewichte des Modells anpasst. Adam funktioniert für die meisten Fälle. SGD ist robuster für große Datensätze."
+                text="Algorithmus, der die Gewichte des Modells anpasst. Adam funktioniert für die meisten Fälle. SGD ist robuster für große Datensätze, RMSProp für rauschige."
               />
             </span>
             <select
-              value={$trainingOptions.optimizer ?? 'adam'}
+              value={$trainingOptions.optimizer}
               onchange={(e) => updateOpt('optimizer', (e.target as HTMLSelectElement).value as any)}
             >
               <option value="adam">Adam</option>
@@ -387,7 +389,7 @@
               min="0"
               max="0.9"
               step="0.05"
-              value={$trainingOptions.dropout ?? 0}
+              value={$trainingOptions.dropout}
               onchange={(e) => updateOpt('dropout', +((e.target as HTMLInputElement).value))}
             />
           </label>
@@ -404,7 +406,7 @@
               min="0"
               max="0.5"
               step="0.05"
-              value={$trainingOptions.validationSplit ?? 0}
+              value={$trainingOptions.validationSplit}
               onchange={(e) => updateOpt('validationSplit', +((e.target as HTMLInputElement).value))}
             />
           </label>
@@ -413,7 +415,7 @@
             <span class="opt-label">
               Stop-Loss
               <InfoTooltip
-                text="Frühzeitiger Abbruch: Training stoppt, sobald der Loss unter diesen Wert fällt. 0 = kein frühzeitiger Abbruch."
+                text="Frühzeitiger Abbruch: Training stoppt, sobald der Trainings-Loss unter diesen Wert fällt. 0 = kein frühzeitiger Abbruch."
               />
             </span>
             <input
@@ -421,27 +423,93 @@
               min="0"
               max="1"
               step="0.005"
-              value={$trainingOptions.earlyStopLoss ?? 0}
+              value={$trainingOptions.earlyStopLoss}
               onchange={(e) => updateOpt('earlyStopLoss', +((e.target as HTMLInputElement).value))}
             />
           </label>
 
-          <label class="opt">
+          <div class="opt aug-opt">
             <span class="opt-label">
               Daten-Augmentierung
               <InfoTooltip
-                text="Erzeugt leicht veränderte Varianten deiner Bilder (Spiegeln, Rotation, Helligkeit), damit das Modell robuster wird."
+                text="Erzeugt zufällig gespiegelte, gedrehte, heller/dunkler und leicht gezoomte Varianten deiner Bilder, damit das Modell robuster wird."
               />
             </span>
-            <select
-              value={$trainingOptions.augmentation ? 'on' : 'off'}
-              onchange={(e) => updateOpt('augmentation', (e.target as HTMLSelectElement).value === 'on')}
-            >
-              <option value="off">Aus</option>
-              <option value="on">An</option>
-            </select>
-          </label>
+            <div class="aug-row">
+              <select
+                value={$trainingOptions.augmentation ? 'on' : 'off'}
+                onchange={(e) => updateOpt('augmentation', (e.target as HTMLSelectElement).value === 'on')}
+              >
+                <option value="off">Aus</option>
+                <option value="on">An</option>
+              </select>
+              <button
+                type="button"
+                class="aug-settings-btn"
+                disabled={!$trainingOptions.augmentation}
+                onclick={() => (augSettingsOpen = !augSettingsOpen)}
+                aria-label="Augmentierung konfigurieren"
+                title="Augmentierung konfigurieren"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09c0 .66.39 1.25 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.26.61.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.39-1.51 1z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
+
+        {#if augSettingsOpen && $trainingOptions.augmentation}
+          {@const a = $trainingOptions.augmentationSettings}
+          <div class="aug-settings">
+            <div class="aug-settings-head">Augmentierungs-Details</div>
+            <div class="opt-grid">
+              <label class="opt">
+                <span class="opt-label">Horizontal spiegeln</span>
+                <select
+                  value={a.horizontalFlip ? 'on' : 'off'}
+                  onchange={(e) => updateAug('horizontalFlip', (e.target as HTMLSelectElement).value === 'on')}
+                >
+                  <option value="off">Aus</option>
+                  <option value="on">An</option>
+                </select>
+              </label>
+              <label class="opt">
+                <span class="opt-label">Rotation (±°)</span>
+                <input
+                  type="number" min="0" max="45" step="1"
+                  value={a.rotationDegrees}
+                  onchange={(e) => updateAug('rotationDegrees', +((e.target as HTMLInputElement).value))}
+                />
+              </label>
+              <label class="opt">
+                <span class="opt-label">Helligkeit (±)</span>
+                <input
+                  type="number" min="0" max="0.5" step="0.05"
+                  value={a.brightnessJitter}
+                  onchange={(e) => updateAug('brightnessJitter', +((e.target as HTMLInputElement).value))}
+                />
+              </label>
+              <label class="opt">
+                <span class="opt-label">Zoom-Jitter (±)</span>
+                <input
+                  type="number" min="0" max="0.5" step="0.05"
+                  value={a.zoomJitter}
+                  onchange={(e) => updateAug('zoomJitter', +((e.target as HTMLInputElement).value))}
+                />
+              </label>
+              <label class="opt">
+                <span class="opt-label">Extra-Kopien pro Bild</span>
+                <input
+                  type="number" min="0" max="6" step="1"
+                  value={a.multiplier}
+                  onchange={(e) => updateAug('multiplier', +((e.target as HTMLInputElement).value))}
+                />
+              </label>
+            </div>
+          </div>
+        {/if}
       </details>
 
       <div class="roi-section">
@@ -653,13 +721,6 @@
       }
     }
     &[open] summary::before { transform: rotate(90deg); }
-    .adv-note {
-      font-size: 11px;
-      color: rgb(var(--md-on-surface-variant));
-      font-style: italic;
-      margin: 6px 0 10px;
-      line-height: 1.4;
-    }
     select {
       padding: 6px 8px;
       border: 1px solid rgb(var(--md-outline));
@@ -668,6 +729,49 @@
       color: rgb(var(--md-on-surface));
       font: inherit;
       font-size: 12px;
+    }
+  }
+  .aug-opt {
+    .aug-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      select { flex: 1; }
+    }
+  }
+  .aug-settings-btn {
+    width: 30px;
+    height: 30px;
+    min-height: unset;
+    padding: 0;
+    border: 1px solid rgb(var(--md-outline));
+    border-radius: var(--md-radius-sm);
+    background: rgb(var(--md-surface));
+    color: rgb(var(--md-on-surface-variant));
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: none;
+    flex-shrink: 0;
+    &:hover:not(:disabled) {
+      background: rgba(var(--md-primary), 0.08);
+      border-color: rgb(var(--md-primary));
+      color: rgb(var(--md-primary));
+    }
+    &:disabled { opacity: 0.35; cursor: not-allowed; }
+  }
+  .aug-settings {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: var(--md-radius-sm);
+    background: rgba(var(--md-primary-container), 0.35);
+    border-left: 3px solid rgb(var(--md-primary));
+    .aug-settings-head {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgb(var(--md-on-surface));
+      margin-bottom: 8px;
     }
   }
   .live-chart {
