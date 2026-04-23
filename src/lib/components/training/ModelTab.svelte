@@ -10,7 +10,7 @@
   } from '$lib/stores';
   import type { TrainingOptions } from '$lib/stores';
   import { updateProject, currentProject, renameTrainedModel } from '$lib/stores/projects';
-  import { isTraining, trainStatus, modelTrained, modelTabView, draftRoi, roiEditing, trainPhase } from '$lib/stores/app';
+  import { isTraining, trainStatus, modelTrained, modelTabView, draftRoi, roiEditing, trainPhase, DEFAULT_ROI } from '$lib/stores/app';
   import {
     trainModel,
     saveModelToZip,
@@ -357,11 +357,11 @@
                 value={$trainingOptions.featureExtractor}
                 onchange={(e) => updateOpt('featureExtractor', (e.target as HTMLSelectElement).value as any)}
               >
-                <option value="mobilenet-v1">MobileNet v1 (α=1.0, ~16 MB)</option>
+                <option value="mobilenet-v1">MobileNet v1 (α=1.0, ~16 MB, Standard)</option>
                 <option value="mobilenet-v2">MobileNet v2 (α=1.0, ~14 MB)</option>
                 <option value="mobilenet-v2-lite">MobileNet v2 Lite (α=0.5, ~5 MB)</option>
-                <option value="mobilenet-v3-small">MobileNet v3 Small (~6 MB, lädt bei erster Nutzung)</option>
-                <option value="efficientnet-lite0">EfficientNet-Lite0 (~18 MB, lädt bei erster Nutzung)</option>
+                <option value="mobilenet-v3-small">MobileNet v3 Small (~6 MB)</option>
+                <option value="efficientnet-lite0">EfficientNet-Lite0 (~18 MB)</option>
               </select>
             </label>
           {/if}
@@ -468,6 +468,53 @@
           {/if}
         </div>
 
+        {#if !isPose}
+          <div class="roi-section">
+            <div class="roi-head">
+              <span class="opt-label">
+                Bildbereich (ROI)
+                <InfoTooltip
+                  text="Begrenzt den Trainings- und Erkennungsbereich auf einen Ausschnitt des Kamerabildes. Wird mit dem trainierten Modell gespeichert."
+                />
+              </span>
+              {#if $draftRoi}
+                <Button
+                  variant={$roiEditing ? 'active' : 'ghost'}
+                  size="small"
+                  onclick={() => roiEditing.update((v) => !v)}
+                >
+                  {$roiEditing ? 'Fertig' : 'ROI ändern'}
+                </Button>
+              {:else}
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onclick={() => { draftRoi.set({ ...DEFAULT_ROI }); roiEditing.set(true); }}
+                >
+                  ROI hinzufügen
+                </Button>
+              {/if}
+            </div>
+            {#if $draftRoi}
+              <div class="roi-meta">
+                <span class="roi-chip">
+                  {Math.round($draftRoi.w * 100)}×{Math.round($draftRoi.h * 100)}%
+                  &nbsp;@&nbsp;({Math.round($draftRoi.x * 100)}, {Math.round($draftRoi.y * 100)})
+                </span>
+                <button
+                  type="button"
+                  class="roi-clear"
+                  onclick={() => { draftRoi.set(null); roiEditing.set(false); }}
+                >
+                  Entfernen
+                </button>
+              </div>
+            {:else}
+              <div class="hint">Kein ROI – gesamtes Kamerabild wird verwendet.</div>
+            {/if}
+          </div>
+        {/if}
+
         {#if !isPose && augSettingsOpen && $trainingOptions.augmentation}
           {@const a = $trainingOptions.augmentationSettings}
           <div class="aug-settings">
@@ -519,43 +566,6 @@
           </div>
         {/if}
       </details>
-
-      {#if !isPose}
-      <div class="roi-section">
-        <div class="roi-head">
-          <span class="opt-label">
-            Bildbereich (ROI)
-            <InfoTooltip
-              text="Begrenzt den Trainings- und Erkennungsbereich auf einen Ausschnitt des Kamerabildes. Wird mit dem trainierten Modell gespeichert."
-            />
-          </span>
-          <Button
-            variant={$roiEditing ? 'active' : 'ghost'}
-            size="small"
-            onclick={() => roiEditing.update((v) => !v)}
-          >
-            {$roiEditing ? 'Fertig' : $draftRoi ? 'ROI ändern' : 'ROI wählen'}
-          </Button>
-        </div>
-        {#if $draftRoi}
-          <div class="roi-meta">
-            <span class="roi-chip">
-              {Math.round($draftRoi.w * 100)}×{Math.round($draftRoi.h * 100)}%
-              &nbsp;@&nbsp;({Math.round($draftRoi.x * 100)}, {Math.round($draftRoi.y * 100)})
-            </span>
-            <button
-              type="button"
-              class="roi-clear"
-              onclick={() => { draftRoi.set(null); roiEditing.set(false); }}
-            >
-              Entfernen
-            </button>
-          </div>
-        {:else}
-          <div class="hint">Kein ROI – gesamtes Kamerabild wird verwendet.</div>
-        {/if}
-      </div>
-      {/if}
 
       <div class="train-row">
         <Button class="train-btn" fullWidth disabled={!enoughClasses} onclick={doTrain}>

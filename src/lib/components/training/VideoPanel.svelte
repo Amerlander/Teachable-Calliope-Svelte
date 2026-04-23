@@ -20,6 +20,7 @@
     modelTabView,
     draftRoi,
     roiEditing,
+    DEFAULT_ROI,
     type Roi
   } from '$lib/stores/app';
   import CameraSelect from '$lib/components/CameraSelect.svelte';
@@ -187,13 +188,9 @@
   }
 
   // ---------- ROI editor (prep mode) ----------
-  const DEFAULT_ROI: Roi = { x: 0.15, y: 0.15, w: 0.7, h: 0.7 };
-  let roi = $state<Roi>({ ...($draftRoi ?? DEFAULT_ROI) });
+  // draftRoi is the source of truth: null = no ROI (full image).
+  // "Add ROI" in ModelTab creates a default; drag handlers mutate via draftRoi.set.
   let roiContainer: HTMLDivElement | null = $state(null);
-
-  $effect(() => {
-    draftRoi.set(roi);
-  });
 
   type DragMode = 'move' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
   let drag: null | {
@@ -218,9 +215,11 @@
   function onPointerDown(mode: DragMode, e: PointerEvent) {
     e.stopPropagation();
     if (!roiContainer) return;
+    const current = $draftRoi;
+    if (!current) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const p = normPointer(e);
-    drag = { mode, startX: p.x, startY: p.y, startRoi: { ...roi } };
+    drag = { mode, startX: p.x, startY: p.y, startRoi: { ...current } };
   }
 
   function onPointerMove(e: PointerEvent) {
@@ -267,7 +266,7 @@
         break;
       }
     }
-    roi = r;
+    draftRoi.set(r);
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -278,11 +277,11 @@
   }
 
   function resetRoi() {
-    roi = { ...DEFAULT_ROI };
+    draftRoi.set({ ...DEFAULT_ROI });
   }
 
   function fullRoi() {
-    roi = { x: 0, y: 0, w: 1, h: 1 };
+    draftRoi.set({ x: 0, y: 0, w: 1, h: 1 });
   }
 
   // ---------- Threshold drag (directly on the sub-bar) ----------
@@ -471,7 +470,7 @@
         </div>
       {/if}
 
-      {#if $roiEditing && !isPose}
+      {#if $roiEditing && $draftRoi && !isPose}
         <!-- ROI overlay (editable) -->
         <div class="roi-container editing" style="aspect-ratio: {videoAspect};" bind:this={roiContainer}>
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -479,7 +478,7 @@
             class="roi-rect"
             role="region"
             aria-label="Trainingsbereich"
-            style="left:{roi.x * 100}%; top:{roi.y * 100}%; width:{roi.w * 100}%; height:{roi.h * 100}%;"
+            style="left:{$draftRoi.x * 100}%; top:{$draftRoi.y * 100}%; width:{$draftRoi.w * 100}%; height:{$draftRoi.h * 100}%;"
             onpointerdown={(e) => onPointerDown('move', e)}
             onpointermove={onPointerMove}
             onpointerup={onPointerUp}
@@ -502,7 +501,7 @@
           <button type="button" class="roi-btn" onclick={resetRoi}>Zurücksetzen</button>
           <button type="button" class="roi-btn" onclick={fullRoi}>Ganzes Bild</button>
           <span class="roi-readout">
-            {Math.round(roi.w * 100)}×{Math.round(roi.h * 100)}% @ ({Math.round(roi.x * 100)},{Math.round(roi.y * 100)})
+            {Math.round($draftRoi.w * 100)}×{Math.round($draftRoi.h * 100)}% @ ({Math.round($draftRoi.x * 100)},{Math.round($draftRoi.y * 100)})
           </span>
         </div>
       {:else if $draftRoi && !isPose}

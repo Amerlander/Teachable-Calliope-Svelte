@@ -30,6 +30,7 @@ export const modelTabView = writable<ModelTabView>('new');
 // --- Draft ROI for the next training run (normalized to video frame, 0..1) ---
 export type Roi = { x: number; y: number; w: number; h: number };
 export const draftRoi = writable<Roi | null>(null);
+export const DEFAULT_ROI: Roi = { x: 0.15, y: 0.15, w: 0.7, h: 0.7 };
 
 // --- When true, the prep video shows an editable ROI overlay ---
 export const roiEditing = writable(false);
