@@ -2,7 +2,14 @@
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { classes, classifierModel, examples, setVideoRef } from '$lib/stores';
-  import { initSharedCamera, predictFromVideo } from '$lib/machine';
+  import {
+    initSharedCamera,
+    predictFromVideo,
+    estimatePose,
+    drawPoseSkeleton,
+    setLastPoseCanvas,
+    loadPoseDetector
+  } from '$lib/machine';
   import { selectedCameraId } from '$lib/stores/camera';
   import {
     currentLang,
@@ -19,6 +26,7 @@
   import { currentProject, setClassThreshold } from '$lib/stores/projects';
 
   const lang = $derived($currentLang);
+  const isPose = $derived($currentProject?.mode === 'pose');
 
   let webcamEl: HTMLVideoElement = $state()!;
   let webcamTestEl: HTMLVideoElement = $state()!;
@@ -26,7 +34,12 @@
   let webcamBgEl: HTMLVideoElement = $state()!;
   let webcamTestBgEl: HTMLVideoElement = $state()!;
   let webcamPrepBgEl: HTMLVideoElement = $state()!;
+  // Skeleton overlay canvases — one per view. Only used in pose mode.
+  let poseCanvasTrain: HTMLCanvasElement = $state()!;
+  let poseCanvasTest: HTMLCanvasElement = $state()!;
+  let poseCanvasPrep: HTMLCanvasElement = $state()!;
   let cameraReady = $state(false);
+  let poseRaf: number | null = null;
 
   const thresholds = $derived($currentProject?.classThresholds ?? {});
   const currentModelRoi = $derived.by(() => {
@@ -79,6 +92,54 @@
 
   onDestroy(() => {
     stopTest();
+    stopPoseLoop();
+  });
+
+  // ---------- Pose overlay loop (MoveNet) ----------
+  // In pose-mode projects, run MoveNet on the currently-visible video element and
+  // render the skeleton into the overlay canvas for the active view. The rendered
+  // canvas is registered with the ML layer so predictFromVideo uses skeleton pixels.
+  function activeVideoAndCanvas(): { video: HTMLVideoElement | null; canvas: HTMLCanvasElement | null } {
+    if (mode === 'train') return { video: webcamEl, canvas: poseCanvasTrain };
+    if (mode === 'test')  return { video: webcamTestEl, canvas: poseCanvasTest };
+    return { video: webcamPrepEl, canvas: poseCanvasPrep };
+  }
+
+  async function poseStep() {
+    if (!isPose) return;
+    const { video, canvas } = activeVideoAndCanvas();
+    if (!video || !canvas || !video.videoWidth) {
+      poseRaf = requestAnimationFrame(() => void poseStep());
+      return;
+    }
+    try {
+      const pose = await estimatePose(video);
+      drawPoseSkeleton(canvas, pose, video.videoWidth, video.videoHeight, { size: 224 });
+      setLastPoseCanvas(canvas);
+    } catch {
+      /* ignore — next tick will retry */
+    }
+    poseRaf = requestAnimationFrame(() => void poseStep());
+  }
+
+  function stopPoseLoop() {
+    if (poseRaf != null) {
+      cancelAnimationFrame(poseRaf);
+      poseRaf = null;
+    }
+    setLastPoseCanvas(null);
+  }
+
+  $effect(() => {
+    // Re-subscribe whenever pose mode, view mode, or camera readiness changes.
+    void $currentProject?.mode;
+    void mode;
+    void cameraReady;
+    stopPoseLoop();
+    if (isPose && cameraReady) {
+      void loadPoseDetector();
+      poseRaf = requestAnimationFrame(() => void poseStep());
+    }
   });
 
   // Auto-start/stop the test loop whenever mode or classifier availability changes.
@@ -281,13 +342,16 @@
   </div>
 
   <!-- Train view -->
-  <div class="video-wrap" class:hidden={mode !== 'train'}>
+  <div class="video-wrap" class:hidden={mode !== 'train'} class:pose-mode={isPose}>
     <video class="bg" bind:this={webcamBgEl} autoplay playsinline muted aria-hidden="true">
       <track kind="captions" />
     </video>
     <video bind:this={webcamEl} autoplay playsinline muted>
       <track kind="captions" />
     </video>
+    {#if isPose}
+      <canvas class="pose-overlay" bind:this={poseCanvasTrain} width="224" height="224"></canvas>
+    {/if}
 
     {#if !cameraReady}
       <div class="loading-overlay">
@@ -298,13 +362,16 @@
   </div>
 
   <!-- Test view -->
-  <div class="video-wrap" class:hidden={mode !== 'test'}>
+  <div class="video-wrap" class:hidden={mode !== 'test'} class:pose-mode={isPose}>
     <video class="bg" bind:this={webcamTestBgEl} autoplay playsinline muted aria-hidden="true">
       <track kind="captions" />
     </video>
     <video bind:this={webcamTestEl} autoplay playsinline muted>
       <track kind="captions" />
     </video>
+    {#if isPose}
+      <canvas class="pose-overlay" bind:this={poseCanvasTest} width="224" height="224"></canvas>
+    {/if}
 
     {#if !cameraReady}
       <div class="loading-overlay">
@@ -386,13 +453,16 @@
 
   <!-- Prep view: smaller ROI-editor video + scrollable class thumbs list -->
   <div class="prep-view" class:hidden={mode !== 'prep'}>
-    <div class="video-wrap prep-video">
+    <div class="video-wrap prep-video" class:pose-mode={isPose}>
       <video class="bg" bind:this={webcamPrepBgEl} autoplay playsinline muted aria-hidden="true">
         <track kind="captions" />
       </video>
       <video bind:this={webcamPrepEl} autoplay playsinline muted>
         <track kind="captions" />
       </video>
+      {#if isPose}
+        <canvas class="pose-overlay" bind:this={poseCanvasPrep} width="224" height="224"></canvas>
+      {/if}
 
       {#if !cameraReady}
         <div class="loading-overlay">
@@ -401,7 +471,7 @@
         </div>
       {/if}
 
-      {#if $roiEditing}
+      {#if $roiEditing && !isPose}
         <!-- ROI overlay (editable) -->
         <div class="roi-container editing" style="aspect-ratio: {videoAspect};" bind:this={roiContainer}>
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -435,7 +505,7 @@
             {Math.round(roi.w * 100)}×{Math.round(roi.h * 100)}% @ ({Math.round(roi.x * 100)},{Math.round(roi.y * 100)})
           </span>
         </div>
-      {:else if $draftRoi}
+      {:else if $draftRoi && !isPose}
         <!-- Read-only preview of the currently chosen ROI -->
         <div class="roi-container readonly" style="aspect-ratio: {videoAspect};">
           <div
@@ -725,6 +795,26 @@
       transform: scale(1.1) scaleX(-1);
       filter: blur(28px) brightness(0.55) saturate(1.2);
       z-index: 0;
+    }
+    // --- Pose mode: blur the raw camera heavily and show the skeleton canvas on top. ---
+    &.pose-mode video:not(.bg) {
+      filter: blur(18px) brightness(0.4) saturate(1.1);
+    }
+    .pose-overlay {
+      position: absolute;
+      inset: 0;
+      margin: auto;
+      max-width: 100%;
+      max-height: 100%;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      transform: scaleX(-1);
+      z-index: 2;
+      pointer-events: none;
+      // The canvas is painted with a black background by drawPoseSkeleton; use
+      // multiply so only the skeleton strokes remain visible over the blurred video.
+      mix-blend-mode: screen;
     }
   }
   .overlay {

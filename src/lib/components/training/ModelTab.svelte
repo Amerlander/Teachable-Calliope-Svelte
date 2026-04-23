@@ -33,6 +33,7 @@
 
   const enoughClasses = $derived($classes.length >= 3);
   const hasArtifacts = $derived(!!$classifierModel);
+  const isPose = $derived($currentProject?.mode === 'pose');
 
   modelTabView.set(get(classifierModel) ? 'model' : 'new');
   let newModelName = $state('');
@@ -344,21 +345,26 @@
       <details class="advanced">
         <summary>Erweiterte Optionen</summary>
         <div class="opt-grid">
-          <label class="opt">
-            <span class="opt-label">
-              Feature-Extraktor
-              <InfoTooltip
-                text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. MobileNet v1 ist klein und schnell, v2 etwas genauer bei ähnlicher Größe."
-              />
-            </span>
-            <select
-              value={$trainingOptions.featureExtractor}
-              onchange={(e) => updateOpt('featureExtractor', (e.target as HTMLSelectElement).value as any)}
-            >
-              <option value="mobilenet-v1">MobileNet v1</option>
-              <option value="mobilenet-v2">MobileNet v2</option>
-            </select>
-          </label>
+          {#if !isPose}
+            <label class="opt">
+              <span class="opt-label">
+                Feature-Extraktor
+                <InfoTooltip
+                  text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. MobileNet v1 ist klein und schnell, v2 etwas genauer bei ähnlicher Größe."
+                />
+              </span>
+              <select
+                value={$trainingOptions.featureExtractor}
+                onchange={(e) => updateOpt('featureExtractor', (e.target as HTMLSelectElement).value as any)}
+              >
+                <option value="mobilenet-v1">MobileNet v1 (α=1.0, ~16 MB)</option>
+                <option value="mobilenet-v2">MobileNet v2 (α=1.0, ~14 MB)</option>
+                <option value="mobilenet-v2-lite">MobileNet v2 Lite (α=0.5, ~5 MB)</option>
+                <option value="mobilenet-v3-small">MobileNet v3 Small (~6 MB, lädt bei erster Nutzung)</option>
+                <option value="efficientnet-lite0">EfficientNet-Lite0 (~18 MB, lädt bei erster Nutzung)</option>
+              </select>
+            </label>
+          {/if}
 
           <label class="opt">
             <span class="opt-label">
@@ -428,6 +434,7 @@
             />
           </label>
 
+          {#if !isPose}
           <div class="opt aug-opt">
             <span class="opt-label">
               Daten-Augmentierung
@@ -458,9 +465,10 @@
               </button>
             </div>
           </div>
+          {/if}
         </div>
 
-        {#if augSettingsOpen && $trainingOptions.augmentation}
+        {#if !isPose && augSettingsOpen && $trainingOptions.augmentation}
           {@const a = $trainingOptions.augmentationSettings}
           <div class="aug-settings">
             <div class="aug-settings-head">Augmentierungs-Details</div>
@@ -512,6 +520,7 @@
         {/if}
       </details>
 
+      {#if !isPose}
       <div class="roi-section">
         <div class="roi-head">
           <span class="opt-label">
@@ -546,6 +555,7 @@
           <div class="hint">Kein ROI – gesamtes Kamerabild wird verwendet.</div>
         {/if}
       </div>
+      {/if}
 
       <div class="train-row">
         <Button class="train-btn" fullWidth disabled={!enoughClasses} onclick={doTrain}>

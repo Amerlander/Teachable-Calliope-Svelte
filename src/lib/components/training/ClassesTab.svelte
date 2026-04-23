@@ -12,10 +12,11 @@
     removeClass,
     renameClass
   } from '$lib/stores';
-  import { updateProject } from '$lib/stores/projects';
+  import { updateProject, currentProject } from '$lib/stores/projects';
   import { showNotification } from '$lib/stores/notifications';
   import {
     captureFrameFromVideo,
+    capturePoseFrameFromVideo,
     processZipFile,
     downloadClassImages,
     downloadAllClassImages
@@ -63,14 +64,15 @@
       return;
     }
     isCapturing = true;
-    const doCapture = () => {
+    const isPose = get(currentProject)?.mode === 'pose';
+    const doCapture = async () => {
       const v = get(videoRefs).webcam;
       if (!v || !get(activeClass)) return;
-      const data = captureFrameFromVideo(v);
-      pushExample(get(activeClass)!, data);
+      const data = isPose ? await capturePoseFrameFromVideo(v) : captureFrameFromVideo(v);
+      if (data) pushExample(get(activeClass)!, data);
     };
-    doCapture();
-    captureInterval = setInterval(doCapture, 80);
+    void doCapture();
+    captureInterval = setInterval(() => { void doCapture(); }, 120);
   }
 
   function stopCapture() {

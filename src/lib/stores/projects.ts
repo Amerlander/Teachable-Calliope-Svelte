@@ -23,7 +23,12 @@ export type ModelArtifacts = {
   weightData: ArrayBuffer;
 };
 
-export type FeatureExtractor = 'mobilenet-v1' | 'mobilenet-v2';
+export type FeatureExtractor =
+  | 'mobilenet-v1'
+  | 'mobilenet-v2'
+  | 'mobilenet-v2-lite'
+  | 'mobilenet-v3-small'
+  | 'efficientnet-lite0';
 
 export type Optimizer = 'adam' | 'sgd' | 'rmsprop';
 

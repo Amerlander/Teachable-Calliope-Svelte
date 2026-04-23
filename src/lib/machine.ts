@@ -80,23 +80,131 @@ export async function listCameras(): Promise<MediaDeviceInfo[]> {
   }
 }
 
-let loadedMobilenetVersion: 1 | 2 = 1;
+// ---------- Feature extractor abstraction ----------
+// Some extractors come from @tensorflow-models/mobilenet (which has its own
+// .infer(x, embedding=true) path). Others are loaded as generic graph models
+// from TFHub and require their own preprocessing + input size.
+type ExtractorKind = 'mobilenet-pkg' | 'graph';
+export type ExtractorConfig = {
+  kind: ExtractorKind;
+  // Mobilenet-package params
+  version?: 1 | 2;
+  alpha?: 0.25 | 0.5 | 0.75 | 1.0;
+  // Graph-model params
+  url?: string;
+  inputSize?: number;
+  // Pixel preprocessing for graph extractors:
+  //  'tf' -> x/127.5 - 1 (signed, MobileNet/Inception style)
+  //  'imagenet' -> (x/255 - mean)/std  (Caffe/ResNet style; not used yet)
+  //  '01' -> x/255  (EfficientNet-Lite style)
+  preprocess?: 'tf' | '01' | 'imagenet';
+};
 
-export async function loadMobilenetModel(version: 1 | 2 = 1) {
+const EXTRACTOR_CONFIGS: Record<FeatureExtractor, ExtractorConfig> = {
+  'mobilenet-v1': { kind: 'mobilenet-pkg', version: 1, alpha: 1.0 },
+  'mobilenet-v2': { kind: 'mobilenet-pkg', version: 2, alpha: 1.0 },
+  'mobilenet-v2-lite': { kind: 'mobilenet-pkg', version: 2, alpha: 0.5 },
+  'mobilenet-v3-small': {
+    kind: 'graph',
+    url: 'https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1',
+    inputSize: 224,
+    preprocess: 'tf'
+  },
+  'efficientnet-lite0': {
+    kind: 'graph',
+    url: 'https://tfhub.dev/tensorflow/tfjs-model/efficientnet/lite0/feature-vector/2/default/1',
+    inputSize: 224,
+    preprocess: '01'
+  }
+};
+
+type GraphExtractor = {
+  model: any;
+  inputSize: number;
+  preprocess: NonNullable<ExtractorConfig['preprocess']>;
+};
+
+let activeExtractorKey: FeatureExtractor | null = null;
+let graphExtractor: GraphExtractor | null = null;
+
+export async function loadMobilenetModel(version: 1 | 2 = 1, alpha: 0.25 | 0.5 | 0.75 | 1.0 = 1.0) {
   if (typeof window === 'undefined') return null;
   await import('@tensorflow/tfjs');
   const mobilenet = await import('@tensorflow-models/mobilenet');
-  const model = await mobilenet.load({ version, alpha: 1.0 });
+  const model = await mobilenet.load({ version, alpha });
   mobilenetModel.set(model);
-  loadedMobilenetVersion = version;
+  graphExtractor = null;
   return model;
 }
 
+async function loadGraphExtractor(cfg: ExtractorConfig): Promise<GraphExtractor> {
+  const tf = await import('@tensorflow/tfjs');
+  const model = await tf.loadGraphModel(cfg.url!, { fromTFHub: true });
+  return {
+    model,
+    inputSize: cfg.inputSize ?? 224,
+    preprocess: cfg.preprocess ?? 'tf'
+  };
+}
+
 async function ensureExtractor(extractor: FeatureExtractor) {
-  const desired: 1 | 2 = extractor === 'mobilenet-v2' ? 2 : 1;
-  if (desired !== loadedMobilenetVersion || !get(mobilenetModel)) {
-    await loadMobilenetModel(desired);
+  if (activeExtractorKey === extractor) {
+    if (EXTRACTOR_CONFIGS[extractor].kind === 'mobilenet-pkg' && get(mobilenetModel)) return;
+    if (EXTRACTOR_CONFIGS[extractor].kind === 'graph' && graphExtractor) return;
   }
+  const cfg = EXTRACTOR_CONFIGS[extractor];
+  if (cfg.kind === 'mobilenet-pkg') {
+    graphExtractor = null;
+    await loadMobilenetModel(cfg.version!, cfg.alpha ?? 1.0);
+  } else {
+    mobilenetModel.set(null);
+    graphExtractor = await loadGraphExtractor(cfg);
+  }
+  activeExtractorKey = extractor;
+}
+
+/**
+ * Produce an embedding tensor for a 0..255 RGB canvas using the currently-loaded extractor.
+ * Caller is responsible for disposing the returned tensor.
+ */
+async function embedCanvasWith(extractor: FeatureExtractor, canvas: HTMLCanvasElement): Promise<any> {
+  const tf = await import('@tensorflow/tfjs');
+  const cfg = EXTRACTOR_CONFIGS[extractor];
+  if (cfg.kind === 'mobilenet-pkg') {
+    const mn = get(mobilenetModel);
+    if (!mn) throw new Error('MobileNet not loaded');
+    const input = tf.browser.fromPixels(canvas).toFloat().div(127.5).sub(1).expandDims(0);
+    const emb = mn.infer(input, true);
+    input.dispose();
+    return emb.squeeze();
+  }
+  if (!graphExtractor) throw new Error('Graph extractor not loaded');
+  const size = graphExtractor.inputSize;
+  let input = tf.browser.fromPixels(canvas).toFloat();
+  if (canvas.width !== size || canvas.height !== size) {
+    const resized = tf.image.resizeBilinear(input, [size, size]);
+    input.dispose();
+    input = resized;
+  }
+  let pre: any;
+  if (graphExtractor.preprocess === 'tf') {
+    pre = input.div(127.5).sub(1);
+  } else if (graphExtractor.preprocess === '01') {
+    pre = input.div(255);
+  } else {
+    pre = input.div(255);
+  }
+  if (pre !== input) input.dispose();
+  const batched = pre.expandDims(0);
+  pre.dispose();
+  const out = graphExtractor.model.predict(batched);
+  batched.dispose();
+  // Graph model may return a 4D tensor [1, H, W, C]; flatten to a vector.
+  const squeezed = out.squeeze();
+  const flat = squeezed.shape.length > 1 ? squeezed.reshape([-1]) : squeezed;
+  if (flat !== squeezed) squeezed.dispose();
+  if (out !== squeezed) out.dispose?.();
+  return flat;
 }
 
 type DrawSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
@@ -173,6 +281,122 @@ function drawAugmented(
   ctx.filter = 'none';
 }
 
+// ---------- Pose detection (MoveNet) ----------
+// In pose-mode projects we (a) display a blurred version of the raw camera,
+// (b) overlay the detected skeleton on top for preview, and (c) train/predict
+// on the *rendered skeleton canvas* rather than the raw video, which makes
+// classes robust to background/clothing (same approach as Teachable Machine).
+
+let poseDetector: any = null;
+let poseLoading: Promise<any> | null = null;
+let lastPoseCanvas: HTMLCanvasElement | null = null;
+
+// Keypoint pairs for the MoveNet 17-keypoint COCO skeleton.
+const SKELETON_EDGES: [number, number][] = [
+  [0, 1], [0, 2], [1, 3], [2, 4],           // head
+  [5, 6],                                   // shoulders
+  [5, 7], [7, 9], [6, 8], [8, 10],          // arms
+  [5, 11], [6, 12], [11, 12],               // torso
+  [11, 13], [13, 15], [12, 14], [14, 16]    // legs
+];
+
+export async function loadPoseDetector() {
+  if (poseDetector) return poseDetector;
+  if (poseLoading) return poseLoading;
+  poseLoading = (async () => {
+    await import('@tensorflow/tfjs');
+    const posedetection = await import('@tensorflow-models/pose-detection');
+    const det = await posedetection.createDetector(
+      posedetection.SupportedModels.MoveNet,
+      { modelType: posedetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+    );
+    poseDetector = det;
+    return det;
+  })();
+  try {
+    return await poseLoading;
+  } finally {
+    poseLoading = null;
+  }
+}
+
+export type Pose = { keypoints: { x: number; y: number; score?: number; name?: string }[] };
+
+export async function estimatePose(source: HTMLVideoElement | HTMLCanvasElement | HTMLImageElement): Promise<Pose | null> {
+  const det = await loadPoseDetector();
+  if (!det) return null;
+  try {
+    const poses = await det.estimatePoses(source, { flipHorizontal: false });
+    return poses?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Render a skeleton-only frame (black background, colored bones/joints) into `canvas`.
+ * Coordinates come in source-pixel space and are normalized to the canvas size.
+ */
+export function drawPoseSkeleton(
+  canvas: HTMLCanvasElement,
+  pose: Pose | null,
+  srcW: number,
+  srcH: number,
+  opts: { scoreThreshold?: number; size?: number } = {}
+) {
+  const size = opts.size ?? canvas.width ?? 224;
+  const thr = opts.scoreThreshold ?? 0.3;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, size, size);
+  if (!pose || !srcW || !srcH) return;
+
+  // Fit source aspect into square canvas ("contain" letterbox).
+  const scale = Math.min(size / srcW, size / srcH);
+  const offX = (size - srcW * scale) / 2;
+  const offY = (size - srcH * scale) / 2;
+  const toX = (x: number) => offX + x * scale;
+  const toY = (y: number) => offY + y * scale;
+
+  const kp = pose.keypoints;
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#adf54c';
+  for (const [a, b] of SKELETON_EDGES) {
+    const p = kp[a], q = kp[b];
+    if (!p || !q) continue;
+    if ((p.score ?? 1) < thr || (q.score ?? 1) < thr) continue;
+    ctx.beginPath();
+    ctx.moveTo(toX(p.x), toY(p.y));
+    ctx.lineTo(toX(q.x), toY(q.y));
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#ff5c8a';
+  for (const p of kp) {
+    if ((p.score ?? 1) < thr) continue;
+    ctx.beginPath();
+    ctx.arc(toX(p.x), toY(p.y), 4.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** Remember the most recently-rendered skeleton canvas so predictFromVideo can pick it up in pose mode. */
+export function setLastPoseCanvas(canvas: HTMLCanvasElement | null) {
+  lastPoseCanvas = canvas;
+}
+
+/** Capture a skeleton-only frame (for training thumbnails in pose mode). */
+export async function capturePoseFrameFromVideo(video: HTMLVideoElement): Promise<string | null> {
+  if (!video.videoWidth || !video.videoHeight) return null;
+  const pose = await estimatePose(video);
+  const canvas = document.createElement('canvas');
+  canvas.width = 224;
+  canvas.height = 224;
+  drawPoseSkeleton(canvas, pose, video.videoWidth, video.videoHeight, { size: 224 });
+  return canvas.toDataURL('image/png');
+}
+
 export async function initApp() {
   // initialize shared services
   try {
@@ -193,11 +417,11 @@ export function captureFrameFromVideo(video: HTMLVideoElement) {
 
 export async function prepareDatasetForTraining(
   roi?: Roi | null,
-  aug?: AugmentationSettings | null
+  aug?: AugmentationSettings | null,
+  extractor: FeatureExtractor = 'mobilenet-v1'
 ) {
   const tfModule = await import('@tensorflow/tfjs');
-  const mobilenet = get(mobilenetModel);
-  if (!mobilenet) throw new Error('Mobilenet not loaded');
+  await ensureExtractor(extractor);
 
   const classesList = get(classes);
   const ex = get(examples);
@@ -207,12 +431,10 @@ export async function prepareDatasetForTraining(
   const canvas = document.createElement('canvas');
   const augMultiplier = aug ? Math.max(0, Math.floor(aug.multiplier)) : 0;
 
-  const embedCanvas = () => {
-    const input = tfModule.browser.fromPixels(canvas).toFloat().div(127.5).sub(1).expandDims(0);
-    const emb = mobilenet.infer(input, true);
-    xs.push(emb.squeeze());
+  const embedCanvas = async () => {
+    const emb = await embedCanvasWith(extractor, canvas);
+    xs.push(emb);
     ys.push(tfModule.oneHot([i], classesList.length).squeeze());
-    input.dispose();
   };
 
   let i = 0;
@@ -226,12 +448,12 @@ export async function prepareDatasetForTraining(
 
       // Always include the (ROI-cropped) original.
       drawWithRoi(img, roi ?? null, canvas, 224);
-      embedCanvas();
+      await embedCanvas();
 
       // Augmented copies.
       for (let k = 0; k < augMultiplier; k++) {
         drawAugmented(img, roi ?? null, aug!, canvas, 224);
-        embedCanvas();
+        await embedCanvas();
       }
     }
   }
@@ -283,7 +505,7 @@ export async function trainModel(
   const aug = opts.augmentation && opts.augmentationSettings
     ? opts.augmentationSettings
     : null;
-  const data = await prepareDatasetForTraining(opts.roi ?? null, aug);
+  const data = await prepareDatasetForTraining(opts.roi ?? null, aug, featureExtractor);
 
   const model = tfModule.sequential();
   const xsShape = (data.xs as any).shape as number[] | undefined;
@@ -547,35 +769,30 @@ export async function loadModelFromZip(file: File) {
 export const loadTryoutModel = loadModelFromZip;
 
 export async function predictFromVideo(video: HTMLVideoElement) {
-  const tfModule = await import('@tensorflow/tfjs');
-  const mobilenet = get(mobilenetModel);
   const classifier = get(classifierModel);
   const classesList = get(classes);
-  if (!mobilenet || !classifier || !video) {
-    if (dev) console.debug('predictFromVideo early exit', { mobilenet: !!mobilenet, classifier: !!classifier, video: !!video });
+  if (!classifier || !video) {
+    if (dev) console.debug('predictFromVideo early exit', { classifier: !!classifier, video: !!video });
     return null;
   }
 
   // Use ROI + feature extractor stored on the currently loaded trained model.
   const proj = get(currentProject);
   const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
-  if (active?.featureExtractor) {
-    await ensureExtractor(active.featureExtractor);
-  }
+  const extractor: FeatureExtractor = active?.featureExtractor ?? 'mobilenet-v1';
+  await ensureExtractor(extractor);
   const canvas = document.createElement('canvas');
-  drawWithRoi(video, active?.roi ?? null, canvas, 224);
+  // In pose projects, use the rendered skeleton canvas; otherwise raw video.
+  const source: DrawSource = proj?.mode === 'pose' && lastPoseCanvas ? lastPoseCanvas : video;
+  drawWithRoi(source, active?.roi ?? null, canvas, 224);
 
-  let input: any = null;
   let emb: any = null;
+  let batched: any = null;
   let predictionTensor: any = null;
   try {
-    input = tfModule.browser.fromPixels(canvas).toFloat().div(127.5).sub(1).expandDims(0);
-    if (dev) console.debug('predictFromVideo input.shape', input.shape);
-    emb = mobilenet.infer(input, true);
-    if (dev) console.debug('predictFromVideo emb.shape', emb?.shape);
-    const classifierInputShape = classifier?.inputs?.[0]?.shape;
-    if (dev) console.debug('predictFromVideo classifier input shape', classifierInputShape);
-    predictionTensor = await classifier.predict(emb) as any;
+    emb = await embedCanvasWith(extractor, canvas);
+    batched = emb.expandDims(0);
+    predictionTensor = await classifier.predict(batched) as any;
     const preds = (await predictionTensor.data()) as any;
     if (dev) console.debug('predictFromVideo preds', preds, 'classesLen', get(classes).length);
     // warn if number of classes doesn't match the predictions length
@@ -602,7 +819,7 @@ export async function predictFromVideo(video: HTMLVideoElement) {
     return null;
   } finally {
     try { if (predictionTensor && predictionTensor.dispose) predictionTensor.dispose(); } catch (e) {}
-    try { if (input && input.dispose) input.dispose(); } catch (e) {}
+    try { if (batched && batched.dispose) batched.dispose(); } catch (e) {}
     try { if (emb && emb.dispose) emb.dispose(); } catch (e) {}
   }
 }
@@ -667,18 +884,18 @@ export function computeModelMetadataFromModel(model: any) {
 }
 
 export async function calculateConfusionMatrix() {
-  const tfModule = await import('@tensorflow/tfjs');
-  const mobilenet = get(mobilenetModel);
   const classifier = get(classifierModel);
   const classesList = get(classes);
   const ex = get(examples);
-  if (!mobilenet || !classifier) throw new Error('Model not ready');
+  if (!classifier) throw new Error('Model not ready');
   const n = classesList.length;
   const matrix: number[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
 
   const proj = get(currentProject);
   const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
   const roi = active?.roi ?? null;
+  const extractor: FeatureExtractor = active?.featureExtractor ?? 'mobilenet-v1';
+  await ensureExtractor(extractor);
   const canvas = document.createElement('canvas');
 
   for (let i = 0; i < classesList.length; i++) {
@@ -689,9 +906,9 @@ export async function calculateConfusionMatrix() {
       img.src = example.data;
       await new Promise<void>(r => (img.onload = () => r()));
       drawWithRoi(img, roi, canvas, 224);
-      const input = tfModule.browser.fromPixels(canvas).toFloat().div(127.5).sub(1).expandDims(0);
-      const emb = mobilenet.infer(input, true);
-      const predictionTensor: any = await classifier.predict(emb) as any;
+      const emb = await embedCanvasWith(extractor, canvas);
+      const batched = emb.expandDims(0);
+      const predictionTensor: any = await classifier.predict(batched) as any;
       const preds = await predictionTensor.data();
       let maxIndex = 0;
       let maxProb = 0;
@@ -699,8 +916,8 @@ export async function calculateConfusionMatrix() {
         if (preds[k] > maxProb) { maxProb = preds[k]; maxIndex = k; }
       }
       matrix[i][maxIndex]++;
-      try { input.dispose(); } catch (e) {}
       try { emb.dispose(); } catch (e) {}
+      try { batched.dispose(); } catch (e) {}
       try { if (predictionTensor && predictionTensor.dispose) predictionTensor.dispose(); } catch (e) {}
     }
   }
