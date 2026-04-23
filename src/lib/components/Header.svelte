@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import Dropdown from './ui/Dropdown.svelte';
   import DropdownItem from './ui/DropdownItem.svelte';
+  import ConnectionBadge from './ConnectionBadge.svelte';
   import {
     appMode,
     showLanguageOverlay,
@@ -55,6 +56,7 @@
 
     <div class="header-right">
       {#if $currentProject}
+        <ConnectionBadge />
         <button class="header-btn" class:active={active === 'training'} onclick={() => navTo('training')}>
           {t('header.training', lang)}
         </button>

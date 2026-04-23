@@ -6,7 +6,9 @@
     setMakecodeIframe,
     createMakeCodeIframeUrl,
     importFromState,
+    onMakeCodeDownload,
   } from '$lib/makecode';
+  import { flashCalliope } from '$lib/stores/connection';
   import { currentLang } from '$lib/stores/app';
   import { currentProject } from '$lib/stores/projects';
   import { classes } from '$lib/stores';
@@ -34,7 +36,15 @@
       });
     }
 
-    return () => setMakecodeIframe(null);
+    // Route MakeCode's Download button to the Calliope flasher.
+    const unsubDownload = onMakeCodeDownload(({ name, hex }) => {
+      void flashCalliope(hex, name || p.name || 'project');
+    });
+
+    return () => {
+      unsubDownload();
+      setMakecodeIframe(null);
+    };
   });
 </script>
 
