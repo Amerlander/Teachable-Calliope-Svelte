@@ -10,7 +10,7 @@
   } from '$lib/stores';
   import type { TrainingOptions } from '$lib/stores';
   import { updateProject, currentProject, renameTrainedModel } from '$lib/stores/projects';
-  import { isTraining, trainStatus, modelTrained } from '$lib/stores/app';
+  import { isTraining, trainStatus, modelTrained, modelTabView } from '$lib/stores/app';
   import {
     trainModel,
     saveModelToZip,
@@ -35,8 +35,7 @@
   const enoughClasses = $derived($classes.length >= 3);
   const hasArtifacts = $derived(!!$classifierModel);
 
-  type View = 'model' | 'new';
-  let view = $state<View>(get(classifierModel) ? 'model' : 'new');
+  modelTabView.set(get(classifierModel) ? 'model' : 'new');
   let newModelName = $state('');
 
   // Training progress
@@ -78,7 +77,7 @@
         if (id) renameTrainedModel(id, label);
       }
       newModelName = '';
-      view = 'model';
+      modelTabView.set('model');
       try {
         const project = generateMakeCodeProject('Teachable Project', get(classes), get(examples));
         importMcProject(project);
@@ -166,16 +165,16 @@
       />
     </div>
 
-    <ModelHistory onselect={() => (view = 'model')} />
+    <ModelHistory onselect={() => (modelTabView.set('model'))} />
 
     <!-- "Train new" row: input for the model name (mirrors new-class-row in Classes tab) -->
-    <div class="train-new-row" class:selected={view === 'new'}>
+    <div class="train-new-row" class:selected={$modelTabView === 'new'}>
       <input
         class="train-new-input"
         type="text"
         placeholder="Neues Modell (Name)"
         bind:value={newModelName}
-        onfocus={() => (view = 'new')}
+        onfocus={() => (modelTabView.set('new'))}
         onkeydown={(e) => e.key === 'Enter' && enoughClasses && !$isTraining && doTrain()}
       />
       <Button
@@ -208,7 +207,7 @@
         und Bilder ein paar Sekunden bis einige Minuten dauern.
       </div>
     </section>
-  {:else if view === 'model'}
+  {:else if $modelTabView === 'model'}
     {#if hasArtifacts}
       <section class="card">
         <div class="card-head">

@@ -64,20 +64,19 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
-    border: 1px solid transparent;
+    padding: 6px 10px;
+    border: 1px solid rgb(var(--md-outline));
     border-radius: var(--md-radius-sm);
-    background: transparent;
-    color: rgb(var(--md-on-surface-variant));
-    font-size: 12px;
+    background: rgb(var(--md-surface));
+    color: rgb(var(--md-on-surface));
+    font-size: 13px;
     font-family: inherit;
     cursor: pointer;
-    max-width: 220px;
+    max-width: 260px;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
     &:hover {
-      background: rgba(var(--md-surface-variant), 0.5);
-      color: rgb(var(--md-on-surface));
-      border-color: rgba(var(--md-outline), 0.3);
+      background: rgba(var(--md-primary), 0.08);
+      border-color: rgb(var(--md-primary));
     }
     .cam-label {
       overflow: hidden;

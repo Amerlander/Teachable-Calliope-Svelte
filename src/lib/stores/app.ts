@@ -23,6 +23,14 @@ export const modelTrained = writable(false);
 export type WorkspaceTab = 'classes' | 'model';
 export const workspaceTab = writable<WorkspaceTab>('classes');
 
+// --- Model tab sub-view: 'model' shows stats, 'new' shows training-prep UI ---
+export type ModelTabView = 'model' | 'new';
+export const modelTabView = writable<ModelTabView>('new');
+
+// --- Draft ROI for the next training run (normalized 0..1) ---
+export type Roi = { x: number; y: number; w: number; h: number };
+export const draftRoi = writable<Roi | null>(null);
+
 // --- Apply UI state ---
 export const applyRunning = writable(false);
 export const applyPrediction = writable<{ label: string; confidence: number } | null>(null);

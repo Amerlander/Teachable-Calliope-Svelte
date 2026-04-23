@@ -77,24 +77,25 @@
 </script>
 
 <div class="right-panel">
+  <!-- Top bar: mode indicator + camera select (above the video) -->
+  <div class="top-bar">
+    <div class="mode-indicator" class:test={mode === 'test'}>
+      <span class="dot"></span>
+      <span class="label">{mode === 'test' ? 'Test' : 'Aufnahme'}</span>
+      <span class="hint">
+        {mode === 'test'
+          ? (!$classifierModel ? 'Kein Modell – bitte erst trainieren' : 'Live-Vorhersage aktiv')
+          : 'Bild wird zur aktiven Klasse aufgenommen'}
+      </span>
+    </div>
+    <CameraSelect />
+  </div>
+
   <!-- Train view -->
   <div class="video-wrap" class:hidden={mode !== 'train'}>
     <video bind:this={webcamEl} autoplay playsinline muted>
       <track kind="captions" />
     </video>
-
-    <div class="top-bar">
-      <div class="mode-indicator" class:test={mode === 'test'}>
-        <span class="dot"></span>
-        <span class="label">{mode === 'test' ? 'Test' : 'Aufnahme'}</span>
-        <span class="hint">
-          {mode === 'test'
-            ? (!$classifierModel ? 'Kein Modell – bitte erst trainieren' : 'Live-Vorhersage aktiv')
-            : 'Bild wird zur aktiven Klasse aufgenommen'}
-        </span>
-      </div>
-      <CameraSelect />
-    </div>
 
     {#if !cameraReady}
       <div class="loading-overlay">
@@ -109,19 +110,6 @@
     <video bind:this={webcamTestEl} autoplay playsinline muted>
       <track kind="captions" />
     </video>
-
-    <div class="top-bar">
-      <div class="mode-indicator" class:test={mode === 'test'}>
-        <span class="dot"></span>
-        <span class="label">{mode === 'test' ? 'Test' : 'Aufnahme'}</span>
-        <span class="hint">
-          {mode === 'test'
-            ? (!$classifierModel ? 'Kein Modell – bitte erst trainieren' : 'Live-Vorhersage aktiv')
-            : 'Bild wird zur aktiven Klasse aufgenommen'}
-        </span>
-      </div>
-      <CameraSelect />
-    </div>
 
     {#if !cameraReady}
       <div class="loading-overlay">
@@ -179,17 +167,10 @@
     min-height: 0;
   }
   .top-bar {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    right: 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    z-index: 3;
-    pointer-events: none;
-    > :global(*) { pointer-events: auto; }
   }
   .mode-indicator {
     display: inline-flex;
@@ -197,9 +178,7 @@
     gap: 10px;
     padding: 6px 12px;
     border-radius: var(--md-radius-md);
-    background: rgba(var(--md-surface), 0.85);
-    backdrop-filter: blur(10px);
-    box-shadow: var(--md-elevation-1);
+    background: rgba(var(--md-surface-variant), 0.5);
     font-size: 13px;
     color: rgb(var(--md-on-surface-variant));
     .dot {
@@ -254,7 +233,7 @@
     video {
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
       transform: scaleX(-1);
     }
   }

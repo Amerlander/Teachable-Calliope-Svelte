@@ -227,20 +227,21 @@ export function recordTrainedModel(
   const id = `mdl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   let created: string | null = null;
   updateProject((p) => {
-    p.modelHistory.push({
-      id,
-      trainedAt: Date.now(),
-      artifacts,
-      metadata,
-      history,
-      options,
-      classesSnapshot,
-      exampleCounts
-    });
+    const next = [
+      ...p.modelHistory,
+      {
+        id,
+        trainedAt: Date.now(),
+        artifacts,
+        metadata,
+        history,
+        options,
+        classesSnapshot,
+        exampleCounts
+      }
+    ];
     // Cap history at 20 most recent runs to keep storage bounded
-    if (p.modelHistory.length > 20) {
-      p.modelHistory = p.modelHistory.slice(-20);
-    }
+    p.modelHistory = next.length > 20 ? next.slice(-20) : next;
     p.currentModelId = id;
     created = id;
   });
@@ -283,8 +284,10 @@ export function deleteTrainedModel(id: string): void {
 
 export function renameTrainedModel(id: string, label: string): void {
   updateProject((p) => {
-    const m = p.modelHistory.find((x) => x.id === id);
-    if (m) m.label = label.trim() || undefined;
+    const trimmed = label.trim();
+    p.modelHistory = p.modelHistory.map((m) =>
+      m.id === id ? { ...m, label: trimmed || undefined } : m
+    );
   });
 }
 
