@@ -17,6 +17,9 @@ importers:
       '@tensorflow/tfjs':
         specifier: ^4.11.0
         version: 4.22.0(seedrandom@3.0.5)
+      apexcharts:
+        specifier: ^5.10.6
+        version: 5.10.6
       chart.js:
         specifier: ^4.3.0
         version: 4.5.1
@@ -32,6 +35,9 @@ importers:
       runed:
         specifier: ^0.37.1
         version: 0.37.1(@sveltejs/kit@2.48.5(@sveltejs/vite-plugin-svelte@6.2.1(svelte@5.43.12)(vite@7.2.2(@types/node@22.19.1)(sass@1.99.0)))(svelte@5.43.12)(vite@7.2.2(@types/node@22.19.1)(sass@1.99.0)))(svelte@5.43.12)
+      svelte-apexcharts:
+        specifier: ^1.0.2
+        version: 1.0.2(apexcharts@5.10.6)
       svelte-floating-ui:
         specifier: ^1.6.2
         version: 1.6.2
@@ -1134,6 +1140,9 @@ packages:
     resolution: {integrity: sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA==}
     engines: {node: '>=10'}
 
+  apexcharts@5.10.6:
+    resolution: {integrity: sha512-FJQGbso3iRuOwUYnj0yUhkWeKeJE6aboVol+ae09lsc+lbLMWZqSRbrAWVa/qishLiaeG2icxdvmVkm+9n6kOQ==}
+
   argparse@1.0.10:
     resolution: {integrity: sha512-o5Roy6tNG4SL/FOkCAN6RzjiakZS25RLYFrcMttJqbdd8BWrnA+fGz57iN5Pb06pvBGvl5gQ0B48dJlslXvoTg==}
 
@@ -2127,6 +2136,11 @@ packages:
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
+
+  svelte-apexcharts@1.0.2:
+    resolution: {integrity: sha512-6qlx4rE+XsonZ0FZudfwqOQ34Pq+3wpxgAD75zgEmGoYhYBJcwmikTuTf3o8ZBsZue9U/pAwhNy3ed1Bkq1gmA==}
+    peerDependencies:
+      apexcharts: ^3.19.2
 
   svelte-ast-print@0.4.2:
     resolution: {integrity: sha512-hRHHufbJoArFmDYQKCpCvc0xUuIEfwYksvyLYEQyH+1xb5LD5sM/IthfooCdXZQtOIqXz6xm7NmaqdfwG4kh6w==}
@@ -3456,6 +3470,8 @@ snapshots:
 
   ansi-styles@5.2.0: {}
 
+  apexcharts@5.10.6: {}
+
   argparse@1.0.10:
     dependencies:
       sprintf-js: 1.0.3
@@ -4383,6 +4399,10 @@ snapshots:
   supports-color@7.2.0:
     dependencies:
       has-flag: 4.0.0
+
+  svelte-apexcharts@1.0.2(apexcharts@5.10.6):
+    dependencies:
+      apexcharts: 5.10.6
 
   svelte-ast-print@0.4.2(svelte@5.43.12):
     dependencies:

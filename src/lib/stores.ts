@@ -110,9 +110,11 @@ export function setTrainingHistory(h: TrainingHistory): void {
 
 export function appendTrainingEpoch(epoch: number, accuracy: number, loss: number): void {
   updateProject((p) => {
-    p.trainingHistory.epochs.push(epoch);
-    p.trainingHistory.accuracy.push(accuracy);
-    p.trainingHistory.loss.push(loss);
+    p.trainingHistory = {
+      epochs: [...p.trainingHistory.epochs, epoch],
+      accuracy: [...p.trainingHistory.accuracy, accuracy],
+      loss: [...p.trainingHistory.loss, loss]
+    };
   });
 }
 

@@ -230,6 +230,12 @@
         Das Modell lernt gerade aus deinen Bildern. Das kann je nach Anzahl der Klassen
         und Bilder ein paar Sekunden bis einige Minuten dauern.
       </div>
+
+      {#if $trainPhase === 'training'}
+        <div class="live-chart">
+          <ModelCharts initialTab="accuracy" />
+        </div>
+      {/if}
     </section>
   {:else if $modelTabView === 'model'}
     {#if hasArtifacts}
@@ -319,6 +325,119 @@
           />
         </label>
       </div>
+
+      <details class="advanced">
+        <summary>Erweiterte Optionen</summary>
+        <div class="adv-note">
+          Hinweis: einige dieser Parameter werden in der aktuellen Trainings-Pipeline
+          noch nicht angewendet. Sie werden mit dem Projekt gespeichert und für die
+          kommende, erweiterte Pipeline vorbereitet.
+        </div>
+        <div class="opt-grid">
+          <label class="opt">
+            <span class="opt-label">
+              Feature-Extraktor
+              <InfoTooltip
+                text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. MobileNet v1 ist schnell und klein und läuft auch im Browser gut. Andere Extraktoren sind vorbereitet, aber noch nicht aktiv."
+              />
+            </span>
+            <select
+              value={$trainingOptions.featureExtractor ?? 'mobilenet-v1'}
+              onchange={(e) => updateOpt('featureExtractor', (e.target as HTMLSelectElement).value as any)}
+            >
+              <option value="mobilenet-v1">MobileNet v1 (aktiv)</option>
+              <option value="mobilenet-v2">MobileNet v2</option>
+              <option value="squeezenet">SqueezeNet</option>
+              <option value="resnet50">ResNet-50</option>
+              <option value="inception-v3">Inception v3</option>
+            </select>
+          </label>
+
+          <label class="opt">
+            <span class="opt-label">
+              Optimierer
+              <InfoTooltip
+                text="Algorithmus, der die Gewichte des Modells anpasst. Adam funktioniert für die meisten Fälle. SGD ist robuster für große Datensätze."
+              />
+            </span>
+            <select
+              value={$trainingOptions.optimizer ?? 'adam'}
+              onchange={(e) => updateOpt('optimizer', (e.target as HTMLSelectElement).value as any)}
+            >
+              <option value="adam">Adam</option>
+              <option value="sgd">SGD</option>
+              <option value="rmsprop">RMSProp</option>
+            </select>
+          </label>
+
+          <label class="opt">
+            <span class="opt-label">
+              Dropout
+              <InfoTooltip
+                text="Anteil der Neuronen, die beim Training zufällig deaktiviert werden. Reduziert Überanpassung. 0 = aus, 0.5 = aggressiv."
+              />
+            </span>
+            <input
+              type="number"
+              min="0"
+              max="0.9"
+              step="0.05"
+              value={$trainingOptions.dropout ?? 0}
+              onchange={(e) => updateOpt('dropout', +((e.target as HTMLInputElement).value))}
+            />
+          </label>
+
+          <label class="opt">
+            <span class="opt-label">
+              Validierungs-Split
+              <InfoTooltip
+                text="Anteil der Bilder, die als Validierungsdaten zurückgehalten werden (0 – 0.5). Zeigt, wie gut das Modell auf ungesehenen Bildern funktioniert."
+              />
+            </span>
+            <input
+              type="number"
+              min="0"
+              max="0.5"
+              step="0.05"
+              value={$trainingOptions.validationSplit ?? 0}
+              onchange={(e) => updateOpt('validationSplit', +((e.target as HTMLInputElement).value))}
+            />
+          </label>
+
+          <label class="opt">
+            <span class="opt-label">
+              Stop-Loss
+              <InfoTooltip
+                text="Frühzeitiger Abbruch: Training stoppt, sobald der Loss unter diesen Wert fällt. 0 = kein frühzeitiger Abbruch."
+              />
+            </span>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.005"
+              value={$trainingOptions.earlyStopLoss ?? 0}
+              onchange={(e) => updateOpt('earlyStopLoss', +((e.target as HTMLInputElement).value))}
+            />
+          </label>
+
+          <label class="opt">
+            <span class="opt-label">
+              Daten-Augmentierung
+              <InfoTooltip
+                text="Erzeugt leicht veränderte Varianten deiner Bilder (Spiegeln, Rotation, Helligkeit), damit das Modell robuster wird."
+              />
+            </span>
+            <select
+              value={$trainingOptions.augmentation ? 'on' : 'off'}
+              onchange={(e) => updateOpt('augmentation', (e.target as HTMLSelectElement).value === 'on')}
+            >
+              <option value="off">Aus</option>
+              <option value="on">An</option>
+            </select>
+          </label>
+        </div>
+      </details>
 
       <div class="roi-section">
         <div class="roi-head">
@@ -506,6 +625,50 @@
     }
     .phase-step.active .phase-dot { background: rgb(var(--md-primary)); border-color: rgb(var(--md-primary)); }
     .phase-step.done .phase-dot   { background: rgb(var(--md-tertiary)); border-color: rgb(var(--md-tertiary)); }
+  }
+  .advanced {
+    margin-top: 12px;
+    background: rgba(var(--md-surface-variant), 0.25);
+    border-radius: var(--md-radius-md);
+    padding: 8px 12px;
+    summary {
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: rgb(var(--md-on-surface));
+      list-style: none;
+      padding: 4px 0;
+      user-select: none;
+      &::-webkit-details-marker { display: none; }
+      &::before {
+        content: '▸';
+        display: inline-block;
+        margin-right: 6px;
+        transition: transform 0.15s;
+      }
+    }
+    &[open] summary::before { transform: rotate(90deg); }
+    .adv-note {
+      font-size: 11px;
+      color: rgb(var(--md-on-surface-variant));
+      font-style: italic;
+      margin: 6px 0 10px;
+      line-height: 1.4;
+    }
+    select {
+      padding: 6px 8px;
+      border: 1px solid rgb(var(--md-outline));
+      border-radius: var(--md-radius-sm);
+      background: rgb(var(--md-surface));
+      color: rgb(var(--md-on-surface));
+      font: inherit;
+      font-size: 12px;
+    }
+  }
+  .live-chart {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(var(--md-outline-variant), 0.7);
   }
   .roi-section {
     margin-top: 12px;

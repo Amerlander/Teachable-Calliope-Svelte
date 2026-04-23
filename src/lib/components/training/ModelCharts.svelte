@@ -1,66 +1,70 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
   import { trainingHistory } from '$lib/stores';
+  import { isTraining } from '$lib/stores/app';
   import ConfusionMatrix from '$lib/components/ConfusionMatrix.svelte';
   import { calculateConfusionMatrix } from '$lib/machine';
   import { showNotification } from '$lib/stores/notifications';
+  import { chart } from 'svelte-apexcharts';
 
   let { initialTab = 'accuracy' }: { initialTab?: 'accuracy' | 'confusion' } = $props();
 
   let tab = $state<'accuracy' | 'confusion'>(initialTab);
-  let canvasEl: HTMLCanvasElement | null = $state(null);
-  let chart: any = null;
   let matrix: number[][] = $state([]);
   let matrixClasses: string[] = $state([]);
   let matrixLoading = $state(false);
 
-  $effect(() => {
-    if (tab === 'accuracy' && canvasEl) {
-      void renderChart();
-    }
-    return () => {
-      if (chart) {
-        try {
-          chart.destroy();
-        } catch {
-          /* ignore */
-        }
-        chart = null;
+  const hist = $derived($trainingHistory);
+
+  const chartOptions = $derived({
+    chart: {
+      type: 'line',
+      height: 240,
+      animations: { enabled: true, speed: 200, dynamicAnimation: { speed: 200 } },
+      toolbar: { show: false },
+      zoom: { enabled: false },
+      fontFamily: 'var(--md-font)'
+    },
+    stroke: { curve: 'smooth', width: 2 },
+    colors: ['#4CAF50', '#F44336'],
+    series: [
+      { name: 'Genauigkeit', data: hist.accuracy.map((v, i) => [hist.epochs[i], v]) },
+      { name: 'Verlust',     data: hist.loss.map((v, i) => [hist.epochs[i], v]) }
+    ],
+    xaxis: {
+      type: 'numeric',
+      title: { text: 'Epoche', style: { fontSize: '11px' } },
+      labels: { style: { fontSize: '10px' } }
+    },
+    yaxis: [
+      {
+        title: { text: 'Genauigkeit', style: { color: '#4CAF50', fontSize: '11px' } },
+        min: 0, max: 1,
+        labels: { style: { colors: '#4CAF50', fontSize: '10px' }, formatter: (v: number) => (v * 100).toFixed(0) + ' %' }
+      },
+      {
+        opposite: true,
+        title: { text: 'Verlust', style: { color: '#F44336', fontSize: '11px' } },
+        min: 0,
+        labels: { style: { colors: '#F44336', fontSize: '10px' }, formatter: (v: number) => v.toFixed(2) }
       }
-    };
+    ],
+    grid: { borderColor: 'rgba(0,0,0,0.08)' },
+    legend: { fontSize: '12px' },
+    tooltip: {
+      x: { formatter: (v: number) => 'Epoche ' + v },
+      y: [
+        { formatter: (v: number) => (v * 100).toFixed(1) + ' %' },
+        { formatter: (v: number) => v.toFixed(4) }
+      ]
+    },
+    noData: { text: 'Warte auf Trainingsdaten…', style: { fontSize: '13px' } }
   });
 
   $effect(() => {
-    if (tab === 'confusion' && !matrix.length && !matrixLoading) {
+    if (tab === 'confusion' && !matrix.length && !matrixLoading && !$isTraining) {
       void computeMatrix();
     }
   });
-
-  async function renderChart() {
-    const history = $trainingHistory;
-    const ChartModule = await import('chart.js/auto');
-    const ChartCtor = (ChartModule as any).Chart || (ChartModule as any).default || ChartModule;
-    if (chart) {
-      try {
-        chart.destroy();
-      } catch {
-        /* ignore */
-      }
-      chart = null;
-    }
-    if (!canvasEl) return;
-    chart = new ChartCtor(canvasEl.getContext('2d') as any, {
-      type: 'line',
-      data: {
-        labels: history.epochs,
-        datasets: [
-          { label: 'Genauigkeit', data: history.accuracy, borderColor: '#4CAF50', tension: 0.25 },
-          { label: 'Verlust', data: history.loss, borderColor: '#F44336', tension: 0.25 }
-        ]
-      },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  }
 
   async function computeMatrix() {
     matrixLoading = true;
@@ -74,16 +78,6 @@
       matrixLoading = false;
     }
   }
-
-  onDestroy(() => {
-    if (chart) {
-      try {
-        chart.destroy();
-      } catch {
-        /* ignore */
-      }
-    }
-  });
 </script>
 
 <div class="charts">
@@ -97,16 +91,12 @@
   </div>
 
   {#if tab === 'accuracy'}
-    <div class="chart-wrap">
-      {#if $trainingHistory.epochs.length}
-        <canvas bind:this={canvasEl}></canvas>
-      {:else}
-        <div class="empty">Noch kein Training durchgeführt</div>
-      {/if}
-    </div>
+    <div class="chart-wrap" use:chart={chartOptions}></div>
   {:else}
     <div class="matrix-wrap">
-      {#if matrixLoading}
+      {#if $isTraining}
+        <div class="empty">Konfusionsmatrix verfügbar nach dem Training</div>
+      {:else if matrixLoading}
         <div class="empty">Berechne…</div>
       {:else if matrix.length}
         <ConfusionMatrix classes={matrixClasses} {matrix} />
@@ -149,8 +139,10 @@
     }
   }
   .chart-wrap {
-    height: 220px;
-    position: relative;
+    min-height: 260px;
+    background: #fff;
+    border-radius: var(--md-radius-md);
+    padding: 4px;
   }
   .matrix-wrap {
     min-height: 180px;
