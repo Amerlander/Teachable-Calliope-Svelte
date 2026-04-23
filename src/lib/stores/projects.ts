@@ -68,6 +68,7 @@ export type Project = {
   modelArtifacts: ModelArtifacts | null;
   modelHistory: TrainedModel[];
   currentModelId: string | null;
+  classThresholds?: Record<string, number>;
 };
 
 export type ProjectSummary = {
@@ -108,7 +109,8 @@ export function createBlankProject(name?: string, mode: ProjectMode = 'image'): 
     modelMetadata: { name: 'Teachable Machine Model', date: new Date().toISOString(), version: '1.0', classes: [] },
     modelArtifacts: null,
     modelHistory: [],
-    currentModelId: null
+    currentModelId: null,
+    classThresholds: {}
   };
 }
 
@@ -116,7 +118,14 @@ export function createBlankProject(name?: string, mode: ProjectMode = 'image'): 
 function hydrate(p: Project): Project {
   if (!p.modelHistory) p.modelHistory = [];
   if (p.currentModelId === undefined) p.currentModelId = null;
+  if (!p.classThresholds) p.classThresholds = {};
   return p;
+}
+
+export function setClassThreshold(cls: string, threshold: number): void {
+  updateProject((p) => {
+    p.classThresholds = { ...(p.classThresholds || {}), [cls]: threshold };
+  });
 }
 
 function summarize(p: Project): ProjectSummary {

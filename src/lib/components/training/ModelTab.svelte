@@ -191,6 +191,7 @@
 
   <hr />
 
+  <div class="tab-body">
   <!-- Body: depends on view / training state -->
   {#if $isTraining}
     <section class="card training-card">
@@ -306,6 +307,7 @@
       {/if}
     </section>
   {/if}
+  </div>
 </div>
 
 <ModelDetailsModal bind:isOpen={detailsOpen} />
@@ -314,10 +316,17 @@
   .model-tab {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    flex: 1;
+    min-height: 0;
+  }
+  .tab-body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-right: 4px;
   }
   .row-between {
     display: flex;
@@ -329,6 +338,7 @@
   .section {
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
   }
   .section-label {
     font-size: 13px;
