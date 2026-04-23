@@ -2,20 +2,38 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
-  import { setMakecodeIframe } from '$lib/makecode';
+  import {
+    setMakecodeIframe,
+    createMakeCodeIframeUrl,
+    importFromState,
+  } from '$lib/makecode';
   import { currentLang } from '$lib/stores/app';
   import { currentProject } from '$lib/stores/projects';
-
-  const lang = $derived($currentLang);
+  import { classes } from '$lib/stores';
 
   let iframeEl: HTMLIFrameElement;
+  const src = createMakeCodeIframeUrl(get(currentLang));
 
   onMount(() => {
-    if (!get(currentProject)) {
+    const p = get(currentProject);
+    if (!p) {
       goto('/');
       return;
     }
     setMakecodeIframe(iframeEl);
+
+    // If the user already has classes, queue their project so MakeCode opens
+    // it instead of the blank seed. We set it here before the driver asks for
+    // initialProjects — importFromState also keeps it available for re-sync.
+    const cls = get(classes);
+    if (cls && cls.length > 0) {
+      importFromState({
+        name: p.name || 'Teachable Project',
+        mode: p.mode ?? 'image',
+        classes: cls,
+      });
+    }
+
     return () => setMakecodeIframe(null);
   });
 </script>
@@ -25,7 +43,7 @@
     <iframe
       bind:this={iframeEl}
       title="MakeCode Calliope Editor"
-      src="https://makecode.calliope.cc/?controller=1&nocookiebanner=1&ws=browser#pub:_VjjUK8cH6JCw"
+      {src}
       allow="usb; bluetooth; autoplay;"
       sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
       style="width:100%;height:100%;border:0;border-radius:12px;"

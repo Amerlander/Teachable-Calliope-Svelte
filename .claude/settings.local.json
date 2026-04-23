@@ -9,7 +9,15 @@
       "Bash(git rm *)",
       "Bash(npx vite *)",
       "Bash(npm install *)",
-      "Bash(git -C c:/GIT/Calliope/Teachable-Calliope-Svelte diff src/lib/components/ui/DropdownItem.svelte src/lib/components/ui/Dropdown.svelte)"
+      "Bash(git -C c:/GIT/Calliope/Teachable-Calliope-Svelte diff src/lib/components/ui/DropdownItem.svelte src/lib/components/ui/Dropdown.svelte)",
+      "Bash(mkdir -p /c/temp)",
+      "Bash(git clone *)",
+      "Read(//c/GIT/Calliope/Teachable-Calliope-Svelte/**)",
+      "Read(//c/temp/ml-trainer/**)",
+      "Read(//c/GIT/Calliope/Teachable-Calliope-Svelte/src/lib/**)",
+      "Read(//c/GIT/Calliope/Teachable-Calliope-Svelte/src/lib/components/training/**)",
+      "Bash(git stash *)",
+      "Read(//c/temp/calliope-makecode-embed/**)"
     ]
   }
 }

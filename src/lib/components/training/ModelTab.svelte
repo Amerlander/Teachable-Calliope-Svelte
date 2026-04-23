@@ -88,7 +88,13 @@
       newModelName = '';
       modelTabView.set('model');
       try {
-        const project = generateMakeCodeProject('Teachable Project', get(classes), get(examples));
+        const p = get(currentProject);
+        const project = generateMakeCodeProject(
+          p?.name || 'Teachable Project',
+          get(classes),
+          get(examples),
+          p?.mode ?? 'image',
+        );
         importMcProject(project);
       } catch {
         /* ignore */
