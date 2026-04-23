@@ -616,7 +616,7 @@
         <span class="hint">werden mit der gewählten ROI trainiert</span>
       </div>
       {#each $classes as cls (cls)}
-        {@const imgs = $examples[cls] ?? []}
+        {@const imgs = [...($examples[cls] ?? [])]}
         <div class="prep-class">
           <div class="prep-class-head">
             {#if editingClass === cls}
@@ -654,10 +654,15 @@
           </div>
 
           <div class="prep-thumbs-row">
-            <div class="prep-thumbs-scroll">
+            <div class="thumb-stack" class:empty={!imgs.length}>
               {#if imgs.length}
                 {#each imgs as ex, i (cls + '_' + i)}
-                  <img src={ex.data} alt="" />
+                  <img
+                    class="stack-img"
+                    src={ex.data}
+                    alt=""
+                    style="--i: {i}; --n: {imgs.length};"
+                  />
                 {/each}
               {:else}
                 <div class="prep-class-empty">Keine Bilder</div>
@@ -672,7 +677,6 @@
               onpointerdown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); startRecord(cls); }}
               onpointerup={stopRecord}
               onpointercancel={stopRecord}
-              onpointerleave={stopRecord}
             >
               <span class="record-dot"></span>
             </button>
@@ -925,23 +929,48 @@
     gap: 6px;
     min-width: 0;
   }
-  .prep-thumbs-scroll {
+  .thumb-stack {
     flex: 1;
     min-width: 0;
-    display: flex;
-    gap: 4px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    padding-bottom: 2px;
-    img {
-      flex: 0 0 auto;
-      width: 56px;
-      height: 56px;
-      object-fit: cover;
-      border-radius: 4px;
-      background: #000;
-    }
+    position: relative;
+    height: 56px;
+    // clip horizontally so overflowing images don't reach the record button,
+    // but keep vertical overflow so hover pop-out is visible.
+    overflow-x: clip;
+    overflow-y: visible;
+    --thumb: 56px;
+    --offset: 14px;
+    &.empty { display: flex; align-items: center; }
+  }
+  .stack-img {
+    position: absolute;
+    top: 0;
+    left: calc(var(--i) * var(--offset));
+    width: var(--thumb);
+    height: var(--thumb);
+    object-fit: cover;
+    border-radius: 4px;
+    background: #000;
+    border: 2px solid rgb(var(--md-surface));
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    z-index: calc(var(--i) + 1);
+    transition: left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+                transform 0.2s ease,
+                box-shadow 0.2s ease;
+    cursor: pointer;
+  }
+  // On hover of the stack, fan images farther apart so you can glimpse each one.
+  // Spread is capped by container width to avoid overflow.
+  .thumb-stack:hover .stack-img {
+    left: calc(
+      var(--i) *
+      min(var(--thumb), (100% - var(--thumb)) / max(var(--n) - 1, 1))
+    );
+  }
+  .stack-img:hover {
+    transform: translateY(-8px) scale(1.1);
+    z-index: 999;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
   }
   .record-btn {
     flex: 0 0 auto;
