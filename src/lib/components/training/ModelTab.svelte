@@ -9,13 +9,12 @@
     setModelArtifacts
   } from '$lib/stores';
   import type { TrainingOptions } from '$lib/stores';
-  import { updateProject, currentProject, renameTrainedModel, setTrainedModelRoi } from '$lib/stores/projects';
+  import { updateProject, currentProject, renameTrainedModel } from '$lib/stores/projects';
   import { isTraining, trainStatus, modelTrained, modelTabView, draftRoi, roiEditing, trainPhase } from '$lib/stores/app';
   import {
     trainModel,
     saveModelToZip,
-    loadModelFromZip,
-    loadClassifierFromArtifacts
+    loadModelFromZip
   } from '$lib/machine';
   import { showNotification } from '$lib/stores/notifications';
   import { generateMakeCodeProject, importProject as importMcProject } from '$lib/makecode';
@@ -51,6 +50,7 @@
       return;
     }
     const opts = get(trainingOptions);
+    const roi = get(draftRoi);
     trainEpoch = 0;
     trainTotalEpochs = opts.epochs;
     isTraining.set(true);
@@ -62,7 +62,13 @@
           epochs: opts.epochs,
           batchSize: opts.batchSize,
           learningRate: opts.learningRate,
-          hiddenUnits: opts.hiddenUnits
+          hiddenUnits: opts.hiddenUnits,
+          featureExtractor: opts.featureExtractor,
+          optimizer: opts.optimizer,
+          dropout: opts.dropout,
+          validationSplit: opts.validationSplit,
+          earlyStopLoss: opts.earlyStopLoss,
+          roi: roi ?? null
         },
         (ep) => {
           if (get(trainPhase) !== 'training') trainPhase.set('training');
@@ -77,8 +83,7 @@
       const id = get(currentProject)?.currentModelId;
       const label = newModelName.trim();
       if (id && label) renameTrainedModel(id, label);
-      const roi = get(draftRoi);
-      if (id && roi) setTrainedModelRoi(id, roi);
+      // ROI is now recorded inside machine.ts during training (per model), no post-hoc set needed.
       newModelName = '';
       modelTabView.set('model');
       try {

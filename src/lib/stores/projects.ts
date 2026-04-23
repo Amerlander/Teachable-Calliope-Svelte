@@ -74,6 +74,7 @@ export type TrainedModel = {
   classesSnapshot: string[];
   exampleCounts: Record<string, number>;
   roi?: Roi;
+  featureExtractor?: FeatureExtractor;
 };
 
 export type Project = {
@@ -262,7 +263,8 @@ export function recordTrainedModel(
   history: TrainingHistory,
   options: TrainingOptions,
   classesSnapshot: string[],
-  exampleCounts: Record<string, number>
+  exampleCounts: Record<string, number>,
+  extras?: { roi?: Roi; featureExtractor?: FeatureExtractor }
 ): string | null {
   const id = `mdl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   let created: string | null = null;
@@ -277,7 +279,9 @@ export function recordTrainedModel(
         history,
         options,
         classesSnapshot,
-        exampleCounts
+        exampleCounts,
+        ...(extras?.roi ? { roi: extras.roi } : {}),
+        ...(extras?.featureExtractor ? { featureExtractor: extras.featureExtractor } : {})
       }
     ];
     // Cap history at 20 most recent runs to keep storage bounded

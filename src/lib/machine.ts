@@ -13,7 +13,8 @@ import {
   modelMetadata,
   trainingOptions
 } from './stores';
-import { recordTrainedModel } from './stores/projects';
+import { recordTrainedModel, currentProject, type Roi, type FeatureExtractor, type Optimizer } from './stores/projects';
+import { showNotification } from './stores/notifications';
 import type { ModelMetadata } from './stores';
 
 // We will dynamically import TensorFlow and other libs on the client side
@@ -73,13 +74,62 @@ export async function listCameras(): Promise<MediaDeviceInfo[]> {
   }
 }
 
-export async function loadMobilenetModel() {
+let loadedMobilenetVersion: 1 | 2 = 1;
+
+export async function loadMobilenetModel(version: 1 | 2 = 1) {
   if (typeof window === 'undefined') return null;
-  const tf = await import('@tensorflow/tfjs');
+  await import('@tensorflow/tfjs');
   const mobilenet = await import('@tensorflow-models/mobilenet');
-  const model = await mobilenet.load();
+  const model = await mobilenet.load({ version, alpha: 1.0 });
   mobilenetModel.set(model);
+  loadedMobilenetVersion = version;
   return model;
+}
+
+/** Map a FeatureExtractor choice to an actually-supported MobileNet version.
+ *  Unsupported extractors fall back to v1 with a warning. */
+async function ensureExtractor(extractor: FeatureExtractor | undefined) {
+  const desired: 1 | 2 =
+    extractor === 'mobilenet-v2' ? 2 :
+    extractor === 'mobilenet-v1' ? 1 :
+    (extractor ? 1 : loadedMobilenetVersion);
+  if (extractor && !['mobilenet-v1', 'mobilenet-v2'].includes(extractor)) {
+    try {
+      showNotification(
+        `Feature-Extraktor "${extractor}" ist noch nicht verfügbar – verwende MobileNet v1.`,
+        { type: 'warning' }
+      );
+    } catch { /* ignore */ }
+  }
+  if (desired !== loadedMobilenetVersion || !get(mobilenetModel)) {
+    await loadMobilenetModel(desired);
+  }
+}
+
+/** Draw a (video|image|canvas) source into `canvas`, cropped to ROI (normalized 0..1). */
+function drawWithRoi(
+  source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement,
+  roi: Roi | null | undefined,
+  canvas: HTMLCanvasElement,
+  size = 224
+) {
+  const sw = (source as HTMLVideoElement).videoWidth
+    || (source as HTMLImageElement).naturalWidth
+    || (source as HTMLCanvasElement).width
+    || size;
+  const sh = (source as HTMLVideoElement).videoHeight
+    || (source as HTMLImageElement).naturalHeight
+    || (source as HTMLCanvasElement).height
+    || size;
+  const r = roi && roi.w > 0 && roi.h > 0 ? roi : null;
+  const sx = r ? r.x * sw : 0;
+  const sy = r ? r.y * sh : 0;
+  const srcW = r ? r.w * sw : sw;
+  const srcH = r ? r.h * sh : sh;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(source, sx, sy, srcW, srcH, 0, 0, size, size);
 }
 
 export async function initApp() {
@@ -100,7 +150,7 @@ export function captureFrameFromVideo(video: HTMLVideoElement) {
   return canvas.toDataURL('image/png');
 }
 
-export async function prepareDatasetForTraining() {
+export async function prepareDatasetForTraining(roi?: Roi | null) {
   const tfModule = await import('@tensorflow/tfjs');
   const mobilenet = get(mobilenetModel);
   if (!mobilenet) throw new Error('Mobilenet not loaded');
@@ -110,6 +160,7 @@ export async function prepareDatasetForTraining() {
 
   const xs: any[] = [];
   const ys: any[] = [];
+  const canvas = document.createElement('canvas');
 
   for (let i = 0; i < classesList.length; i++) {
     const className = classesList[i];
@@ -118,7 +169,8 @@ export async function prepareDatasetForTraining() {
       const img = new Image();
       img.src = example.data;
       await new Promise<void>(r => (img.onload = () => r()));
-      const input = tfModule.browser.fromPixels(img).toFloat().div(127.5).sub(1).resizeBilinear([224, 224]).expandDims(0);
+      drawWithRoi(img, roi ?? null, canvas, 224);
+      const input = tfModule.browser.fromPixels(canvas).toFloat().div(127.5).sub(1).expandDims(0);
       const emb = mobilenet.infer(input, true);
       xs.push(emb.squeeze());
       ys.push(tfModule.oneHot([i], classesList.length).squeeze());
@@ -143,6 +195,13 @@ export type TrainOptions = {
   batchSize?: number;
   learningRate?: number;
   hiddenUnits?: number;
+  // advanced / new
+  featureExtractor?: FeatureExtractor;
+  optimizer?: Optimizer;
+  dropout?: number;
+  validationSplit?: number;
+  earlyStopLoss?: number;
+  roi?: Roi | null;
 };
 
 export async function trainModel(
@@ -155,17 +214,31 @@ export async function trainModel(
   const batchSize = opts.batchSize ?? 16;
   const learningRate = opts.learningRate ?? 0.001;
   const hiddenUnits = opts.hiddenUnits ?? 64;
+  const dropout = Math.max(0, Math.min(0.9, opts.dropout ?? 0));
+  const validationSplit = Math.max(0, Math.min(0.5, opts.validationSplit ?? 0));
+  const earlyStopLoss = Math.max(0, opts.earlyStopLoss ?? 0);
+  const featureExtractor = opts.featureExtractor ?? 'mobilenet-v1';
 
   const tfModule = await import('@tensorflow/tfjs');
-  const data = await prepareDatasetForTraining();
+  await ensureExtractor(featureExtractor);
+  const data = await prepareDatasetForTraining(opts.roi ?? null);
 
   const model = tfModule.sequential();
   const xsShape = (data.xs as any).shape as number[] | undefined;
   if (!xsShape || xsShape.length < 2) throw new Error('Unexpected xs tensor shape');
   const featureCount = xsShape[xsShape.length - 1];
   model.add(tfModule.layers.dense({ inputShape: [featureCount as number], units: hiddenUnits, activation: 'relu' }));
+  if (dropout > 0) {
+    model.add(tfModule.layers.dropout({ rate: dropout }));
+  }
   model.add(tfModule.layers.dense({ units: get(classes).length, activation: 'softmax' }));
-  model.compile({ optimizer: tfModule.train.adam(learningRate), loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
+
+  const optimizerName: Optimizer = opts.optimizer ?? 'adam';
+  const optimizer =
+    optimizerName === 'sgd' ? tfModule.train.sgd(learningRate)
+    : optimizerName === 'rmsprop' ? tfModule.train.rmsprop(learningRate)
+    : tfModule.train.adam(learningRate);
+  model.compile({ optimizer, loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
 
   classifierModel.set(model);
   // reset training history for new training session
@@ -174,12 +247,17 @@ export async function trainModel(
   await model.fit(data.xs, data.ys, {
     epochs,
     batchSize,
+    validationSplit,
+    shuffle: true,
     callbacks: {
-        onEpochEnd: (e: number, logs: any) => {
+      onEpochEnd: (e: number, logs: any) => {
         const acc = (logs && (logs.acc ?? logs.accuracy)) ?? 0;
         const loss = (logs && (logs.loss ?? 0)) ?? 0;
         appendTrainingEpoch(e + 1, acc, loss);
         onEpochEnd?.(e, logs);
+        if (earlyStopLoss > 0 && loss < earlyStopLoss) {
+          (model as any).stopTraining = true;
+        }
       }
     }
   });
@@ -208,7 +286,8 @@ export async function trainModel(
           get(trainingHistory),
           get(trainingOptions),
           [...get(classes)],
-          counts
+          counts,
+          { roi: opts.roi ?? undefined, featureExtractor }
         );
         return { modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' } } as any;
       })
@@ -415,11 +494,14 @@ export async function predictFromVideo(video: HTMLVideoElement) {
     return null;
   }
 
+  // Use ROI + feature extractor stored on the currently loaded trained model.
+  const proj = get(currentProject);
+  const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
+  if (active?.featureExtractor) {
+    await ensureExtractor(active.featureExtractor);
+  }
   const canvas = document.createElement('canvas');
-  canvas.width = 224;
-  canvas.height = 224;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  drawWithRoi(video, active?.roi ?? null, canvas, 224);
 
   let input: any = null;
   let emb: any = null;
@@ -532,6 +614,11 @@ export async function calculateConfusionMatrix() {
   const n = classesList.length;
   const matrix: number[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
 
+  const proj = get(currentProject);
+  const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
+  const roi = active?.roi ?? null;
+  const canvas = document.createElement('canvas');
+
   for (let i = 0; i < classesList.length; i++) {
     const className = classesList[i];
     const classExamples = ex[className] || [];
@@ -539,7 +626,8 @@ export async function calculateConfusionMatrix() {
       const img = new Image();
       img.src = example.data;
       await new Promise<void>(r => (img.onload = () => r()));
-      const input = tfModule.browser.fromPixels(img).toFloat().div(127.5).sub(1).resizeBilinear([224, 224]).expandDims(0);
+      drawWithRoi(img, roi, canvas, 224);
+      const input = tfModule.browser.fromPixels(canvas).toFloat().div(127.5).sub(1).expandDims(0);
       const emb = mobilenet.infer(input, true);
       const predictionTensor: any = await classifier.predict(emb) as any;
       const preds = await predictionTensor.data();
