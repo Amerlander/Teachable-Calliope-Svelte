@@ -228,25 +228,27 @@ namespace teachable {
 
     function handleAllConfidences(rest: string) {
         // Parse space-separated confidences (0..100) for class ids 1..N and
-        // decide if a class event should fire: top class must be above its
-        // per-class threshold AND differ from the previously-fired class.
+        // pick the winner by threshold-normalized headroom: for each class,
+        // remap [threshold..100] -> [0..100] and pick the largest. This way a
+        // class with a low threshold (e.g. 5%) currently at 20% beats a class
+        // with a high threshold (e.g. 70%) currently at 60%.
         const parts = rest.split(" ");
         let topId = 0;
-        let topConf = -1;
+        let topNorm = 0;
         for (let i = 0; i < parts.length; i++) {
             const conf = parseInt(parts[i]);
             const id = i + 1;
             confidences[id] = conf;
-            if (conf > topConf) {
-                topConf = conf;
+            const t = thresholds[id];
+            const thr = t === undefined ? resolveDefault(id) : t;
+            if (conf <= thr || thr >= 100) continue;
+            const norm = Math.idiv((conf - thr) * 100, 100 - thr);
+            if (norm > topNorm) {
+                topNorm = norm;
                 topId = id;
             }
         }
-        if (topId > 0) {
-            const t = thresholds[topId];
-            const thr = t === undefined ? resolveDefault(topId) : t;
-            if (topConf >= thr) fireClassEvent(topId);
-        }
+        if (topId > 0) fireClassEvent(topId);
     }
 
     function handleLine(line: string) {

@@ -45,7 +45,7 @@
   } from '$lib/stores/app';
   import CameraSelect from '$lib/components/CameraSelect.svelte';
   import { currentProject, setClassThreshold } from '$lib/stores/projects';
-  import { streamClassProbabilities, streamPoseKeypoints, smoothingWindow } from '$lib/stores/streaming';
+  import { streamClassProbabilities, streamPoseKeypoints, smoothingWindow, pickWinnerIndex } from '$lib/stores/streaming';
 
   const lang = $derived($currentLang);
   const isPose = $derived($currentProject?.mode === 'pose');
@@ -71,10 +71,14 @@
     return m?.roi ?? null;
   });
   let videoAspect = $state(4 / 3);
+  // Winner is chosen by threshold-normalized score across all classes (see
+  // pickWinnerIndex) — a class with lots of headroom above its threshold beats
+  // a class with higher raw probability that is sitting below its threshold.
   const topLabel = $derived.by(() => {
     if (!prediction) return null;
-    const t = thresholds[prediction.label] ?? 0;
-    return prediction.confidence >= t ? prediction.label : null;
+    const labels = $classes;
+    const idx = pickWinnerIndex(labels, prediction.all, thresholds);
+    return idx < 0 ? null : (labels[idx] ?? null);
   });
   let prediction = $state<{ label: string; confidence: number; all: number[] } | null>(null);
   let predInterval: ReturnType<typeof setInterval> | null = null;
@@ -535,13 +539,15 @@
     {/if}
 
     {#if prediction}
+      {@const topIdx = topLabel ? $classes.indexOf(topLabel) : -1}
+      {@const topConf = topIdx >= 0 ? (prediction.all[topIdx] ?? 0) : prediction.confidence}
       <div class="prediction-display" class:below-threshold={!topLabel}>
         <div class="pred-head">
           <strong>{topLabel ?? '–'}</strong>
-          <span class="pct">{Math.round(prediction.confidence * 100)}%</span>
+          <span class="pct">{Math.round(topConf * 100)}%</span>
         </div>
         <div class="bar-bg">
-          <div class="bar-fill" style="width:{prediction.confidence * 100}%"></div>
+          <div class="bar-fill" style="width:{topConf * 100}%"></div>
         </div>
         {#if !topLabel}
           <span class="below-hint">unter Schwellwert</span>
@@ -558,7 +564,7 @@
           {#each $classes as cls, i (cls)}
             {@const p = prediction.all[i] ?? 0}
             {@const thr = thresholds[cls] ?? 0}
-            {@const triggered = cls === prediction.label && p >= thr}
+            {@const triggered = cls === topLabel && p >= thr}
             <li class:top={triggered}>
               <div class="row1">
                 <span class="name">{cls}</span>

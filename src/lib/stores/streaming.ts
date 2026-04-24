@@ -4,6 +4,7 @@
 
 import { writable, get, type Readable } from 'svelte/store';
 import { sendSerialLine, calliopeState } from './connection';
+import { currentProject } from './projects';
 
 export interface CurrentDetection {
   /** Label of the current top class (after smoothing). */
@@ -53,6 +54,44 @@ export function resetStreamState() {
 }
 
 /**
+ * Normalize a probability against its per-class threshold so the scale
+ * `[threshold, 1]` maps to `[0, 1]`. A probability at or below the threshold
+ * returns 0. Lets us pick a winner by comparing "headroom above threshold"
+ * instead of only letting the argmax class fire when it clears its own
+ * threshold — a class with a low threshold (e.g. 5%) at 20% beats a class
+ * with a high threshold (e.g. 70%) sitting at 60%.
+ */
+export function normalizeAgainstThreshold(p: number, threshold: number): number {
+  const t = Math.max(0, Math.min(1, threshold));
+  const x = Math.max(0, Math.min(1, p));
+  if (t >= 1) return x >= 1 ? 1 : 0;
+  if (x <= t) return 0;
+  return (x - t) / (1 - t);
+}
+
+/**
+ * Pick the winning class index using threshold-normalized scores. Returns
+ * -1 when no class is above its threshold.
+ */
+export function pickWinnerIndex(
+  labels: string[],
+  probabilities: number[],
+  thresholds: Record<string, number>,
+): number {
+  let best = -1;
+  let bestNorm = 0;
+  for (let i = 0; i < labels.length; i++) {
+    const thr = thresholds[labels[i]] ?? 0;
+    const norm = normalizeAgainstThreshold(probabilities[i] ?? 0, thr);
+    if (norm > bestNorm) {
+      bestNorm = norm;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/**
  * Push raw classification probabilities for ALL classes. Internally smooths
  * with a rolling-median window and emits a single `C <c1> <c2> … <cN>` line
  * (0–100 per class) over serial. The Calliope-side extension decides when a
@@ -74,14 +113,19 @@ export function streamClassProbabilities(
   while (history.length > windowSize) history.shift();
 
   const smoothed = medianOfWindow(probabilities.length);
-  let topIdx = 0;
-  let topVal = -1;
-  for (let i = 0; i < smoothed.length; i++) {
-    if (smoothed[i] > topVal) {
-      topVal = smoothed[i];
-      topIdx = i;
+  // Pick the winner by threshold-normalized score. The highest raw probability
+  // no longer automatically wins — a class whose probability exceeds its
+  // threshold by a wider margin (in percentage points of remaining headroom)
+  // is chosen instead. Falls back to argmax when no class is above its threshold.
+  const thresholds = get(currentProject)?.classThresholds ?? {};
+  let topIdx = pickWinnerIndex(labels, smoothed, thresholds);
+  if (topIdx < 0) {
+    topIdx = 0;
+    for (let i = 1; i < smoothed.length; i++) {
+      if (smoothed[i] > smoothed[topIdx]) topIdx = i;
     }
   }
+  const topVal = smoothed[topIdx] ?? 0;
 
   detection.set({
     label: labels[topIdx] ?? '',
