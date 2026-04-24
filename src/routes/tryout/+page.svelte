@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
+  import { Splitpanes, Pane } from 'svelte-splitpanes';
   import {
     setMakecodeIframe,
     createMakeCodeIframeUrl,
@@ -12,6 +13,7 @@
   import { currentLang } from '$lib/stores/app';
   import { currentProject } from '$lib/stores/projects';
   import { classes } from '$lib/stores';
+  import TryoutCamera from '$lib/components/tryout/TryoutCamera.svelte';
 
   let iframeEl: HTMLIFrameElement;
   const src = createMakeCodeIframeUrl(get(currentLang));
@@ -24,9 +26,6 @@
     }
     setMakecodeIframe(iframeEl);
 
-    // If the user already has classes, queue their project so MakeCode opens
-    // it instead of the blank seed. We set it here before the driver asks for
-    // initialProjects — importFromState also keeps it available for re-sync.
     const cls = get(classes);
     if (cls && cls.length > 0) {
       importFromState({
@@ -36,7 +35,6 @@
       });
     }
 
-    // Route MakeCode's Download button to the Calliope flasher.
     const unsubDownload = onMakeCodeDownload(({ name, hex }) => {
       void flashCalliope(hex, name || p.name || 'project');
     });
@@ -49,17 +47,28 @@
 </script>
 
 <div class="tryout-view">
-  <div class="editor-panel panel">
-    <iframe
-      bind:this={iframeEl}
-      title="MakeCode Calliope Editor"
-      {src}
-      allow="usb; bluetooth; autoplay;"
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-      style="width:100%;height:100%;border:0;border-radius:12px;"
-      allowfullscreen
-    ></iframe>
-  </div>
+  {#if $currentProject}
+    <Splitpanes theme="modern-theme">
+      <Pane size={32} minSize={24} maxSize={60}>
+        <div class="panel camera-panel">
+          <TryoutCamera />
+        </div>
+      </Pane>
+      <Pane size={68}>
+        <div class="panel editor-panel">
+          <iframe
+            bind:this={iframeEl}
+            title="MakeCode Calliope Editor"
+            {src}
+            allow="usb; bluetooth; autoplay;"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            style="width:100%;height:100%;border:0;"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </Pane>
+    </Splitpanes>
+  {/if}
 </div>
 
 <style lang="scss">
@@ -67,12 +76,53 @@
     width: 100%;
     height: 100%;
     padding: 16px;
-    padding-left: 16px;
+    display: block;
   }
-  .editor-panel {
+  .panel {
     width: 100%;
     height: 100%;
-    padding: 0;
     overflow: hidden;
+    border-radius: 12px;
+    background: #fff;
+  }
+  .camera-panel {
+    padding: 0;
+  }
+  .editor-panel {
+    padding: 0;
+  }
+
+  :global(.splitpanes.modern-theme) {
+    background: transparent;
+  }
+  :global(.splitpanes.modern-theme .splitpanes__pane) {
+    background: transparent;
+    padding: 0 8px;
+    &:first-child { padding-left: 0; }
+    &:last-child  { padding-right: 0; }
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  :global(.splitpanes.modern-theme .splitpanes__splitter) {
+    background: transparent;
+    position: relative;
+    width: 6px;
+    margin: 0 -3px;
+    z-index: 2;
+    cursor: col-resize;
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      margin: auto 2px;
+      width: 2px;
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 2px;
+      transition: background 0.15s;
+    }
+    &:hover::before {
+      background: rgba(0, 0, 0, 0.35);
+    }
   }
 </style>
