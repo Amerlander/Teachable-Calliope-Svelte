@@ -4,7 +4,9 @@
     calliopeState,
     connectCalliope,
     disconnectCalliope,
+    setCalliopeTransport,
     type CalliopeStatus,
+    type CalliopeTransport,
   } from '$lib/stores/connection';
   import { currentLang, t } from '$lib/stores/app';
 
@@ -40,6 +42,10 @@
     open = false;
     void disconnectCalliope();
   }
+
+  function pickTransport(t: CalliopeTransport) {
+    void setCalliopeTransport(t);
+  }
 </script>
 
 <Dropdown bind:isOpen={open} minWidth="280px" position="right">
@@ -70,6 +76,30 @@
         <div class="meta-row">
           <span class="meta-key">Board</span>
           <span class="meta-val">Calliope mini ({s.calliopeVersion ?? s.boardVersion})</span>
+        </div>
+      {/if}
+
+      {#if s.usbSupported || s.bleSupported}
+        <div class="transport-tabs" role="tablist" aria-label="Transport">
+          <button
+            type="button"
+            role="tab"
+            class="tab"
+            class:active={s.transport === 'usb'}
+            aria-selected={s.transport === 'usb'}
+            disabled={!s.usbSupported || s.status === 'flashing' || s.status === 'connecting'}
+            onclick={() => pickTransport('usb')}
+          >USB</button>
+          <button
+            type="button"
+            role="tab"
+            class="tab"
+            class:active={s.transport === 'ble'}
+            aria-selected={s.transport === 'ble'}
+            disabled={!s.bleSupported || s.status === 'flashing' || s.status === 'connecting'}
+            onclick={() => pickTransport('ble')}
+            title={!s.bleSupported ? 'Web Bluetooth nicht verfügbar' : 'Bluetooth (Stream only, no flashing)'}
+          >BLE</button>
         </div>
       {/if}
 
@@ -226,6 +256,36 @@
     &.muted { color: #666; }
   }
   .meta-key { color: #666; }
+  .transport-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 10px 0 6px;
+    padding: 3px;
+    background: #f3f4f6;
+    border-radius: 8px;
+  }
+  .tab {
+    flex: 1;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #4b5563;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    &:hover:not(:disabled) { background: rgba(0,0,0,0.04); }
+    &.active {
+      background: #fff;
+      color: #111;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
   .flash-block {
     margin: 10px 0;
   }

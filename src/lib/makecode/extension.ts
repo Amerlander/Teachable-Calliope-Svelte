@@ -271,11 +271,23 @@ namespace teachable {
         }
     }
 
-    // Wire up serial. serial.onDataReceived fires per delimiter.
+    // Wire up USB serial. serial.onDataReceived fires per delimiter.
     serial.onDataReceived("\\n", function () {
         const line = serial.readUntil("\\n");
         handleLine(line);
     });
+
+    // Wire up Bluetooth UART so the Teachable app can also stream classifications
+    // wirelessly. The board advertises the UART service; the browser pairs via
+    // Web Bluetooth. Wrapped in try/catch so missing bluetooth package or no
+    // paired central doesn't break USB-only use.
+    try {
+        bluetooth.startUartService();
+        bluetooth.onUartDataReceived("\\n", function () {
+            const line = bluetooth.uartReadUntil("\\n");
+            handleLine(line);
+        });
+    } catch (e) { /* bluetooth unavailable */ }
 }
 `;
 

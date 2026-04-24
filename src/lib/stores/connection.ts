@@ -1,10 +1,19 @@
 import { writable, type Readable } from 'svelte/store';
 import {
   createWebUSBConnection,
+  createWebBluetoothConnection,
   ConnectionStatus,
   type MicrobitWebUSBConnection,
+  type MicrobitWebBluetoothConnection,
   type BoardVersion,
 } from '@microbit/microbit-connection';
+
+/**
+ * Active transport. USB is the canonical path — it's the only one that can
+ * flash the board and it doesn't require the on-board Bluetooth service to be
+ * running. BLE is for wireless streaming of classifications after flashing.
+ */
+export type CalliopeTransport = 'usb' | 'ble';
 
 export type CalliopeStatus =
   | 'unknown'
@@ -35,6 +44,11 @@ export interface CalliopeState {
   errorMessage?: string;
   lastFlashName?: string;
   lastFlashAt?: number;
+  /** Which transport `status` currently reflects. */
+  transport: CalliopeTransport;
+  /** Whether the browser supports each transport. */
+  usbSupported: boolean;
+  bleSupported: boolean;
 }
 
 function detectCalliopeVersion(
@@ -58,10 +72,17 @@ function detectCalliopeVersion(
   return undefined;
 }
 
-const initial: CalliopeState =
-  typeof navigator !== 'undefined' && 'usb' in navigator
-    ? { status: 'disconnected' }
-    : { status: 'unknown' };
+const usbSupported =
+  typeof navigator !== 'undefined' && 'usb' in navigator;
+const bleSupported =
+  typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+
+const initial: CalliopeState = {
+  status: usbSupported || bleSupported ? 'disconnected' : 'unknown',
+  transport: usbSupported ? 'usb' : 'ble',
+  usbSupported,
+  bleSupported,
+};
 
 const state = writable<CalliopeState>(initial);
 export const calliopeState: Readable<CalliopeState> = { subscribe: state.subscribe };
@@ -86,17 +107,29 @@ export function clearCalliopeLog() {
   logStore.set([]);
 }
 
-let conn: MicrobitWebUSBConnection | null = null;
-let initPromise: Promise<MicrobitWebUSBConnection> | null = null;
+let usbConn: MicrobitWebUSBConnection | null = null;
+let bleConn: MicrobitWebBluetoothConnection | null = null;
+let usbInitPromise: Promise<MicrobitWebUSBConnection> | null = null;
+let bleInitPromise: Promise<MicrobitWebBluetoothConnection> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let rxBuffer = '';
+let bleRxBuffer = '';
+let activeTransport: CalliopeTransport = initial.transport;
 const HEARTBEAT_MS = 1000;
+
+function activeConn():
+  | MicrobitWebUSBConnection
+  | MicrobitWebBluetoothConnection
+  | null {
+  return activeTransport === 'usb' ? usbConn : bleConn;
+}
 
 function startHeartbeat() {
   if (heartbeatTimer) return;
   heartbeatTimer = setInterval(() => {
-    if (!conn || conn.status !== ConnectionStatus.CONNECTED) return;
-    void conn.serialWrite('H\n').catch(() => {});
+    const c = activeConn();
+    if (!c || c.status !== ConnectionStatus.CONNECTED) return;
+    void c.serialWrite('H\n').catch(() => {});
   }, HEARTBEAT_MS);
 }
 
@@ -126,14 +159,14 @@ function mapStatus(s: ConnectionStatus): CalliopeStatus {
   }
 }
 
-async function getConnection(): Promise<MicrobitWebUSBConnection> {
-  if (conn) return conn;
-  if (initPromise) return initPromise;
+async function getUsbConnection(): Promise<MicrobitWebUSBConnection> {
+  if (usbConn) return usbConn;
+  if (usbInitPromise) return usbInitPromise;
   if (typeof navigator === 'undefined' || !('usb' in navigator)) {
     state.update((s) => ({ ...s, status: 'unsupported' }));
     throw new Error('WebUSB not supported in this browser');
   }
-  initPromise = (async () => {
+  usbInitPromise = (async () => {
     const { DeviceSelectionMode } = await import('@microbit/microbit-connection');
     const c = createWebUSBConnection({
       deviceSelectionMode: DeviceSelectionMode.UseAnyAllowed,
@@ -145,7 +178,11 @@ async function getConnection(): Promise<MicrobitWebUSBConnection> {
       const pn = (c as unknown as { getDevice?: () => { productName?: string } | undefined })
         .getDevice?.()?.productName;
       const cv = detectCalliopeVersion(pn, bv);
+      // Only apply to the shared state when USB is the active transport.
+      // Otherwise USB's disconnect-on-boot-up would clobber the BLE status.
+      const applyStatus = activeTransport === 'usb';
       state.update((s) => {
+        if (!applyStatus) return { ...s, boardVersion: bv, calliopeVersion: cv ?? s.calliopeVersion };
         if (s.status === 'flashing' && mapped === 'connected') return s;
         return {
           ...s,
@@ -156,6 +193,7 @@ async function getConnection(): Promise<MicrobitWebUSBConnection> {
             mapped === 'error' || mapped === 'connected' ? undefined : s.errorMessage,
         };
       });
+      if (!applyStatus) return;
       if (mapped === 'connected') {
         startHeartbeat();
         appendLog({ direction: 'info', text: 'Connected' });
@@ -165,6 +203,7 @@ async function getConnection(): Promise<MicrobitWebUSBConnection> {
       }
     });
     c.addEventListener('backgrounderror', (ev) => {
+      if (activeTransport !== 'usb') return;
       state.update((s) => ({
         ...s,
         status: 'error',
@@ -195,10 +234,72 @@ async function getConnection(): Promise<MicrobitWebUSBConnection> {
         calliopeVersion: detectCalliopeVersion(pn, bv) ?? s.calliopeVersion,
       }));
     }
-    conn = c;
+    usbConn = c;
     return c;
   })();
-  return initPromise;
+  return usbInitPromise;
+}
+
+/**
+ * Create (or return the cached) BLE connection. Separate from USB because BLE
+ * uses a completely different service (Bluetooth UART) and cannot flash — it
+ * is a wireless streaming path only.
+ */
+async function getBleConnection(): Promise<MicrobitWebBluetoothConnection> {
+  if (bleConn) return bleConn;
+  if (bleInitPromise) return bleInitPromise;
+  if (typeof navigator === 'undefined' || !('bluetooth' in navigator)) {
+    state.update((s) => ({ ...s, status: 'unsupported' }));
+    throw new Error('Web Bluetooth not supported in this browser');
+  }
+  bleInitPromise = (async () => {
+    const c = createWebBluetoothConnection();
+    await c.initialize();
+    c.addEventListener('status', (ev) => {
+      if (activeTransport !== 'ble') return;
+      const mapped = mapStatus(ev.status);
+      state.update((s) => {
+        if (s.status === 'flashing') return s;
+        return {
+          ...s,
+          status: mapped,
+          errorMessage:
+            mapped === 'error' || mapped === 'connected' ? undefined : s.errorMessage,
+        };
+      });
+      if (mapped === 'connected') {
+        startHeartbeat();
+        appendLog({ direction: 'info', text: 'Connected (BLE)' });
+      } else {
+        stopHeartbeat();
+        if (mapped === 'disconnected') appendLog({ direction: 'info', text: 'Disconnected (BLE)' });
+      }
+    });
+    c.addEventListener('backgrounderror', (ev) => {
+      if (activeTransport !== 'ble') return;
+      state.update((s) => ({
+        ...s,
+        status: 'error',
+        errorMessage: ev.errorMessage,
+      }));
+      appendLog({ direction: 'error', text: ev.errorMessage });
+    });
+    c.addEventListener('uartdata', ((ev: unknown) => {
+      // BLE UART delivers bytes — decode as UTF-8 and line-buffer like USB.
+      const value = (ev as { value?: Uint8Array })?.value;
+      if (!value) return;
+      bleRxBuffer += new TextDecoder().decode(value);
+      let idx: number;
+      while ((idx = bleRxBuffer.indexOf('\n')) >= 0) {
+        const line = bleRxBuffer.slice(0, idx).replace(/\r$/, '');
+        bleRxBuffer = bleRxBuffer.slice(idx + 1);
+        if (line) appendLog({ direction: 'rx', text: line });
+      }
+    }) as EventListener);
+    bleConn = c;
+    return c;
+  })();
+  return bleInitPromise;
 }
 
 async function connectWithRetry(c: MicrobitWebUSBConnection, tries = 2): Promise<void> {
@@ -225,11 +326,15 @@ async function connectWithRetry(c: MicrobitWebUSBConnection, tries = 2): Promise
 
 export async function connectCalliope(): Promise<void> {
   try {
-    const c = await getConnection();
-    await connectWithRetry(c);
+    if (activeTransport === 'ble') {
+      const c = await getBleConnection();
+      await c.connect();
+    } else {
+      const c = await getUsbConnection();
+      await connectWithRetry(c);
+    }
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
-    // User-cancelled device chooser shouldn't surface as "error".
     if (/no-device-selected|cancell/i.test(message)) {
       state.update((s) => ({ ...s, status: 'disconnected', errorMessage: undefined }));
       return;
@@ -239,12 +344,32 @@ export async function connectCalliope(): Promise<void> {
 }
 
 export async function disconnectCalliope(): Promise<void> {
-  if (!conn) return;
+  const c = activeConn();
+  if (!c) return;
   try {
-    await conn.disconnect();
+    await c.disconnect();
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Switch between USB and BLE. Disconnects whichever transport is currently
+ * active before the switch; the user then clicks Connect to pair over the new
+ * transport. We never auto-connect on switch because BLE, unlike USB, has no
+ * silent "already-authorized" reconnect path.
+ */
+export async function setCalliopeTransport(t: CalliopeTransport): Promise<void> {
+  if (t === activeTransport) return;
+  if (t === 'usb' && !usbSupported) return;
+  if (t === 'ble' && !bleSupported) return;
+  const prev = activeConn();
+  if (prev && prev.status === ConnectionStatus.CONNECTED) {
+    try { await prev.disconnect(); } catch { /* ignore */ }
+  }
+  activeTransport = t;
+  state.update((s) => ({ ...s, transport: t, status: 'disconnected', errorMessage: undefined }));
+  appendLog({ direction: 'info', text: `Transport switched to ${t.toUpperCase()}` });
 }
 
 /**
@@ -264,7 +389,7 @@ export async function tryAutoReconnect(): Promise<void> {
     );
     if (!authorized) return;
     appendLog({ direction: 'info', text: 'Auto-reconnecting to authorized device' });
-    const c = await getConnection();
+    const c = await getUsbConnection();
     await c.connect();
   } catch (err) {
     // Silent — the user never asked for anything here.
@@ -306,9 +431,19 @@ export async function flashCalliope(
   hex: string,
   name: string = 'project',
 ): Promise<void> {
+  // Flashing always goes through WebUSB (DAPLink). BLE cannot reflash the
+  // board, so switch back to USB and keep it as the active transport once
+  // flashing completes — that's typically what the user wants anyway.
+  if (activeTransport !== 'usb') {
+    await setCalliopeTransport('usb');
+  }
+  if (!usbSupported) {
+    state.update((s) => ({ ...s, status: 'error', errorMessage: 'WebUSB not supported — flashing requires USB' }));
+    return;
+  }
   let c: MicrobitWebUSBConnection;
   try {
-    c = await getConnection();
+    c = await getUsbConnection();
   } catch (err) {
     state.update((s) => ({ ...s, status: 'error', errorMessage: (err as Error).message }));
     return;
@@ -385,12 +520,12 @@ export async function flashCalliope(
   }
 }
 
-/** Send a newline-terminated line to the board over serial. No-op when disconnected. */
+/** Send a newline-terminated line to the board over the active transport. */
 export async function sendSerialLine(line: string): Promise<void> {
-  if (!conn || conn.status !== ConnectionStatus.CONNECTED) return;
+  const c = activeConn();
+  if (!c || c.status !== ConnectionStatus.CONNECTED) return;
   try {
-    await conn.serialWrite(line.endsWith('\n') ? line : line + '\n');
-    // Skip heartbeats from the user-facing log to avoid drowning it out.
+    await c.serialWrite(line.endsWith('\n') ? line : line + '\n');
     if (line.trim() !== 'H') {
       appendLog({ direction: 'tx', text: line.replace(/\n$/, '') });
     }
@@ -399,25 +534,49 @@ export async function sendSerialLine(line: string): Promise<void> {
   }
 }
 
-/** Subscribe to incoming serial data from the board. Returns an unsubscribe fn. */
+/**
+ * Subscribe to line-delimited data from the active transport. Wires up to both
+ * USB (`serialdata`, string) and BLE (`uartdata`, Uint8Array) so the subscriber
+ * keeps working after a `setCalliopeTransport` switch.
+ */
 export function onSerialLine(cb: (line: string) => void): () => void {
-  let buffer = '';
-  const handler = (ev: { data: string }) => {
-    buffer += ev.data;
+  let usbBuf = '';
+  let bleBuf = '';
+  const usbHandler = (ev: { data: string }) => {
+    usbBuf += ev.data;
     let idx: number;
-    while ((idx = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, idx).replace(/\r$/, '');
-      buffer = buffer.slice(idx + 1);
+    while ((idx = usbBuf.indexOf('\n')) >= 0) {
+      const line = usbBuf.slice(0, idx).replace(/\r$/, '');
+      usbBuf = usbBuf.slice(idx + 1);
+      if (line) cb(line);
+    }
+  };
+  const bleHandler = (ev: { value?: Uint8Array }) => {
+    if (!ev.value) return;
+    bleBuf += new TextDecoder().decode(ev.value);
+    let idx: number;
+    while ((idx = bleBuf.indexOf('\n')) >= 0) {
+      const line = bleBuf.slice(0, idx).replace(/\r$/, '');
+      bleBuf = bleBuf.slice(idx + 1);
       if (line) cb(line);
     }
   };
   let disposed = false;
-  void getConnection().then((c) => {
-    if (disposed) return;
-    c.addEventListener('serialdata', handler as unknown as EventListener);
-  });
+  if (usbSupported) {
+    void getUsbConnection().then((c) => {
+      if (disposed) return;
+      c.addEventListener('serialdata', usbHandler as unknown as EventListener);
+    }).catch(() => { /* ignore */ });
+  }
+  if (bleSupported) {
+    void getBleConnection().then((c) => {
+      if (disposed) return;
+      c.addEventListener('uartdata', bleHandler as unknown as EventListener);
+    }).catch(() => { /* ignore */ });
+  }
   return () => {
     disposed = true;
-    if (conn) conn.removeEventListener('serialdata', handler as unknown as EventListener);
+    if (usbConn) usbConn.removeEventListener('serialdata', usbHandler as unknown as EventListener);
+    if (bleConn) bleConn.removeEventListener('uartdata', bleHandler as unknown as EventListener);
   };
 }

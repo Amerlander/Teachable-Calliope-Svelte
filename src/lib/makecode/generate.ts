@@ -35,6 +35,7 @@ function generatePxtJson(name: string): string {
         core: '*',
         v3: '*',
         serial: '*',
+        bluetooth: '*',
       },
       files: [
         FILES.mainBlocks,
