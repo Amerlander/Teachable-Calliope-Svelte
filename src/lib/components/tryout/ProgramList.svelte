@@ -6,6 +6,7 @@
     deleteMakeCodeProgram,
     renameMakeCodeProgram,
     selectMakeCodeProgram,
+    isMakeCodeProgramOutdated,
     type MakeCodeProgram,
   } from '$lib/stores/projects';
   import { importProgramFiles, generateProject } from '$lib/makecode';
@@ -106,7 +107,14 @@
             <div class="meta">{formatDate(p.updatedAt)}</div>
           {:else}
             <button type="button" class="program-row" onclick={() => handleSelect(p)}>
-              <span class="name">{p.name}</span>
+              <span class="name">
+                {p.name}
+                {#if isMakeCodeProgramOutdated(p)}
+                  <span class="outdated-tag" title={t('programs.outdatedHint', lang)}>
+                    {t('programs.outdated', lang)}
+                  </span>
+                {/if}
+              </span>
               <span class="meta">{formatDate(p.updatedAt)}</span>
             </button>
             <div class="actions">
@@ -201,6 +209,20 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .outdated-tag {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
   }
   .main-row {
     display: flex;

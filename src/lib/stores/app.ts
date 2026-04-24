@@ -115,6 +115,9 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     'programs.new': 'Neues Programm',
     'programs.rename': 'Umbenennen',
     'programs.delete': 'Löschen',
+    'programs.outdated': 'veraltet',
+    'programs.outdatedHint':
+      'Dieses Programm wurde mit anderen Klassen/Schwellwerten erstellt. Die eingebettete Erweiterung bleibt unverändert; erstelle ein neues Programm, um die aktuellen Klassen zu verwenden.',
     'apply.layerClasses': 'Klassen',
     'apply.layerDetection': 'Erkennung',
     'apply.layerAngles': 'Winkel',
@@ -197,6 +200,9 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     'programs.new': 'New program',
     'programs.rename': 'Rename',
     'programs.delete': 'Delete',
+    'programs.outdated': 'outdated',
+    'programs.outdatedHint':
+      'This program was created with different classes/thresholds. Its embedded extension is kept unchanged; create a new program to use the current classes.',
     'apply.layerClasses': 'Classes',
     'apply.layerDetection': 'Detection',
     'apply.layerAngles': 'Angles',
