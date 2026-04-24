@@ -14,6 +14,7 @@
   import { currentProject } from '$lib/stores/projects';
   import { classes } from '$lib/stores';
   import TryoutCamera from '$lib/components/tryout/TryoutCamera.svelte';
+  import TryoutDetailPanel from '$lib/components/tryout/TryoutDetailPanel.svelte';
 
   let iframeEl: HTMLIFrameElement;
   const src = createMakeCodeIframeUrl(get(currentLang));
@@ -49,12 +50,15 @@
 <div class="tryout-view">
   {#if $currentProject}
     <Splitpanes theme="modern-theme">
-      <Pane size={32} minSize={24} maxSize={60}>
+      <Pane size={36} minSize={24} maxSize={60}>
         <div class="panel camera-panel">
-          <TryoutCamera />
+          <div class="camera-scroll">
+            <TryoutCamera />
+            <TryoutDetailPanel />
+          </div>
         </div>
       </Pane>
-      <Pane size={68}>
+      <Pane size={64}>
         <div class="panel editor-panel">
           <iframe
             bind:this={iframeEl}
@@ -87,6 +91,12 @@
   }
   .camera-panel {
     padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .camera-scroll {
+    flex: 1;
+    overflow-y: auto;
   }
   .editor-panel {
     padding: 0;

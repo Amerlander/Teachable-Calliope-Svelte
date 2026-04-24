@@ -45,6 +45,7 @@
   } from '$lib/stores/app';
   import CameraSelect from '$lib/components/CameraSelect.svelte';
   import { currentProject, setClassThreshold } from '$lib/stores/projects';
+  import { streamClassification, streamPoseKeypoints } from '$lib/stores/streaming';
 
   const lang = $derived($currentLang);
   const isPose = $derived($currentProject?.mode === 'pose');
@@ -137,6 +138,9 @@
       const pose = await estimatePose(video);
       drawPoseSkeleton(canvas, pose, video.videoWidth, video.videoHeight, { size: 224 });
       setLastPoseCanvas(canvas);
+      if (pose?.keypoints?.length) {
+        streamPoseKeypoints(pose.keypoints, video.videoWidth, video.videoHeight);
+      }
     } catch {
       /* ignore — next tick will retry */
     }
@@ -193,6 +197,7 @@
         }
         lastTickAt = now;
         prediction = { label: res.className, confidence: res.probability, all: res.allProbs ?? [] };
+        streamClassification(res.className, res.index, res.probability);
       } catch {
         /* ignore */
       }

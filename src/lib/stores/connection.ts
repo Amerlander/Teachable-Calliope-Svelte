@@ -34,8 +34,46 @@ const initial: CalliopeState =
 const state = writable<CalliopeState>(initial);
 export const calliopeState: Readable<CalliopeState> = { subscribe: state.subscribe };
 
+// Ring buffer of TX/RX messages for the "communication log" panel.
+export interface CalliopeLogEntry {
+  time: number;
+  direction: 'tx' | 'rx' | 'info' | 'error';
+  text: string;
+}
+const LOG_MAX = 200;
+const logStore = writable<CalliopeLogEntry[]>([]);
+export const calliopeLog: Readable<CalliopeLogEntry[]> = { subscribe: logStore.subscribe };
+function appendLog(entry: Omit<CalliopeLogEntry, 'time'>) {
+  logStore.update((arr) => {
+    const next = arr.length >= LOG_MAX ? arr.slice(arr.length - LOG_MAX + 1) : arr.slice();
+    next.push({ time: Date.now(), ...entry });
+    return next;
+  });
+}
+export function clearCalliopeLog() {
+  logStore.set([]);
+}
+
 let conn: MicrobitWebUSBConnection | null = null;
 let initPromise: Promise<MicrobitWebUSBConnection> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let rxBuffer = '';
+const HEARTBEAT_MS = 1000;
+
+function startHeartbeat() {
+  if (heartbeatTimer) return;
+  heartbeatTimer = setInterval(() => {
+    if (!conn || conn.status !== ConnectionStatus.CONNECTED) return;
+    void conn.serialWrite('H\n').catch(() => {});
+  }, HEARTBEAT_MS);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
 
 function mapStatus(s: ConnectionStatus): CalliopeStatus {
   switch (s) {
@@ -80,6 +118,13 @@ async function getConnection(): Promise<MicrobitWebUSBConnection> {
             mapped === 'error' || mapped === 'connected' ? undefined : s.errorMessage,
         };
       });
+      if (mapped === 'connected') {
+        startHeartbeat();
+        appendLog({ direction: 'info', text: 'Connected' });
+      } else {
+        stopHeartbeat();
+        if (mapped === 'disconnected') appendLog({ direction: 'info', text: 'Disconnected' });
+      }
     });
     c.addEventListener('backgrounderror', (ev) => {
       state.update((s) => ({
@@ -88,7 +133,19 @@ async function getConnection(): Promise<MicrobitWebUSBConnection> {
         errorMessage: ev.errorMessage,
         flashProgress: undefined,
       }));
+      appendLog({ direction: 'error', text: ev.errorMessage });
     });
+    c.addEventListener('serialdata', ((ev: unknown) => {
+      // Buffer at the emitter and emit whole lines.
+      const data = (ev as { data?: string })?.data ?? '';
+      rxBuffer += data;
+      let idx: number;
+      while ((idx = rxBuffer.indexOf('\n')) >= 0) {
+        const line = rxBuffer.slice(0, idx).replace(/\r$/, '');
+        rxBuffer = rxBuffer.slice(idx + 1);
+        if (line) appendLog({ direction: 'rx', text: line });
+      }
+    }) as EventListener);
     state.update((s) => ({
       ...s,
       status: mapStatus(c.status),
@@ -177,13 +234,9 @@ export async function flashCalliope(
   }));
 
   const cleanHex = stripMakeCodeMetadata(hex);
-  // eslint-disable-next-line no-console
-  console.log('[calliope] flashing', {
-    name,
-    rawLen: hex.length,
-    cleanLen: cleanHex.length,
-    stripped: hex.length - cleanHex.length,
-    eofFound: cleanHex.endsWith(':00000001FF') || cleanHex.endsWith(':00000001FF\n') || cleanHex.endsWith(':00000001FF\r\n'),
+  appendLog({
+    direction: 'info',
+    text: `Flashing "${name}" (${Math.round(cleanHex.length / 1024)} KB)`,
   });
   try {
     await c.flash(async () => cleanHex, {
@@ -204,6 +257,18 @@ export async function flashCalliope(
       flashPartial: undefined,
       lastFlashAt: Date.now(),
     }));
+    appendLog({ direction: 'info', text: `Flash finished: ${name}` });
+    // The board resets after flash → DAPLink drops serial and the library
+    // moves to DISCONNECTED. Reopen the connection so streaming keeps working
+    // without the user clicking Connect again.
+    try {
+      await c.connect();
+    } catch (err) {
+      appendLog({
+        direction: 'error',
+        text: `Reconnect after flash failed: ${(err as Error).message}`,
+      });
+    }
   } catch (err) {
     state.update((s) => ({
       ...s,
@@ -211,6 +276,7 @@ export async function flashCalliope(
       errorMessage: (err as Error).message,
       flashProgress: undefined,
     }));
+    appendLog({ direction: 'error', text: `Flash failed: ${(err as Error).message}` });
   }
 }
 
@@ -219,6 +285,10 @@ export async function sendSerialLine(line: string): Promise<void> {
   if (!conn || conn.status !== ConnectionStatus.CONNECTED) return;
   try {
     await conn.serialWrite(line.endsWith('\n') ? line : line + '\n');
+    // Skip heartbeats from the user-facing log to avoid drowning it out.
+    if (line.trim() !== 'H') {
+      appendLog({ direction: 'tx', text: line.replace(/\n$/, '') });
+    }
   } catch {
     /* ignore — caller may be in a tight loop */
   }
