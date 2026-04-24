@@ -8,7 +8,7 @@ export interface ClassName {
 }
 
 function stripAccents(s: string): string {
-  return s.normalize('NFKD').replace(/[̀-ͯ]/g, '');
+  return s.normalize('NFKD').replace(/\p{M}/gu, '');
 }
 
 function toVariable(label: string): string {
@@ -16,15 +16,34 @@ function toVariable(label: string): string {
   const parts = asciiish
     .split(/[\s_]+/)
     .filter(Boolean)
-    .map((p, i) => {
+    .map((p) => {
       const low = p.toLowerCase();
-      return i === 0
-        ? low.charAt(0).toUpperCase() + low.slice(1)
-        : low.charAt(0).toUpperCase() + low.slice(1);
+      return low.charAt(0).toUpperCase() + low.slice(1);
     });
   const joined = parts.join('');
   const safe = joined.replace(/[^A-Za-z0-9_]/g, '');
   return /^[0-9]/.test(safe) ? `_${safe}` : safe || 'Class';
+}
+
+/**
+ * Sanitize a user label for use inside a MakeCode JSDoc attribute like
+ * `block="..."`. MakeCode's comment parser reads each attribute value as a
+ * JSON string, so any raw backslash or control character the user typed will
+ * crash the TS worker with `Bad escaped character in JSON at position ...`.
+ * Drop control chars, flatten backslashes/quotes, collapse whitespace.
+ */
+function sanitizeLabel(raw: string): string {
+  let out = '';
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) {
+      out += ' ';
+      continue;
+    }
+    const ch = raw[i];
+    out += ch === '\\' || ch === '"' ? "'" : ch;
+  }
+  return out.replace(/\s+/g, ' ').trim();
 }
 
 /** Turn user labels into `{ label, variable, id }`, deduplicating variable collisions. */
@@ -32,7 +51,7 @@ export function classNamesFromLabels(labels: string[]): ClassName[] {
   const out: ClassName[] = [];
   const seen = new Set<string>();
   labels.forEach((raw, i) => {
-    const label = (raw ?? '').replace(/"/g, "'").trim() || `Class${i + 1}`;
+    const label = sanitizeLabel(raw ?? '') || `Class${i + 1}`;
     let variable = toVariable(label);
     let suffix = 2;
     const base = variable;
