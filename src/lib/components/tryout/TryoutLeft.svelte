@@ -159,14 +159,12 @@
       try {
         const classifier = get(classifierModel);
         const mobilenet = get(mobilenetModel);
-        console.debug('tryout: classifier ready?', !!classifier, 'mobilenet ready?', !!mobilenet, 'classes', get(classes).length);
+        void classifier; void mobilenet;
         let p: any = null;
         p = await predictFromVideo(webcamTryoutEl);
         if (p) {
           tryoutPrediction = `${p.className}: ${(p.probability * 100).toFixed(1)}%`;
-          console.debug('tryout prediction', tryoutPrediction);
         } else {
-          console.debug('predictFromVideo returned no prediction');
           tryoutPrediction = 'Keine Vorhersage';
         }
         // send change via bluetooth if connected

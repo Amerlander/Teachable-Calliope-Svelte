@@ -11,9 +11,20 @@
     currentLang,
     t
   } from '$lib/stores/app';
-  import { currentProject } from '$lib/stores/projects';
+  import {
+    currentProject,
+    closeCurrentProject,
+    renameCurrentProject,
+    deleteProject
+  } from '$lib/stores/projects';
+  import { exportCurrentProject } from '$lib/projects-io';
+  import { showNotification } from '$lib/stores/notifications';
+  import { classifierModel } from '$lib/stores';
 
   let settingsOpen = $state(false);
+  let editingName = $state(false);
+  let nameInput = $state('');
+  let projectMenuOpen = $state(false);
 
   const active = $derived(
     $page.url.pathname.startsWith('/apply')
@@ -35,6 +46,43 @@
     settingsOpen = false;
     showAIInfoOverlay.set(true);
   }
+
+  function startEditName() {
+    nameInput = $currentProject?.name ?? '';
+    editingName = true;
+  }
+  async function commitEditName() {
+    if (editingName && nameInput.trim() && nameInput.trim() !== $currentProject?.name) {
+      await renameCurrentProject(nameInput.trim());
+    }
+    editingName = false;
+  }
+  function onNameKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+    if (e.key === 'Escape') editingName = false;
+  }
+  function onBackToStart() {
+    classifierModel.set(null);
+    closeCurrentProject();
+    goto('/');
+  }
+  async function onExport() {
+    projectMenuOpen = false;
+    try {
+      await exportCurrentProject();
+      showNotification('Projekt exportiert', { type: 'success' });
+    } catch (err) {
+      showNotification((err as Error).message, { type: 'error' });
+    }
+  }
+  async function onDeleteProject() {
+    projectMenuOpen = false;
+    if (!$currentProject) return;
+    if (!confirm(`Projekt "${$currentProject.name}" wirklich löschen?`)) return;
+    classifierModel.set(null);
+    await deleteProject($currentProject.id);
+    showNotification('Projekt gelöscht', { type: 'success' });
+  }
 </script>
 
 <header id="main-header">
@@ -55,6 +103,38 @@
         <span class="mode-badge mode-badge-{$appMode}">
           {$appMode === 'pose' ? 'POSE' : 'OBJEKT'}
         </span>
+      {/if}
+
+      {#if $currentProject}
+        <div class="project-bar">
+          <button class="icon-btn" title="Zurück zur Übersicht" aria-label="Zurück" onclick={onBackToStart}>
+            ←
+          </button>
+          {#if editingName}
+            <!-- svelte-ignore a11y_autofocus -->
+            <input
+              class="project-name-input"
+              bind:value={nameInput}
+              onblur={commitEditName}
+              onkeydown={onNameKey}
+              autofocus
+            />
+          {:else}
+            <button class="project-name-btn" onclick={startEditName} title="Umbenennen">
+              {$currentProject.name}
+              <span class="edit-hint">✎</span>
+            </button>
+          {/if}
+          <Dropdown bind:isOpen={projectMenuOpen} placement="bottom-end">
+            {#snippet trigger()}
+              <button class="icon-btn" aria-label="Projekt-Menü">⋯</button>
+            {/snippet}
+            {#snippet children()}
+              <DropdownItem onclick={onExport}>Projekt herunterladen</DropdownItem>
+              <DropdownItem onclick={onDeleteProject}>Projekt löschen</DropdownItem>
+            {/snippet}
+          </Dropdown>
+        </div>
       {/if}
     </div>
 
@@ -137,6 +217,62 @@
     }
   }
   .header-right { display: flex; align-items: center; gap: 12px; }
+  .project-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding-left: 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
+  }
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    min-height: unset;
+    padding: 0;
+    font-size: 16px;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    box-shadow: none;
+    &:hover { background: rgba(255, 255, 255, 0.12); }
+  }
+  .project-name-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    min-height: unset;
+    box-shadow: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    .edit-hint { opacity: 0; font-size: 12px; }
+    &:hover {
+      background: rgba(255, 255, 255, 0.12);
+      .edit-hint { opacity: 0.8; }
+    }
+  }
+  .project-name-input {
+    font-size: 15px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    background: rgba(0, 0, 0, 0.3);
+    color: #fff;
+    max-width: 240px;
+  }
   .settings-btn {
     padding: 8px 18px;
     border-radius: 20px;

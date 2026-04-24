@@ -13,7 +13,7 @@
   import { selectedCameraId } from '$lib/stores/camera';
   import { currentProject } from '$lib/stores/projects';
   import {
-    streamClassification,
+    streamClassProbabilities,
     streamPoseKeypoints,
     currentDetection,
     resetStreamState,
@@ -51,7 +51,7 @@
               pose,
               videoEl.videoWidth,
               videoEl.videoHeight,
-              { size: 224 },
+              { size: 512 },
             );
             setLastPoseCanvas(skeletonCanvas);
           }
@@ -64,7 +64,10 @@
       }
       if (modelReady) {
         const p = await predictFromVideo(videoEl);
-        if (p) streamClassification(p.className, p.index, p.probability);
+        if (p) {
+          const labels = $currentProject?.classes ?? [];
+          streamClassProbabilities(labels, p.allProbs);
+        }
       }
     } finally {
       tickInFlight = false;
@@ -121,7 +124,7 @@
   </div>
 
   {#if mode === 'pose'}
-    <canvas bind:this={skeletonCanvas} width="224" height="224" class="offscreen"></canvas>
+    <canvas bind:this={skeletonCanvas} width="512" height="512" class="offscreen"></canvas>
   {/if}
 </div>
 
@@ -145,6 +148,7 @@
     object-fit: contain;
     display: block;
     background: #000;
+    transform: scaleX(-1);
   }
 
   .hud {

@@ -327,10 +327,48 @@ export async function estimatePose(source: HTMLVideoElement | HTMLCanvasElement 
   if (!det) return null;
   try {
     const poses = await det.estimatePoses(source, { flipHorizontal: false });
-    return poses?.[0] ?? null;
+    const raw = poses?.[0] ?? null;
+    return smoothPose(raw);
   } catch {
     return null;
   }
+}
+
+// Exponential keypoint smoothing — reduces MoveNet's per-frame jitter that
+// makes the skeleton appear to "vibrate". Higher alpha = more responsive,
+// lower alpha = smoother. Per-keypoint so hidden points don't drag visible ones.
+const SMOOTH_ALPHA = 0.45;
+let smoothedKp: { x: number; y: number; score: number }[] | null = null;
+
+function smoothPose(pose: Pose | null): Pose | null {
+  if (!pose || !pose.keypoints?.length) {
+    smoothedKp = null;
+    return pose;
+  }
+  if (!smoothedKp || smoothedKp.length !== pose.keypoints.length) {
+    smoothedKp = pose.keypoints.map((p) => ({ x: p.x, y: p.y, score: p.score ?? 0 }));
+    return pose;
+  }
+  const out: Pose['keypoints'] = [];
+  for (let i = 0; i < pose.keypoints.length; i++) {
+    const raw = pose.keypoints[i];
+    const prev = smoothedKp[i];
+    const score = raw.score ?? 0;
+    // If the raw keypoint is low-confidence, decay toward its position gently
+    // but don't let it snap. If high confidence, follow faster.
+    const a = score < 0.3 ? SMOOTH_ALPHA * 0.5 : SMOOTH_ALPHA;
+    const x = prev.x + (raw.x - prev.x) * a;
+    const y = prev.y + (raw.y - prev.y) * a;
+    const s = prev.score + (score - prev.score) * SMOOTH_ALPHA;
+    smoothedKp[i] = { x, y, score: s };
+    out.push({ x, y, score: s, name: raw.name });
+  }
+  return { keypoints: out };
+}
+
+/** Reset the pose-smoothing buffer — call when the camera or session changes. */
+export function resetPoseSmoothing() {
+  smoothedKp = null;
 }
 
 /**
@@ -344,7 +382,7 @@ export function drawPoseSkeleton(
   srcH: number,
   opts: { scoreThreshold?: number; size?: number } = {}
 ) {
-  const size = opts.size ?? canvas.width ?? 224;
+  const size = opts.size ?? canvas.width ?? 512;
   const thr = opts.scoreThreshold ?? 0.3;
   canvas.width = size;
   canvas.height = size;
@@ -361,7 +399,10 @@ export function drawPoseSkeleton(
   const toY = (y: number) => offY + y * scale;
 
   const kp = pose.keypoints;
-  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Bone thickness scales with canvas size so the skeleton looks clean at any resolution.
+  ctx.lineWidth = Math.max(4, Math.round(size / 64));
   ctx.strokeStyle = '#adf54c';
   for (const [a, b] of SKELETON_EDGES) {
     const p = kp[a], q = kp[b];
@@ -373,10 +414,11 @@ export function drawPoseSkeleton(
     ctx.stroke();
   }
   ctx.fillStyle = '#ff5c8a';
+  const r = Math.max(4.5, size / 100);
   for (const p of kp) {
     if ((p.score ?? 1) < thr) continue;
     ctx.beginPath();
-    ctx.arc(toX(p.x), toY(p.y), 4.5, 0, Math.PI * 2);
+    ctx.arc(toX(p.x), toY(p.y), r, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -771,10 +813,7 @@ export const loadTryoutModel = loadModelFromZip;
 export async function predictFromVideo(video: HTMLVideoElement) {
   const classifier = get(classifierModel);
   const classesList = get(classes);
-  if (!classifier || !video) {
-    if (dev) console.debug('predictFromVideo early exit', { classifier: !!classifier, video: !!video });
-    return null;
-  }
+  if (!classifier || !video) return null;
 
   // Use ROI + feature extractor stored on the currently loaded trained model.
   const proj = get(currentProject);
@@ -794,12 +833,6 @@ export async function predictFromVideo(video: HTMLVideoElement) {
     batched = emb.expandDims(0);
     predictionTensor = await classifier.predict(batched) as any;
     const preds = (await predictionTensor.data()) as any;
-    if (dev) console.debug('predictFromVideo preds', preds, 'classesLen', get(classes).length);
-    // warn if number of classes doesn't match the predictions length
-    const clsLen = get(classes).length;
-    if (clsLen > 0 && preds.length !== clsLen) {
-      console.warn('[predictFromVideo] mismatch classes length vs preds length', { classes: clsLen, predsLen: preds.length });
-    }
   let maxProb = 0;
   let maxIndex = 0;
   for (let i = 0; i < preds.length; i++) {

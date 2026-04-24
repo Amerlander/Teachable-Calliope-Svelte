@@ -1,13 +1,10 @@
 <script lang="ts">
-  import ProjectHeader from './ProjectHeader.svelte';
   import ClassesTab from './ClassesTab.svelte';
   import ModelTab from './ModelTab.svelte';
   import { workspaceTab } from '$lib/stores/app';
 </script>
 
 <div class="workspace">
-  <ProjectHeader />
-
   <div class="tabs">
     <button class="tab" class:active={$workspaceTab === 'classes'} onclick={() => workspaceTab.set('classes')}>
       Klassen

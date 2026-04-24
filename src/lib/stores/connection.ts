@@ -15,15 +15,47 @@ export type CalliopeStatus =
   | 'flashing'
   | 'error';
 
+/**
+ * Calliope hardware family. Independent of the micro:bit library's BoardVersion
+ * (which only knows V1/V2). Calliope mini 1 and 2 both ship the DAL firmware and
+ * map to micro:bit V1-class silicon; mini 3 ships CODAL and maps to V2-class silicon.
+ * We derive the Calliope version from the WebUSB device's productName string
+ * (DAPLink reports "Arm Calliope mini V3 CMSIS-DAP" for mini 3).
+ */
+export type CalliopeVersion = 'V1' | 'V2' | 'V3';
+
 export interface CalliopeState {
   status: CalliopeStatus;
   boardVersion?: BoardVersion;
+  /** Calliope-family version — V1/V2 (DAL) or V3 (CODAL). */
+  calliopeVersion?: CalliopeVersion;
   /** 0–100 when flashing is active. Undefined when not flashing or indeterminate. */
   flashProgress?: number;
   flashPartial?: boolean;
   errorMessage?: string;
   lastFlashName?: string;
   lastFlashAt?: number;
+}
+
+function detectCalliopeVersion(
+  productName: string | undefined,
+  boardVersion: BoardVersion | undefined,
+): CalliopeVersion | undefined {
+  // Product name is the most reliable signal: DAPLink firmware on mini 3 advertises
+  // "Arm Calliope mini V3 CMSIS-DAP". Older mini 1/2 boards advertise "V1"/"V2".
+  if (productName) {
+    const m = /Calliope[^V]*V(\d)/i.exec(productName);
+    if (m) {
+      const n = m[1];
+      if (n === '1' || n === '2' || n === '3') return `V${n}` as CalliopeVersion;
+    }
+  }
+  // Fall back to the micro:bit library's board version: mini 3 is CODAL/V2-class,
+  // mini 1/2 are DAL/V1-class. Without the productName hint we can't disambiguate
+  // mini 2 from mini 3, but we at least avoid labelling mini 3 as V1.
+  if (boardVersion === 'V2') return 'V3';
+  if (boardVersion === 'V1') return 'V1';
+  return undefined;
 }
 
 const initial: CalliopeState =
@@ -109,14 +141,17 @@ async function getConnection(): Promise<MicrobitWebUSBConnection> {
     await c.initialize();
     c.addEventListener('status', (ev) => {
       const mapped = mapStatus(ev.status);
+      const bv = c.getBoardVersion();
+      const pn = (c as unknown as { getDevice?: () => { productName?: string } | undefined })
+        .getDevice?.()?.productName;
+      const cv = detectCalliopeVersion(pn, bv);
       state.update((s) => {
-        // Don't clobber the 'flashing' status when the underlying connection
-        // just says CONNECTED during flash progress events.
         if (s.status === 'flashing' && mapped === 'connected') return s;
         return {
           ...s,
           status: mapped,
-          boardVersion: c.getBoardVersion(),
+          boardVersion: bv,
+          calliopeVersion: cv ?? s.calliopeVersion,
           errorMessage:
             mapped === 'error' || mapped === 'connected' ? undefined : s.errorMessage,
         };
@@ -149,21 +184,49 @@ async function getConnection(): Promise<MicrobitWebUSBConnection> {
         if (line) appendLog({ direction: 'rx', text: line });
       }
     }) as EventListener);
-    state.update((s) => ({
-      ...s,
-      status: mapStatus(c.status),
-      boardVersion: c.getBoardVersion(),
-    }));
+    {
+      const bv = c.getBoardVersion();
+      const pn = (c as unknown as { getDevice?: () => { productName?: string } | undefined })
+        .getDevice?.()?.productName;
+      state.update((s) => ({
+        ...s,
+        status: mapStatus(c.status),
+        boardVersion: bv,
+        calliopeVersion: detectCalliopeVersion(pn, bv) ?? s.calliopeVersion,
+      }));
+    }
     conn = c;
     return c;
   })();
   return initPromise;
 }
 
+async function connectWithRetry(c: MicrobitWebUSBConnection, tries = 2): Promise<void> {
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      await c.connect();
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = (err as Error)?.message ?? '';
+      // User cancellation and unsupported — don't retry.
+      if (/no-device-selected|cancell|not.?supported/i.test(msg)) throw err;
+      appendLog({
+        direction: 'info',
+        text: `Connect attempt ${i + 1} failed: ${msg}`,
+      });
+      // Brief backoff; DAPLink sometimes needs a moment after a failed handshake.
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
+  throw lastErr;
+}
+
 export async function connectCalliope(): Promise<void> {
   try {
     const c = await getConnection();
-    await c.connect();
+    await connectWithRetry(c);
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
     // User-cancelled device chooser shouldn't surface as "error".
@@ -252,7 +315,7 @@ export async function flashCalliope(
   }
   if (c.status !== ConnectionStatus.CONNECTED) {
     try {
-      await c.connect();
+      await connectWithRetry(c);
     } catch (err) {
       const message = (err as Error)?.message ?? String(err);
       if (/no-device-selected|cancell/i.test(message)) {
@@ -300,9 +363,11 @@ export async function flashCalliope(
     appendLog({ direction: 'info', text: `Flash finished: ${name}` });
     // The board resets after flash → DAPLink drops serial and the library
     // moves to DISCONNECTED. Reopen the connection so streaming keeps working
-    // without the user clicking Connect again.
+    // without the user clicking Connect again. Give the board a moment to
+    // re-enumerate before the reconnect handshake, or it races the reset.
+    await new Promise((r) => setTimeout(r, 600));
     try {
-      await c.connect();
+      await connectWithRetry(c, 3);
     } catch (err) {
       appendLog({
         direction: 'error',

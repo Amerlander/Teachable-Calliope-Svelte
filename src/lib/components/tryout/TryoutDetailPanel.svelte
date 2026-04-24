@@ -15,6 +15,7 @@
   const det = $derived($currentDetection);
   const log = $derived($calliopeLog);
   const mode = $derived($currentProject?.mode ?? 'image');
+  const thresholds = $derived($currentProject?.classThresholds ?? {});
 
   const statusLabel = $derived(
     s.status === 'connected'
@@ -42,20 +43,28 @@
   <section>
     <h4>{t('detail.currentDetection', lang)}</h4>
     {#if det}
-      <div class="detection">
-        <div class="det-label">{det.label}</div>
-        <div class="det-bar">
-          <div
-            class="det-bar-fill"
-            class:confident={det.confidence >= 0.7}
-            style="width: {(det.confidence * 100).toFixed(0)}%"
-          ></div>
-        </div>
-        <div class="det-conf">{(det.confidence * 100).toFixed(0)}%</div>
-      </div>
+      <ul class="score-list">
+        {#each det.labels as cls, i (cls)}
+          {@const p = det.all[i] ?? 0}
+          {@const thr = thresholds[cls] ?? 0.6}
+          {@const top = i === det.id - 1}
+          {@const triggered = top && p >= thr}
+          <li class:top={triggered}>
+            <div class="row1">
+              <span class="name">{cls}</span>
+              <span class="sub-pct">
+                <span class="pct-val">{Math.round(p * 100)}%</span>
+                <span class="thr-val">· {Math.round(thr * 100)}%</span>
+              </span>
+            </div>
+            <div class="sub-bar" aria-hidden="true">
+              <span class="sub-fill" class:triggered style="width:{p * 100}%"></span>
+              <span class="threshold-marker" style="left:{thr * 100}%" title="Schwellwert {Math.round(thr * 100)}%"></span>
+            </div>
+          </li>
+        {/each}
+      </ul>
       <div class="det-meta">
-        <span>ID #{det.id}</span>
-        <span>&middot;</span>
         <span>{mode === 'pose' ? 'Pose' : 'Objekt'}</span>
         <span>&middot;</span>
         <span>{formatTime(det.at)}</span>
@@ -71,8 +80,8 @@
     <div class="conn-row">
       <span class="dot status-{s.status}"></span>
       <span class="status-text">{statusLabel}</span>
-      {#if s.boardVersion}
-        <span class="muted">&middot; Calliope mini ({s.boardVersion})</span>
+      {#if s.calliopeVersion || s.boardVersion}
+        <span class="muted">&middot; Calliope mini ({s.calliopeVersion ?? s.boardVersion})</span>
       {/if}
     </div>
 
@@ -179,43 +188,55 @@
     font-size: 12px;
     font-style: italic;
   }
-  .detection {
+  .score-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
     display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .det-label {
-    font-weight: 600;
-    flex: 0 0 auto;
-    max-width: 50%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .det-bar {
-    flex: 1;
-    height: 6px;
-    background: #e5e7eb;
-    border-radius: 3px;
-    overflow: hidden;
-  }
-  .det-bar-fill {
-    height: 100%;
-    background: #9ca3af;
-    transition: width 0.15s;
-    &.confident { background: #22c55e; }
-  }
-  .det-conf {
-    font-variant-numeric: tabular-nums;
-    font-size: 12px;
-    color: #555;
-    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 6px;
+    li {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      &.top .name { font-weight: 600; }
+    }
+    .row1 {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+    .name { color: #222; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sub-pct { font-variant-numeric: tabular-nums; color: #555; }
+    .thr-val { color: #888; margin-left: 2px; }
+    .sub-bar {
+      position: relative;
+      height: 6px;
+      background: #e5e7eb;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .sub-fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      background: #9ca3af;
+      transition: width 0.15s;
+      &.triggered { background: #22c55e; }
+    }
+    .threshold-marker {
+      position: absolute;
+      top: -2px; bottom: -2px;
+      width: 2px;
+      background: #1b1c1d;
+      transform: translateX(-1px);
+    }
   }
   .det-meta {
     display: flex;
     gap: 6px;
     font-size: 11px;
     color: #888;
+    margin-top: 4px;
   }
 
   .conn-row {

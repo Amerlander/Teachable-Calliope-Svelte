@@ -17,7 +17,8 @@
       "Read(//c/GIT/Calliope/Teachable-Calliope-Svelte/src/lib/**)",
       "Read(//c/GIT/Calliope/Teachable-Calliope-Svelte/src/lib/components/training/**)",
       "Bash(git stash *)",
-      "Read(//c/temp/calliope-makecode-embed/**)"
+      "Read(//c/temp/calliope-makecode-embed/**)",
+      "Bash(pnpm exec *)"
     ]
   }
 }

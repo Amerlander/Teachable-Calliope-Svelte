@@ -45,7 +45,7 @@
   } from '$lib/stores/app';
   import CameraSelect from '$lib/components/CameraSelect.svelte';
   import { currentProject, setClassThreshold } from '$lib/stores/projects';
-  import { streamClassification, streamPoseKeypoints } from '$lib/stores/streaming';
+  import { streamClassProbabilities, streamPoseKeypoints, smoothingWindow } from '$lib/stores/streaming';
 
   const lang = $derived($currentLang);
   const isPose = $derived($currentProject?.mode === 'pose');
@@ -136,7 +136,7 @@
     }
     try {
       const pose = await estimatePose(video);
-      drawPoseSkeleton(canvas, pose, video.videoWidth, video.videoHeight, { size: 224 });
+      drawPoseSkeleton(canvas, pose, video.videoWidth, video.videoHeight, { size: 512 });
       setLastPoseCanvas(canvas);
       if (pose?.keypoints?.length) {
         streamPoseKeypoints(pose.keypoints, video.videoWidth, video.videoHeight);
@@ -197,7 +197,7 @@
         }
         lastTickAt = now;
         prediction = { label: res.className, confidence: res.probability, all: res.allProbs ?? [] };
-        streamClassification(res.className, res.index, res.probability);
+        streamClassProbabilities($classes, res.allProbs ?? []);
       } catch {
         /* ignore */
       }
@@ -391,6 +391,61 @@
     captureInterval = setInterval(() => { void doCapture(); }, 120);
   }
 
+  // Advanced (unattended) recording: after an initial delay, take N pictures
+  // spaced by a fixed interval. Cancellable mid-run.
+  let advDelaySec = $state(3);
+  let advCount = $state(10);
+  let advIntervalMs = $state(500);
+  let advancedRunningClass = $state<string | null>(null);
+  let advancedRemaining = $state(0);
+  let advancedCountdown = $state(0);
+  let advancedTimers: ReturnType<typeof setTimeout>[] = [];
+
+  function cancelAdvanced() {
+    for (const t of advancedTimers) clearTimeout(t);
+    advancedTimers = [];
+    advancedRunningClass = null;
+    advancedRemaining = 0;
+    advancedCountdown = 0;
+  }
+
+  async function startAdvanced(cls: string) {
+    if (advancedRunningClass) return;
+    if (capturingClass) stopRecord();
+    setActiveClass(cls);
+    advancedRunningClass = cls;
+    const poseMode = isPose;
+
+    // Initial delay with a visible countdown (whole seconds).
+    const delayMs = Math.max(0, Math.round(advDelaySec * 1000));
+    for (let s = advDelaySec; s > 0; s--) {
+      const elapsedMs = (advDelaySec - s) * 1000;
+      advancedTimers.push(setTimeout(() => { advancedCountdown = s; }, elapsedMs));
+    }
+    advancedTimers.push(setTimeout(() => { advancedCountdown = 0; }, delayMs));
+
+    const total = Math.max(1, Math.floor(advCount));
+    advancedRemaining = total;
+    const stepMs = Math.max(50, Math.floor(advIntervalMs));
+
+    for (let i = 0; i < total; i++) {
+      const at = delayMs + i * stepMs;
+      advancedTimers.push(setTimeout(async () => {
+        if (advancedRunningClass !== cls) return;
+        const v = activeCaptureVideo();
+        if (v) {
+          const data = poseMode ? await capturePoseFrameFromVideo(v) : captureFrameFromVideo(v);
+          if (data) pushExample(cls, data);
+        }
+        advancedRemaining = total - (i + 1);
+        if (i === total - 1) {
+          advancedRunningClass = null;
+          advancedTimers = [];
+        }
+      }, at));
+    }
+  }
+
   function stopRecord() {
     capturingClass = null;
     if (captureInterval) {
@@ -449,7 +504,7 @@
       <track kind="captions" />
     </video>
     {#if isPose}
-      <canvas class="pose-overlay" bind:this={poseCanvasTrain} width="224" height="224"></canvas>
+      <canvas class="pose-overlay" bind:this={poseCanvasTrain} width="512" height="512"></canvas>
     {/if}
 
     {#if !cameraReady}
@@ -469,7 +524,7 @@
       <track kind="captions" />
     </video>
     {#if isPose}
-      <canvas class="pose-overlay" bind:this={poseCanvasTest} width="224" height="224"></canvas>
+      <canvas class="pose-overlay" bind:this={poseCanvasTest} width="512" height="512"></canvas>
     {/if}
 
     {#if !cameraReady}
@@ -530,6 +585,20 @@
             </li>
           {/each}
         </ul>
+        <div class="smoothing">
+          <label for="smoothing-slider" class="smoothing-label">
+            Glättung (Fenster): <strong>{$smoothingWindow}</strong>
+          </label>
+          <input
+            id="smoothing-slider"
+            type="range"
+            min="1"
+            max="20"
+            step="1"
+            bind:value={$smoothingWindow}
+          />
+          <span class="smoothing-hint">Median über die letzten N Vorhersagen</span>
+        </div>
       </div>
     {/if}
 
@@ -560,7 +629,7 @@
         <track kind="captions" />
       </video>
       {#if isPose}
-        <canvas class="pose-overlay" bind:this={poseCanvasPrep} width="224" height="224"></canvas>
+        <canvas class="pose-overlay" bind:this={poseCanvasPrep} width="512" height="512"></canvas>
       {/if}
 
       {#if !cameraReady}
@@ -676,15 +745,52 @@
             <button
               type="button"
               class="record-btn"
-              class:recording={capturingClass === cls}
+              class:recording={capturingClass === cls || advancedRunningClass === cls}
               aria-label="Bild aufnehmen"
               title="Halten zum Aufnehmen"
+              disabled={!!advancedRunningClass && advancedRunningClass !== cls}
               onpointerdown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); startRecord(cls); }}
               onpointerup={stopRecord}
               onpointercancel={stopRecord}
             >
               <span class="record-dot"></span>
+              {#if advancedRunningClass === cls}
+                {#if advancedCountdown > 0}
+                  <span class="adv-badge">{advancedCountdown}</span>
+                {:else}
+                  <span class="adv-badge">{advancedRemaining}</span>
+                {/if}
+              {/if}
             </button>
+            <Dropdown placement="bottom-end" minWidth="260px">
+              {#snippet trigger()}
+                <Button variant="ghost" size="small" aria-label="Erweiterte Aufnahme" title="Erweiterte Aufnahme">⋯</Button>
+              {/snippet}
+              {#snippet children()}
+                <div class="adv-popover">
+                  <div class="adv-title">Erweiterte Aufnahme</div>
+                  <label class="adv-row">
+                    <span>Verzögerung vor Start (s)</span>
+                    <input type="number" min="0" max="30" bind:value={advDelaySec} />
+                  </label>
+                  <label class="adv-row">
+                    <span>Anzahl Bilder</span>
+                    <input type="number" min="1" max="500" bind:value={advCount} />
+                  </label>
+                  <label class="adv-row">
+                    <span>Abstand (ms)</span>
+                    <input type="number" min="50" max="5000" step="50" bind:value={advIntervalMs} />
+                  </label>
+                  <div class="adv-actions">
+                    {#if advancedRunningClass === cls}
+                      <button class="adv-btn danger" type="button" onclick={cancelAdvanced}>Abbrechen</button>
+                    {:else}
+                      <button class="adv-btn primary" type="button" onclick={() => startAdvanced(cls)} disabled={!!advancedRunningClass}>Start</button>
+                    {/if}
+                  </div>
+                </div>
+              {/snippet}
+            </Dropdown>
           </div>
         </div>
       {/each}
@@ -978,6 +1084,7 @@
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
   }
   .record-btn {
+    position: relative;
     flex: 0 0 auto;
     width: 48px;
     height: 48px;
@@ -1270,6 +1377,100 @@
         }
       }
     }
+    .smoothing {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid rgb(var(--md-outline-variant));
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .smoothing-label {
+      font-size: 12px;
+      color: rgb(var(--md-on-surface-variant));
+      strong { color: rgb(var(--md-on-surface)); font-variant-numeric: tabular-nums; }
+    }
+    .smoothing input[type="range"] {
+      width: 100%;
+      accent-color: rgb(var(--md-primary));
+    }
+    .smoothing-hint {
+      font-size: 10px;
+      color: rgb(var(--md-on-surface-variant));
+      opacity: 0.8;
+    }
+  }
+  .adv-popover {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: rgb(var(--md-on-surface));
+  }
+  .adv-title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+  .adv-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: rgb(var(--md-on-surface-variant));
+    input {
+      width: 80px;
+      padding: 4px 6px;
+      border: 1px solid rgb(var(--md-outline-variant));
+      border-radius: 6px;
+      font-size: 12px;
+      background: rgb(var(--md-surface));
+      color: rgb(var(--md-on-surface));
+    }
+  }
+  .adv-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+  }
+  .adv-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: none;
+    min-height: unset;
+    &.primary {
+      background: rgb(var(--md-primary));
+      color: rgb(var(--md-on-primary));
+      &:disabled { opacity: 0.5; cursor: default; }
+    }
+    &.danger {
+      background: transparent;
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+  }
+  .adv-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: rgb(var(--md-primary));
+    color: rgb(var(--md-on-primary));
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
   }
   .prediction-display {
     &.below-threshold {

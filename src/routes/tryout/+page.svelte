@@ -47,6 +47,7 @@
         name: p.name || 'Teachable Project',
         mode: p.mode ?? 'image',
         classes: cls ?? [],
+        thresholds: p.classThresholds ?? {},
       });
       const fresh = addMakeCodeProgram({
         files: (mcp.text ?? {}) as Record<string, string>,

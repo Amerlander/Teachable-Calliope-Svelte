@@ -180,6 +180,19 @@ export function importProgramFiles(
 /** Expose the generator for callers that want to inspect/persist the project. */
 export const generateProject = generateProjectImpl;
 
+export type MakeCodeLang = 'blocks' | 'js' | 'python';
+
+export async function switchMakeCodeLang(lang: MakeCodeLang): Promise<void> {
+  if (!active) return;
+  try {
+    if (lang === 'blocks') await active.driver.switchBlocks();
+    else if (lang === 'js') await active.driver.switchJavascript();
+    else await active.driver.switchPython();
+  } catch {
+    /* driver not ready — user can try again */
+  }
+}
+
 export function onMakeCodeDownload(cb: DownloadHandler): () => void {
   if (!active) return () => {};
   active.downloadHandlers.add(cb);

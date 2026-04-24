@@ -33,6 +33,7 @@
       name: proj.name || 'Teachable',
       mode: proj.mode ?? 'image',
       classes: get(classes),
+      thresholds: proj.classThresholds ?? {},
     });
     const fresh = addMakeCodeProgram({
       files: (mcp.text ?? {}) as Record<string, string>,

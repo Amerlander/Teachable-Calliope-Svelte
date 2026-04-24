@@ -66,10 +66,10 @@
         </div>
       </div>
 
-      {#if s.boardVersion}
+      {#if s.calliopeVersion || s.boardVersion}
         <div class="meta-row">
           <span class="meta-key">Board</span>
-          <span class="meta-val">Calliope mini ({s.boardVersion})</span>
+          <span class="meta-val">Calliope mini ({s.calliopeVersion ?? s.boardVersion})</span>
         </div>
       {/if}
 
