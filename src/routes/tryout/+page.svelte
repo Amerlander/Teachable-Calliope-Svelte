@@ -6,15 +6,21 @@
   import {
     setMakecodeIframe,
     createMakeCodeIframeUrl,
-    importFromState,
+    importProgramFiles,
     onMakeCodeDownload,
+    generateProject,
   } from '$lib/makecode';
   import { flashCalliope } from '$lib/stores/connection';
   import { currentLang } from '$lib/stores/app';
-  import { currentProject } from '$lib/stores/projects';
+  import {
+    currentProject,
+    addMakeCodeProgram,
+    getCurrentMakeCodeProgram,
+  } from '$lib/stores/projects';
   import { classes } from '$lib/stores';
   import TryoutCamera from '$lib/components/tryout/TryoutCamera.svelte';
   import TryoutDetailPanel from '$lib/components/tryout/TryoutDetailPanel.svelte';
+  import ProgramList from '$lib/components/tryout/ProgramList.svelte';
 
   let iframeEl: HTMLIFrameElement;
   const src = createMakeCodeIframeUrl(get(currentLang));
@@ -27,13 +33,26 @@
     }
     setMakecodeIframe(iframeEl);
 
-    const cls = get(classes);
-    if (cls && cls.length > 0) {
-      importFromState({
+    // Decide what to open in MakeCode:
+    //   1. If the project already has an active saved program → reload that.
+    //   2. Else create one: a fresh generated starter from current classes if
+    //      training has happened, or a bare empty project otherwise. Either way
+    //      it becomes program 1 so future edits are persisted automatically.
+    const active = getCurrentMakeCodeProgram();
+    if (active) {
+      importProgramFiles(active.files, active.header);
+    } else {
+      const cls = get(classes);
+      const mcp = generateProject({
         name: p.name || 'Teachable Project',
         mode: p.mode ?? 'image',
-        classes: cls,
+        classes: cls ?? [],
       });
+      const fresh = addMakeCodeProgram({
+        files: (mcp.text ?? {}) as Record<string, string>,
+        header: mcp.header,
+      });
+      if (fresh) importProgramFiles(fresh.files, fresh.header);
     }
 
     const unsubDownload = onMakeCodeDownload(({ name, hex }) => {
@@ -53,6 +72,7 @@
       <Pane size={36} minSize={24} maxSize={60}>
         <div class="panel camera-panel">
           <div class="camera-scroll">
+            <ProgramList />
             <TryoutCamera />
             <TryoutDetailPanel />
           </div>

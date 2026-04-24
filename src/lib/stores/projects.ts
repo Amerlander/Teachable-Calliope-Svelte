@@ -94,6 +94,22 @@ export type TrainedModel = {
   featureExtractor?: FeatureExtractor;
 };
 
+/**
+ * A saved MakeCode program within a Teachable project. Carries the full
+ * MakeCode file map (`text`) so we can push it back into the editor on reload
+ * or when the user switches between programs in the sidebar.
+ */
+export type MakeCodeProgram = {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  /** The MakeCodeProject file map, e.g. { 'main.ts': '...', 'main.blocks': '...', ... } */
+  files: Record<string, string>;
+  /** Optional MakeCodeProject header carried over from workspace save. */
+  header?: unknown;
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -110,6 +126,8 @@ export type Project = {
   modelHistory: TrainedModel[];
   currentModelId: string | null;
   classThresholds?: Record<string, number>;
+  makeCodePrograms?: MakeCodeProgram[];
+  currentProgramId?: string | null;
 };
 
 export type ProjectSummary = {
@@ -160,7 +178,90 @@ function hydrate(p: Project): Project {
   if (!p.modelHistory) p.modelHistory = [];
   if (p.currentModelId === undefined) p.currentModelId = null;
   if (!p.classThresholds) p.classThresholds = {};
+  if (!p.makeCodePrograms) p.makeCodePrograms = [];
+  if (p.currentProgramId === undefined) p.currentProgramId = null;
   return p;
+}
+
+function genProgramId(): string {
+  return `pgm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** Add a new MakeCode program to the current project and make it active. */
+export function addMakeCodeProgram(init: {
+  name?: string;
+  files: Record<string, string>;
+  header?: unknown;
+}): MakeCodeProgram | null {
+  const p = get(currentProject);
+  if (!p) return null;
+  const now = Date.now();
+  const program: MakeCodeProgram = {
+    id: genProgramId(),
+    name: init.name || `Programm ${(p.makeCodePrograms?.length ?? 0) + 1}`,
+    createdAt: now,
+    updatedAt: now,
+    files: init.files,
+    header: init.header,
+  };
+  updateProject((proj) => {
+    if (!proj.makeCodePrograms) proj.makeCodePrograms = [];
+    proj.makeCodePrograms.push(program);
+    proj.currentProgramId = program.id;
+  });
+  return program;
+}
+
+export function selectMakeCodeProgram(id: string): MakeCodeProgram | null {
+  const p = get(currentProject);
+  if (!p) return null;
+  const found = (p.makeCodePrograms ?? []).find((x) => x.id === id);
+  if (!found) return null;
+  updateProject((proj) => {
+    proj.currentProgramId = id;
+  });
+  return found;
+}
+
+export function renameMakeCodeProgram(id: string, name: string): void {
+  updateProject((proj) => {
+    if (!proj.makeCodePrograms) return;
+    proj.makeCodePrograms = proj.makeCodePrograms.map((x) =>
+      x.id === id ? { ...x, name, updatedAt: Date.now() } : x,
+    );
+  });
+}
+
+export function deleteMakeCodeProgram(id: string): void {
+  updateProject((proj) => {
+    const list = (proj.makeCodePrograms ?? []).filter((x) => x.id !== id);
+    proj.makeCodePrograms = list;
+    if (proj.currentProgramId === id) {
+      proj.currentProgramId = list[list.length - 1]?.id ?? null;
+    }
+  });
+}
+
+/** Update the content of a specific program. Used from the MakeCode onWorkspaceSave hook. */
+export function updateMakeCodeProgramFiles(
+  id: string,
+  files: Record<string, string>,
+  header?: unknown,
+): void {
+  updateProject((proj) => {
+    if (!proj.makeCodePrograms) return;
+    proj.makeCodePrograms = proj.makeCodePrograms.map((x) =>
+      x.id === id
+        ? { ...x, files, header: header ?? x.header, updatedAt: Date.now() }
+        : x,
+    );
+  });
+}
+
+export function getCurrentMakeCodeProgram(): MakeCodeProgram | null {
+  const p = get(currentProject);
+  if (!p || !p.currentProgramId) return null;
+  return (p.makeCodePrograms ?? []).find((x) => x.id === p.currentProgramId) ?? null;
 }
 
 export function setClassThreshold(cls: string, threshold: number): void {

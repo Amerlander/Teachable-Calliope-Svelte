@@ -9,6 +9,11 @@ import {
   createCalliopeSeedProject,
   type GenerateOptions,
 } from './makecode/generate';
+import {
+  addMakeCodeProgram,
+  updateMakeCodeProgramFiles,
+  getCurrentMakeCodeProgram,
+} from './stores/projects';
 
 export const MAKECODE_BASE_URL = 'https://makecode.calliope.cc';
 export const CONTROLLER_ID = 'CalliopeTeachable';
@@ -107,7 +112,23 @@ export function setMakecodeIframe(iframe: HTMLIFrameElement | null) {
           name: ev.project?.header?.name,
           files: Object.keys(ev.project?.text ?? {}),
         });
-        if (ev.project) self.project.set(ev.project);
+        if (!ev.project) return;
+        self.project.set(ev.project);
+        // Persist into the current program so reloads don't lose work.
+        const files = (ev.project.text ?? {}) as Record<string, string>;
+        if (Object.keys(files).length === 0) return;
+        const active = getCurrentMakeCodeProgram();
+        if (active) {
+          updateMakeCodeProgramFiles(active.id, files, ev.project.header);
+        } else {
+          // First-ever save with no program slot yet — create one so the user
+          // doesn't lose their edits if they reload before clicking anywhere else.
+          addMakeCodeProgram({
+            name: 'Programm 1',
+            files,
+            header: ev.project.header,
+          });
+        }
       },
       onDownload: (d) => {
         // eslint-disable-next-line no-console
@@ -143,6 +164,17 @@ export function importProject(project: MakeCodeProject): boolean {
 /** Generate a Calliope-targeted project from Teachable app state and import it. */
 export function importFromState(opts: GenerateOptions): boolean {
   return importProject(generateProjectImpl(opts));
+}
+
+/** Push a saved MakeCodeProgram's file map into the editor. */
+export function importProgramFiles(
+  files: Record<string, string>,
+  header?: unknown,
+): boolean {
+  return importProject({
+    header: header as MkcProject['header'],
+    text: files,
+  });
 }
 
 /** Expose the generator for callers that want to inspect/persist the project. */

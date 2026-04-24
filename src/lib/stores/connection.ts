@@ -102,7 +102,10 @@ async function getConnection(): Promise<MicrobitWebUSBConnection> {
     throw new Error('WebUSB not supported in this browser');
   }
   initPromise = (async () => {
-    const c = createWebUSBConnection();
+    const { DeviceSelectionMode } = await import('@microbit/microbit-connection');
+    const c = createWebUSBConnection({
+      deviceSelectionMode: DeviceSelectionMode.UseAnyAllowed,
+    });
     await c.initialize();
     c.addEventListener('status', (ev) => {
       const mapped = mapStatus(ev.status);
@@ -179,6 +182,43 @@ export async function disconnectCalliope(): Promise<void> {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Try to silently reconnect to a previously-authorized Calliope on app start
+ * or after a browser reload. Only attempts a real connect when `navigator.usb.getDevices()`
+ * already returns an authorized DAPLink device — so we never prompt the user
+ * unless they explicitly click Connect.
+ */
+export async function tryAutoReconnect(): Promise<void> {
+  if (typeof navigator === 'undefined' || !('usb' in navigator)) return;
+  try {
+    const devices = (await (navigator as unknown as {
+      usb: { getDevices(): Promise<{ vendorId: number; productId: number }[]> };
+    }).usb.getDevices()) as { vendorId: number; productId: number }[];
+    const authorized = devices.find(
+      (d) => d.vendorId === 0x0d28 && d.productId === 0x0204,
+    );
+    if (!authorized) return;
+    appendLog({ direction: 'info', text: 'Auto-reconnecting to authorized device' });
+    const c = await getConnection();
+    await c.connect();
+  } catch (err) {
+    // Silent — the user never asked for anything here.
+    appendLog({
+      direction: 'info',
+      text: `Auto-reconnect skipped: ${(err as Error)?.message ?? err}`,
+    });
+  }
+}
+
+// Kick off the silent reconnect attempt once in the browser, shortly after
+// module init. This covers the "I reloaded the tab and lost my connection"
+// case without requiring a user click.
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    void tryAutoReconnect();
+  }, 250);
 }
 
 /**

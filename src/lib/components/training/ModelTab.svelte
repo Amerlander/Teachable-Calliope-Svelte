@@ -17,7 +17,8 @@
     loadModelFromZip
   } from '$lib/machine';
   import { showNotification } from '$lib/stores/notifications';
-  import { generateMakeCodeProject, importProject as importMcProject } from '$lib/makecode';
+  import { generateMakeCodeProject, importProgramFiles } from '$lib/makecode';
+  import { addMakeCodeProgram } from '$lib/stores/projects';
   import { examples } from '$lib/stores';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
@@ -95,7 +96,18 @@
           get(examples),
           p?.mode ?? 'image',
         );
-        importMcProject(project);
+        // Save the fresh starter as a new program so the user's previous
+        // programs stay around and switch to it as the active one.
+        const files = (project.text ?? {}) as Record<string, string>;
+        const created = addMakeCodeProgram({
+          name: `Starter — ${new Date().toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}`,
+          files,
+          header: project.header,
+        });
+        if (created) importProgramFiles(created.files, created.header);
       } catch {
         /* ignore */
       }
