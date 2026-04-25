@@ -325,10 +325,47 @@ async function connectWithRetry(c: MicrobitWebUSBConnection, tries = 2): Promise
   throw lastErr;
 }
 
+/**
+ * Optional-services list the lib needs available on the GATT server after
+ * pairing. Mirrors the lib's hard-coded list so its post-connect calls (e.g.
+ * `getBoardVersion()` reading the device-info service) still work even though
+ * we're picking the device with `acceptAllDevices` ourselves.
+ */
+const BLE_OPTIONAL_SERVICES = [
+  'e95d0753-251d-470a-a062-fa1922dfa9a8', // accelerometer
+  'e95d9882-251d-470a-a062-fa1922dfa9a8', // button
+  '0000180a-0000-1000-8000-00805f9b34fb', // device_information
+  'e95d93b0-251d-470a-a062-fa1922dfa9a8', // dfu_control
+  'e95d93af-251d-470a-a062-fa1922dfa9a8', // event
+  'e95d127b-251d-470a-a062-fa1922dfa9a8', // io_pin
+  'e95dd91d-251d-470a-a062-fa1922dfa9a8', // led
+  'e95df2d8-251d-470a-a062-fa1922dfa9a8', // magnetometer
+  'e95d6100-251d-470a-a062-fa1922dfa9a8', // temperature
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // nordic UART
+];
+
 export async function connectCalliope(): Promise<void> {
   try {
     if (activeTransport === 'ble') {
       const c = await getBleConnection();
+      // Open our own `acceptAllDevices` chooser so every nearby BLE
+      // advertiser shows up regardless of name. Calliope minis advertise
+      // under several names depending on firmware/build, and the lib's
+      // filter list is too tight to catch all of them. The user picks the
+      // board; we hand it to the lib by pre-setting its private `device`
+      // field so the lib's own chooseDevice() returns this one.
+      const bt = (navigator as unknown as {
+        bluetooth: {
+          requestDevice: (opts: unknown) => Promise<BluetoothDevice>;
+        };
+      }).bluetooth;
+      const picked = await bt.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: BLE_OPTIONAL_SERVICES,
+      });
+      (c as unknown as { device?: BluetoothDevice }).device = picked;
+      const pickedAny = picked as unknown as { name?: string; id?: string };
+      appendLog({ direction: 'info', text: `Selected: ${pickedAny.name ?? pickedAny.id ?? 'BLE device'}` });
       await c.connect();
     } else {
       const c = await getUsbConnection();
