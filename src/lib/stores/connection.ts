@@ -240,12 +240,48 @@ async function getUsbConnection(): Promise<MicrobitWebUSBConnection> {
   return usbInitPromise;
 }
 
+// Nordic UART Service UUID — the service MakeCode's `bluetooth.startUartService()`
+// exposes. Filtering the chooser by this UUID is more reliable than by name
+// prefix: Calliope minis advertise under a few different names depending on
+// firmware revision ("Calliope mini [...]", "Calliope [...]", or even legacy
+// "BBC micro:bit [...]" on older mini 1/2 firmware). The service UUID is the
+// one constant that's actually under our control (we add the bluetooth package
+// to the generated MakeCode project ourselves).
+const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+
 /**
- * Create (or return the cached) BLE connection using the calliope-edu fork of
- * @microbit/microbit-connection. The fork's device chooser filters on
- * "Calliope mini [...]" in addition to the micro:bit name prefixes, so the
- * board actually shows up. Separate from USB because BLE uses a different
- * service and cannot flash.
+ * Override `navigator.bluetooth.requestDevice` for exactly one call so the
+ * library's hard-coded name-prefix filter is replaced with a service-UUID
+ * filter for this single chooser invocation. Returns a promise that resolves
+ * after the override has been undone.
+ */
+async function withServiceUuidFilter<T>(fn: () => Promise<T>): Promise<T> {
+  const bt = (navigator as unknown as {
+    bluetooth: { requestDevice: (opts: unknown) => Promise<unknown> };
+  }).bluetooth;
+  const original = bt.requestDevice.bind(bt);
+  bt.requestDevice = (opts: unknown) => {
+    const previous = (opts ?? {}) as { optionalServices?: string[] };
+    return original({
+      filters: [{ services: [NUS_SERVICE_UUID] }],
+      // Preserve the lib's optionalServices list so post-connect GATT calls
+      // for accelerometer, button, etc. still work.
+      optionalServices: previous.optionalServices ?? [NUS_SERVICE_UUID],
+    });
+  };
+  try {
+    return await fn();
+  } finally {
+    bt.requestDevice = original;
+  }
+}
+
+/**
+ * Create (or return the cached) BLE connection using @microbit/microbit-connection
+ * (calliope-edu fork). We additionally swap the chooser's name-prefix filter
+ * for a service-UUID filter at the moment of `connect()`, so the board shows
+ * up regardless of which exact name string its firmware advertises — only
+ * the UART service has to be present.
  */
 async function getBleConnection(): Promise<MicrobitWebBluetoothConnection> {
   if (bleConn) return bleConn;
@@ -329,7 +365,10 @@ export async function connectCalliope(): Promise<void> {
   try {
     if (activeTransport === 'ble') {
       const c = await getBleConnection();
-      await c.connect();
+      // Replace the lib's name-prefix filter with a service-UUID filter just
+      // for this connect() call. Calliope firmware revisions advertise under
+      // different names but always expose the Nordic UART service.
+      await withServiceUuidFilter(() => c.connect());
     } else {
       const c = await getUsbConnection();
       await connectWithRetry(c);
