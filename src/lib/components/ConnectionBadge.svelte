@@ -5,6 +5,8 @@
     connectCalliope,
     disconnectCalliope,
     setCalliopeTransport,
+    getBlePattern,
+    setBlePattern,
     type CalliopeStatus,
     type CalliopeTransport,
   } from '$lib/stores/connection';
@@ -14,6 +16,7 @@
   let { appearance = 'dark' }: Props = $props();
 
   let open = $state(false);
+  let blePattern = $state(getBlePattern() ?? '');
   const s = $derived($calliopeState);
   const lang = $derived($currentLang);
 
@@ -37,6 +40,11 @@
   }
 
   function doConnect() {
+    if (s.transport === 'ble') {
+      const trimmed = blePattern.trim();
+      setBlePattern(trimmed || null);
+      if (!trimmed) return; // pattern is required for BLE
+    }
     open = false;
     void connectCalliope();
   }
@@ -132,6 +140,25 @@
         </div>
       {/if}
 
+      {#if s.transport === 'ble' && s.status !== 'connected' && s.status !== 'flashing'}
+        <div class="ble-pattern">
+          <label for="ble-pattern-input">
+            5-Zeichen Pairing-Pattern
+            <span class="ble-hint">(LED-Muster auf dem Calliope, A+B+Reset → 5 Buchstaben)</span>
+          </label>
+          <input
+            id="ble-pattern-input"
+            type="text"
+            maxlength="5"
+            placeholder="zuvav"
+            bind:value={blePattern}
+            onkeydown={(e) => { if (e.key === 'Enter') doConnect(); }}
+            spellcheck="false"
+            autocomplete="off"
+          />
+        </div>
+      {/if}
+
       <div class="actions">
         {#if s.status === 'unsupported'}
           <div class="hint">{t('connection.unsupportedHint', lang)}</div>
@@ -143,7 +170,7 @@
           <button
             class="btn primary"
             onclick={doConnect}
-            disabled={s.status === 'connecting'}
+            disabled={s.status === 'connecting' || (s.transport === 'ble' && blePattern.trim().length !== 5)}
           >
             {t('tryout.connect', lang)}
           </button>
@@ -265,6 +292,41 @@
     &.muted { color: #666; }
   }
   .meta-key { color: #666; }
+  .ble-pattern {
+    margin: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .ble-hint {
+      font-weight: 400;
+      font-size: 11px;
+      color: #6b7280;
+    }
+    input {
+      padding: 6px 10px;
+      font-size: 14px;
+      font-family: ui-monospace, Consolas, monospace;
+      letter-spacing: 0.15em;
+      text-transform: lowercase;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fff;
+      color: #111;
+      &:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+      }
+    }
+  }
   .transport-tabs {
     display: flex;
     gap: 4px;

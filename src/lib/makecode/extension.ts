@@ -278,13 +278,10 @@ namespace teachable {
     });
 
     // Wire up Bluetooth UART so the Teachable app can also stream classifications
-    // wirelessly. The Device Information service is also started — without it
-    // @microbit/microbit-connection's BLE backend aborts immediately after GATT
-    // connect because it tries to read the Model Number characteristic to
-    // detect V1 vs V2. Wrapped in try/catch so missing bluetooth package or no
+    // wirelessly. The board advertises the UART service; the browser pairs via
+    // Web Bluetooth. Wrapped in try/catch so missing bluetooth package or no
     // paired central doesn't break USB-only use.
     try {
-        bluetooth.startDeviceInfoService();
         bluetooth.startUartService();
         bluetooth.onUartDataReceived("\\n", function () {
             const line = bluetooth.uartReadUntil("\\n");
