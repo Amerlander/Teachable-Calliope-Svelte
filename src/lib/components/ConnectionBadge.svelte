@@ -10,6 +10,9 @@
   } from '$lib/stores/connection';
   import { currentLang, t } from '$lib/stores/app';
 
+  type Props = { appearance?: 'dark' | 'light' };
+  let { appearance = 'dark' }: Props = $props();
+
   let open = $state(false);
   const s = $derived($calliopeState);
   const lang = $derived($currentLang);
@@ -48,10 +51,10 @@
   }
 </script>
 
-<Dropdown bind:isOpen={open} minWidth="280px" position="right">
+<Dropdown bind:isOpen={open} minWidth="280px" position="right" closeOnClick={false}>
   {#snippet trigger()}
     <button
-      class="conn-badge status-{s.status}"
+      class="conn-badge status-{s.status} appearance-{appearance}"
       aria-label={t('tryout.calliopeConnection', lang)}
       title={t('tryout.calliopeConnection', lang)}
     >
@@ -158,9 +161,6 @@
     gap: 8px;
     padding: 6px 14px;
     border-radius: 20px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    color: rgba(255, 255, 255, 0.92);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -168,8 +168,17 @@
     overflow: hidden;
     white-space: nowrap;
 
-    &:hover {
-      background: rgba(255, 255, 255, 0.14);
+    &.appearance-dark {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: rgba(255, 255, 255, 0.92);
+      &:hover { background: rgba(255, 255, 255, 0.14); }
+    }
+    &.appearance-light {
+      background: #fff;
+      border: 1px solid #d1d5db;
+      color: #1b1c1d;
+      &:hover { background: #f3f4f6; }
     }
 
     .dot {

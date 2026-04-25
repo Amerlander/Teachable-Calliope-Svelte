@@ -108,8 +108,8 @@ export function clearCalliopeLog() {
 }
 
 let usbConn: MicrobitWebUSBConnection | null = null;
-let bleConn: MicrobitWebBluetoothConnection | null = null;
 let usbInitPromise: Promise<MicrobitWebUSBConnection> | null = null;
+let bleConn: MicrobitWebBluetoothConnection | null = null;
 let bleInitPromise: Promise<MicrobitWebBluetoothConnection> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let rxBuffer = '';
@@ -241,9 +241,11 @@ async function getUsbConnection(): Promise<MicrobitWebUSBConnection> {
 }
 
 /**
- * Create (or return the cached) BLE connection. Separate from USB because BLE
- * uses a completely different service (Bluetooth UART) and cannot flash — it
- * is a wireless streaming path only.
+ * Create (or return the cached) BLE connection using the calliope-edu fork of
+ * @microbit/microbit-connection. The fork's device chooser filters on
+ * "Calliope mini [...]" in addition to the micro:bit name prefixes, so the
+ * board actually shows up. Separate from USB because BLE uses a different
+ * service and cannot flash.
  */
 async function getBleConnection(): Promise<MicrobitWebBluetoothConnection> {
   if (bleConn) return bleConn;
@@ -285,7 +287,6 @@ async function getBleConnection(): Promise<MicrobitWebBluetoothConnection> {
       appendLog({ direction: 'error', text: ev.errorMessage });
     });
     c.addEventListener('uartdata', ((ev: unknown) => {
-      // BLE UART delivers bytes — decode as UTF-8 and line-buffer like USB.
       const value = (ev as { value?: Uint8Array })?.value;
       if (!value) return;
       bleRxBuffer += new TextDecoder().decode(value);
@@ -535,9 +536,11 @@ export async function sendSerialLine(line: string): Promise<void> {
 }
 
 /**
- * Subscribe to line-delimited data from the active transport. Wires up to both
- * USB (`serialdata`, string) and BLE (`uartdata`, Uint8Array) so the subscriber
- * keeps working after a `setCalliopeTransport` switch.
+ * Subscribe to line-delimited data from the board. Subscribers attach lazily
+ * — we only initialize a transport's connection once the user has explicitly
+ * chosen to connect. Eagerly calling `initialize()` on both transports racing
+ * to claim the device caused DAPLink "Bad response for 8 -> 17" handshake
+ * failures on USB.
  */
 export function onSerialLine(cb: (line: string) => void): () => void {
   let usbBuf = '';
@@ -562,18 +565,19 @@ export function onSerialLine(cb: (line: string) => void): () => void {
     }
   };
   let disposed = false;
-  if (usbSupported) {
-    void getUsbConnection().then((c) => {
-      if (disposed) return;
-      c.addEventListener('serialdata', usbHandler as unknown as EventListener);
-    }).catch(() => { /* ignore */ });
-  }
-  if (bleSupported) {
-    void getBleConnection().then((c) => {
-      if (disposed) return;
-      c.addEventListener('uartdata', bleHandler as unknown as EventListener);
-    }).catch(() => { /* ignore */ });
-  }
+  // Only attach to a transport that's already been initialized. The
+  // connect/setTransport path is responsible for eventually creating the
+  // connection; subscribers re-attach via the queued retry below.
+  const tryAttach = () => {
+    if (disposed) return;
+    if (usbConn) usbConn.addEventListener('serialdata', usbHandler as unknown as EventListener);
+    if (bleConn) bleConn.addEventListener('uartdata', bleHandler as unknown as EventListener);
+    if (!usbConn && !bleConn) {
+      // Re-check shortly. Cheap because we're only polling a local variable.
+      setTimeout(tryAttach, 250);
+    }
+  };
+  tryAttach();
   return () => {
     disposed = true;
     if (usbConn) usbConn.removeEventListener('serialdata', usbHandler as unknown as EventListener);

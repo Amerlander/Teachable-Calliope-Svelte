@@ -139,8 +139,8 @@
     </div>
 
     <div class="header-right">
+      <ConnectionBadge />
       {#if $currentProject}
-        <ConnectionBadge />
         <button class="header-btn" class:active={active === 'training'} onclick={() => navTo('training')}>
           {t('header.training', lang)}
         </button>

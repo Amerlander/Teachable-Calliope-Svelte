@@ -1,37 +1,15 @@
 <script lang="ts">
-  import {
-    calliopeState,
-    calliopeLog,
-    connectCalliope,
-    disconnectCalliope,
-    clearCalliopeLog,
-  } from '$lib/stores/connection';
+  import { calliopeLog, clearCalliopeLog } from '$lib/stores/connection';
   import { currentDetection } from '$lib/stores/streaming';
   import { currentLang, t } from '$lib/stores/app';
   import { currentProject } from '$lib/stores/projects';
+  import ConnectionBadge from '$lib/components/ConnectionBadge.svelte';
 
   const lang = $derived($currentLang);
-  const s = $derived($calliopeState);
   const det = $derived($currentDetection);
   const log = $derived($calliopeLog);
   const mode = $derived($currentProject?.mode ?? 'image');
   const thresholds = $derived($currentProject?.classThresholds ?? {});
-
-  const statusLabel = $derived(
-    s.status === 'connected'
-      ? t('connection.connected', lang)
-      : s.status === 'flashing'
-        ? t('connection.flashing', lang)
-        : s.status === 'connecting'
-          ? t('connection.connecting', lang)
-          : s.status === 'unsupported'
-            ? t('connection.unsupported', lang)
-            : s.status === 'error'
-              ? t('connection.error', lang)
-              : t('tryout.notConnected', lang),
-  );
-
-  const connected = $derived(s.status === 'connected' || s.status === 'flashing');
 
   function formatTime(ts: number): string {
     return new Date(ts).toLocaleTimeString(undefined, { hour12: false });
@@ -74,60 +52,11 @@
     {/if}
   </section>
 
-  <!-- Section: Calliope connection -->
+  <!-- Section: Calliope connection — same badge used in the header so transport
+       selection, connect/disconnect, and status all look and behave identically. -->
   <section>
     <h4>{t('tryout.calliopeConnection', lang)}</h4>
-    <div class="conn-row">
-      <span class="dot status-{s.status}"></span>
-      <span class="status-text">{statusLabel}</span>
-      {#if s.calliopeVersion || s.boardVersion}
-        <span class="muted">&middot; Calliope mini ({s.calliopeVersion ?? s.boardVersion})</span>
-      {/if}
-    </div>
-
-    {#if s.status === 'flashing'}
-      <div class="flash-block">
-        <div class="flash-line">
-          {s.flashPartial
-            ? t('connection.partialFlash', lang)
-            : t('connection.fullFlash', lang)}
-          &middot; {s.flashProgress ?? 0}%
-          {#if s.lastFlashName}&middot; {s.lastFlashName}{/if}
-        </div>
-        <div class="flash-bar">
-          <div class="flash-bar-fill" style="width: {s.flashProgress ?? 0}%"></div>
-        </div>
-      </div>
-    {/if}
-
-    {#if s.errorMessage}
-      <div class="error">{s.errorMessage}</div>
-    {/if}
-
-    {#if s.lastFlashAt && s.status !== 'flashing'}
-      <div class="muted small">
-        {t('connection.lastFlash', lang)}: {formatTime(s.lastFlashAt)}
-        {#if s.lastFlashName}&middot; {s.lastFlashName}{/if}
-      </div>
-    {/if}
-
-    <div class="actions">
-      {#if s.status === 'unsupported'}
-        <div class="hint">{t('connection.unsupportedHint', lang)}</div>
-      {:else if connected}
-        <button class="btn ghost" onclick={() => void disconnectCalliope()}>
-          {t('tryout.disconnect', lang)}
-        </button>
-      {:else}
-        <button
-          class="btn primary"
-          onclick={() => void connectCalliope()}
-          disabled={s.status === 'connecting'}
-        >
-          {t('tryout.connect', lang)}
-        </button>
-      {/if}
-    </div>
+    <div class="conn-badge-wrap"><ConnectionBadge appearance="light" /></div>
   </section>
 
   <!-- Section: communication log -->
