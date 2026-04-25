@@ -18,7 +18,11 @@
       "Read(//c/GIT/Calliope/Teachable-Calliope-Svelte/src/lib/components/training/**)",
       "Bash(git stash *)",
       "Read(//c/temp/calliope-makecode-embed/**)",
-      "Bash(pnpm exec *)"
+      "Bash(pnpm exec *)",
+      "Read(//c/GIT/Calliope/ml-trainer/src/**)",
+      "Read(//c/GIT/Calliope/scratch-gui/src/**)",
+      "Read(//c/GIT/Calliope/ml-trainer/**)",
+      "Read(//c/GIT/Calliope/scratch-gui/**)"
     ]
   }
 }

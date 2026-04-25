@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/GIT/Calliope/mini-connection/node_modules/**)",
+      "Read(//c/GIT/Calliope/mini-connection/**)",
+      "Bash(npm run *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

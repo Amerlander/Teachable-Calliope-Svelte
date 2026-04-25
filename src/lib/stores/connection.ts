@@ -241,35 +241,11 @@ async function getUsbConnection(): Promise<MicrobitWebUSBConnection> {
 }
 
 /**
- * Last 5-character pairing-mode pattern the user told us to use ("zuvav" etc.).
- * Calliope minis advertise as `Calliope mini [pattern]` while in pairing mode;
- * the lib's chooser filter requires this pattern to make the device appear.
- * Stored across reloads so the user doesn't re-enter it every time.
- */
-const BLE_NAME_KEY = 'teachable-ble-pattern';
-let bleDevicePattern: string | null = (() => {
-  if (typeof localStorage === 'undefined') return null;
-  try { return localStorage.getItem(BLE_NAME_KEY); } catch { return null; }
-})();
-
-export function getBlePattern(): string | null {
-  return bleDevicePattern;
-}
-
-export function setBlePattern(pattern: string | null): void {
-  bleDevicePattern = pattern && pattern.trim() ? pattern.trim() : null;
-  try {
-    if (bleDevicePattern) localStorage.setItem(BLE_NAME_KEY, bleDevicePattern);
-    else localStorage.removeItem(BLE_NAME_KEY);
-  } catch { /* ignore */ }
-}
-
-/**
  * Create (or return the cached) BLE connection using @microbit/microbit-connection
- * (calliope-edu fork). The chooser filters by `Calliope mini [<pattern>]` —
- * the user must have told us the 5-character pairing pattern shown on the
- * board's LED matrix. Without a pattern we still call connect, which falls
- * back to filtering by `Calliope mini` prefix and may show multiple boards.
+ * (calliope-edu fork). The chooser filters by name prefix `Calliope mini`,
+ * `BBC micro:bit`, and `uBit` — covering Calliope, regular micro:bit, and
+ * legacy programs regardless of which hex (blocks/MakeCode/ml-trainer) the
+ * board is running.
  */
 async function getBleConnection(): Promise<MicrobitWebBluetoothConnection> {
   if (bleConn) return bleConn;
@@ -353,10 +329,6 @@ export async function connectCalliope(): Promise<void> {
   try {
     if (activeTransport === 'ble') {
       const c = await getBleConnection();
-      // Tell the lib to filter for the specific board the user is pairing —
-      // exact name match `Calliope mini [<pattern>]`. Without a pattern set
-      // we just use the default `Calliope mini` prefix.
-      if (bleDevicePattern) c.setNameFilter(bleDevicePattern);
       await c.connect();
     } else {
       const c = await getUsbConnection();
