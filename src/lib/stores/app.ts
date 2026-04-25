@@ -19,13 +19,35 @@ export const isTraining = writable(false);
 export const isTesting = writable(false);
 export const modelTrained = writable(false);
 
+/**
+ * `localStorage`-backed writable. Reads the initial value once on construction
+ * and writes back on every change. Falls back to the default when storage is
+ * unavailable (SSR, private mode, etc.).
+ */
+function persisted<T>(key: string, initial: T): ReturnType<typeof writable<T>> {
+  let start: T = initial;
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw !== null) start = JSON.parse(raw) as T;
+    } catch { /* ignore */ }
+  }
+  const store = writable<T>(start);
+  if (typeof window !== 'undefined') {
+    store.subscribe((v) => {
+      try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ }
+    });
+  }
+  return store;
+}
+
 // --- Workspace sidebar tab: drives the camera panel mode ---
 export type WorkspaceTab = 'classes' | 'model';
-export const workspaceTab = writable<WorkspaceTab>('classes');
+export const workspaceTab = persisted<WorkspaceTab>('teachable-workspace-tab', 'classes');
 
 // --- Model tab sub-view: 'model' shows stats, 'new' shows training-prep UI ---
 export type ModelTabView = 'model' | 'new';
-export const modelTabView = writable<ModelTabView>('new');
+export const modelTabView = persisted<ModelTabView>('teachable-model-tab-view', 'new');
 
 // --- Draft ROI for the next training run (normalized to video frame, 0..1) ---
 export type Roi = { x: number; y: number; w: number; h: number };

@@ -1,36 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { get } from 'svelte/store';
   import { Splitpanes, Pane } from 'svelte-splitpanes';
   import ProjectWorkspace from '$lib/components/training/ProjectWorkspace.svelte';
   import VideoPanel from '$lib/components/training/VideoPanel.svelte';
-  import {
-    currentProject,
-    getLastProjectId,
-    loadProject,
-    refreshProjectList
-  } from '$lib/stores/projects';
-  import { loadClassifierFromArtifacts } from '$lib/machine';
-  import { get } from 'svelte/store';
+  import { currentProject } from '$lib/stores/projects';
 
-  onMount(async () => {
-    await refreshProjectList();
-    if (!get(currentProject)) {
-      const lastId = getLastProjectId();
-      if (lastId) {
-        const p = await loadProject(lastId);
-        if (p?.modelArtifacts) {
-          try {
-            await loadClassifierFromArtifacts(p.modelArtifacts);
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-    }
-    if (!get(currentProject)) {
-      goto('/');
-    }
+  // Project restoration runs in the root layout before children mount, so
+  // here we just redirect to the start screen if no project ended up loaded.
+  onMount(() => {
+    if (!get(currentProject)) goto('/');
   });
 </script>
 

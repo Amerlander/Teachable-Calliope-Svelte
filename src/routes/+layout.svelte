@@ -6,11 +6,39 @@
   import LanguageOverlay from '$lib/components/LanguageOverlay.svelte';
   import AIInfoOverlay from '$lib/components/AIInfoOverlay.svelte';
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { initApp } from '$lib/machine';
+  import {
+    currentProject,
+    getLastProjectId,
+    loadProject,
+    refreshProjectList,
+  } from '$lib/stores/projects';
+  import { loadClassifierFromArtifacts } from '$lib/machine';
 
   let { children } = $props();
 
-  onMount(() => { initApp(); });
+  // Hydrate the last-used project before any page renders so /training,
+  // /tryout and /apply don't bounce back to the start screen on reload.
+  let restored = $state(false);
+
+  onMount(async () => {
+    initApp();
+    try {
+      await refreshProjectList();
+      if (!get(currentProject)) {
+        const lastId = getLastProjectId();
+        if (lastId) {
+          const p = await loadProject(lastId);
+          if (p?.modelArtifacts) {
+            try { await loadClassifierFromArtifacts(p.modelArtifacts); } catch { /* ignore */ }
+          }
+        }
+      }
+    } finally {
+      restored = true;
+    }
+  });
 </script>
 
 <svelte:head>
@@ -26,5 +54,7 @@
 <Header />
 
 <div class="app">
-  {@render children()}
+  {#if restored}
+    {@render children()}
+  {/if}
 </div>
