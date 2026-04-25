@@ -107,15 +107,29 @@ export function clearCalliopeLog() {
   logStore.set([]);
 }
 
+// Nordic UART Service UUIDs — exposed by MakeCode programs that include the
+// `bluetooth` package and call `bluetooth.startUartService()`.
+const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX_CHAR_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // browser → board
+const NUS_TX_CHAR_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // board → browser (notify)
+
 let usbConn: MicrobitWebUSBConnection | null = null;
 let usbInitPromise: Promise<MicrobitWebUSBConnection> | null = null;
 let bleConn: MicrobitWebBluetoothConnection | null = null;
 let bleInitPromise: Promise<MicrobitWebBluetoothConnection> | null = null;
+// Direct GATT handles for BLE UART. The lib's serialWrite is a no-op on BLE,
+// and its eager UART service activation breaks connect when the running hex
+// doesn't expose UART. We manage the characteristics ourselves so missing
+// UART degrades gracefully (board still appears connected, just no data).
+let bleRxChar: BluetoothRemoteGATTCharacteristic | null = null; // browser → board
+let bleTxChar: BluetoothRemoteGATTCharacteristic | null = null; // board → browser
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let rxBuffer = '';
 let bleRxBuffer = '';
 let activeTransport: CalliopeTransport = initial.transport;
 const HEARTBEAT_MS = 1000;
+
+const bleLineSubs = new Set<(line: string) => void>();
 
 function activeConn():
   | MicrobitWebUSBConnection
@@ -124,12 +138,30 @@ function activeConn():
   return activeTransport === 'usb' ? usbConn : bleConn;
 }
 
+async function bleSerialWrite(line: string): Promise<void> {
+  if (!bleRxChar) return; // UART service wasn't available on this board
+  const bytes = new TextEncoder().encode(line);
+  const CHUNK = 20; // BLE UART characteristics commonly cap at 20 bytes per write
+  const ch = bleRxChar as BluetoothRemoteGATTCharacteristic & {
+    writeValueWithoutResponse?: (b: BufferSource) => Promise<void>;
+  };
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.slice(i, i + CHUNK);
+    if (ch.writeValueWithoutResponse) await ch.writeValueWithoutResponse(slice);
+    else await ch.writeValue(slice);
+  }
+}
+
 function startHeartbeat() {
   if (heartbeatTimer) return;
   heartbeatTimer = setInterval(() => {
-    const c = activeConn();
-    if (!c || c.status !== ConnectionStatus.CONNECTED) return;
-    void c.serialWrite('H\n').catch(() => {});
+    if (activeTransport === 'usb') {
+      if (!usbConn || usbConn.status !== ConnectionStatus.CONNECTED) return;
+      void usbConn.serialWrite('H\n').catch(() => {});
+    } else {
+      if (!bleConn || bleConn.status !== ConnectionStatus.CONNECTED) return;
+      void bleSerialWrite('H\n').catch(() => {});
+    }
   }, HEARTBEAT_MS);
 }
 
@@ -274,6 +306,11 @@ async function getBleConnection(): Promise<MicrobitWebBluetoothConnection> {
         appendLog({ direction: 'info', text: 'Connected (BLE)' });
       } else {
         stopHeartbeat();
+        // Drop direct GATT handles so subsequent writes don't fire on a
+        // closed device. setupBleUart() reopens them on the next connect.
+        bleRxChar = null;
+        bleTxChar = null;
+        bleRxBuffer = '';
         if (mapped === 'disconnected') appendLog({ direction: 'info', text: 'Disconnected (BLE)' });
       }
     });
@@ -286,21 +323,75 @@ async function getBleConnection(): Promise<MicrobitWebBluetoothConnection> {
       }));
       appendLog({ direction: 'error', text: ev.errorMessage });
     });
-    c.addEventListener('uartdata', ((ev: unknown) => {
-      const value = (ev as { value?: Uint8Array })?.value;
-      if (!value) return;
-      bleRxBuffer += new TextDecoder().decode(value);
-      let idx: number;
-      while ((idx = bleRxBuffer.indexOf('\n')) >= 0) {
-        const line = bleRxBuffer.slice(0, idx).replace(/\r$/, '');
-        bleRxBuffer = bleRxBuffer.slice(idx + 1);
-        if (line) appendLog({ direction: 'rx', text: line });
-      }
-    }) as EventListener);
+    // Note: we deliberately do NOT subscribe to the lib's `uartdata` event.
+    // The lib's UARTService eagerly calls getPrimaryService(NUS) when that
+    // event is activated, which throws and kills the connection if the
+    // running hex doesn't expose UART. We open the UART characteristic
+    // ourselves in `setupBleUart()` after a successful connect, where a
+    // missing service degrades to "connected, no data" instead of failing.
     bleConn = c;
     return c;
   })();
   return bleInitPromise;
+}
+
+/**
+ * After the lib's connect() succeeds, manually open the Nordic UART service
+ * on the underlying BluetoothDevice and wire up TX-notifications + RX-write.
+ * If the service isn't present (board is running a hex without
+ * `bluetooth.startUartService()`), log a warning and stay connected — the
+ * status badge still shows the device as paired but no data flows.
+ */
+async function setupBleUart(): Promise<void> {
+  bleRxChar = null;
+  bleTxChar = null;
+  const device = (bleConn as unknown as { device?: BluetoothDevice } | null)?.device;
+  const gatt = device?.gatt;
+  if (!gatt?.connected) return;
+  let service: BluetoothRemoteGATTService;
+  try {
+    service = await gatt.getPrimaryService(NUS_SERVICE_UUID);
+  } catch {
+    appendLog({
+      direction: 'info',
+      text: 'No UART service on this board — flash a program with bluetooth.startUartService() to stream data over BLE.',
+    });
+    return;
+  }
+  try {
+    bleRxChar = await service.getCharacteristic(NUS_RX_CHAR_UUID);
+    bleTxChar = await service.getCharacteristic(NUS_TX_CHAR_UUID);
+    // Cast to a structural type since the bundled DOM lib types only declare
+    // a subset of the Web Bluetooth GATT characteristic API.
+    type TxChar = BluetoothRemoteGATTCharacteristic & {
+      startNotifications: () => Promise<unknown>;
+      addEventListener: (
+        type: string,
+        listener: () => void,
+      ) => void;
+      value?: DataView;
+    };
+    const tx = bleTxChar as unknown as TxChar;
+    await tx.startNotifications();
+    tx.addEventListener('characteristicvaluechanged', () => {
+      const v = tx.value;
+      if (!v) return;
+      bleRxBuffer += new TextDecoder().decode(new Uint8Array(v.buffer));
+      let idx: number;
+      while ((idx = bleRxBuffer.indexOf('\n')) >= 0) {
+        const line = bleRxBuffer.slice(0, idx).replace(/\r$/, '');
+        bleRxBuffer = bleRxBuffer.slice(idx + 1);
+        if (!line) continue;
+        appendLog({ direction: 'rx', text: line });
+        bleLineSubs.forEach((cb) => { try { cb(line); } catch { /* ignore */ } });
+      }
+    });
+    appendLog({ direction: 'info', text: 'BLE UART ready' });
+  } catch (e) {
+    bleRxChar = null;
+    bleTxChar = null;
+    appendLog({ direction: 'error', text: `BLE UART setup failed: ${(e as Error).message}` });
+  }
 }
 
 async function connectWithRetry(c: MicrobitWebUSBConnection, tries = 2): Promise<void> {
@@ -367,6 +458,10 @@ export async function connectCalliope(): Promise<void> {
       const pickedAny = picked as unknown as { name?: string; id?: string };
       appendLog({ direction: 'info', text: `Selected: ${pickedAny.name ?? pickedAny.id ?? 'BLE device'}` });
       await c.connect();
+      // Open the UART characteristic ourselves so a board without UART
+      // doesn't break connect, and so sendSerialLine / onSerialLine actually
+      // work (the lib's BLE serialWrite is a no-op).
+      await setupBleUart();
     } else {
       const c = await getUsbConnection();
       await connectWithRetry(c);
@@ -560,10 +655,15 @@ export async function flashCalliope(
 
 /** Send a newline-terminated line to the board over the active transport. */
 export async function sendSerialLine(line: string): Promise<void> {
-  const c = activeConn();
-  if (!c || c.status !== ConnectionStatus.CONNECTED) return;
+  const out = line.endsWith('\n') ? line : line + '\n';
   try {
-    await c.serialWrite(line.endsWith('\n') ? line : line + '\n');
+    if (activeTransport === 'usb') {
+      if (!usbConn || usbConn.status !== ConnectionStatus.CONNECTED) return;
+      await usbConn.serialWrite(out);
+    } else {
+      if (!bleConn || bleConn.status !== ConnectionStatus.CONNECTED) return;
+      await bleSerialWrite(out);
+    }
     if (line.trim() !== 'H') {
       appendLog({ direction: 'tx', text: line.replace(/\n$/, '') });
     }
@@ -573,15 +673,12 @@ export async function sendSerialLine(line: string): Promise<void> {
 }
 
 /**
- * Subscribe to line-delimited data from the board. Subscribers attach lazily
- * — we only initialize a transport's connection once the user has explicitly
- * chosen to connect. Eagerly calling `initialize()` on both transports racing
- * to claim the device caused DAPLink "Bad response for 8 -> 17" handshake
- * failures on USB.
+ * Subscribe to line-delimited data from the board. Routes USB serialdata
+ * through the lib and BLE UART through our own characteristic notification
+ * handler — both feed callbacks the same way.
  */
 export function onSerialLine(cb: (line: string) => void): () => void {
   let usbBuf = '';
-  let bleBuf = '';
   const usbHandler = (ev: { data: string }) => {
     usbBuf += ev.data;
     let idx: number;
@@ -591,33 +688,22 @@ export function onSerialLine(cb: (line: string) => void): () => void {
       if (line) cb(line);
     }
   };
-  const bleHandler = (ev: { value?: Uint8Array }) => {
-    if (!ev.value) return;
-    bleBuf += new TextDecoder().decode(ev.value);
-    let idx: number;
-    while ((idx = bleBuf.indexOf('\n')) >= 0) {
-      const line = bleBuf.slice(0, idx).replace(/\r$/, '');
-      bleBuf = bleBuf.slice(idx + 1);
-      if (line) cb(line);
-    }
-  };
+  bleLineSubs.add(cb);
   let disposed = false;
-  // Only attach to a transport that's already been initialized. The
-  // connect/setTransport path is responsible for eventually creating the
-  // connection; subscribers re-attach via the queued retry below.
+  // Only attach to USB once the connection exists. BLE subscribers go into
+  // the bleLineSubs set immediately and are dispatched from setupBleUart().
   const tryAttach = () => {
     if (disposed) return;
-    if (usbConn) usbConn.addEventListener('serialdata', usbHandler as unknown as EventListener);
-    if (bleConn) bleConn.addEventListener('uartdata', bleHandler as unknown as EventListener);
-    if (!usbConn && !bleConn) {
-      // Re-check shortly. Cheap because we're only polling a local variable.
-      setTimeout(tryAttach, 250);
+    if (usbConn) {
+      usbConn.addEventListener('serialdata', usbHandler as unknown as EventListener);
+      return;
     }
+    setTimeout(tryAttach, 250);
   };
   tryAttach();
   return () => {
     disposed = true;
+    bleLineSubs.delete(cb);
     if (usbConn) usbConn.removeEventListener('serialdata', usbHandler as unknown as EventListener);
-    if (bleConn) bleConn.removeEventListener('uartdata', bleHandler as unknown as EventListener);
   };
 }
