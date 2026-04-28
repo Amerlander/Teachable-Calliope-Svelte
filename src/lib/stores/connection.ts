@@ -658,43 +658,72 @@ export async function connectCalliope(forceChooser = false): Promise<void> {
 
 /**
  * Forget every Calliope this origin has ever been granted Web Bluetooth access
- * to. Calls `BluetoothDevice.forget()` (Chrome 87+) which revokes the origin's
- * permission, so a subsequent `requestDevice` shows the regular chooser
- * instead of silently picking a stale entry. Useful when a Calliope keeps
- * timing out on connect because Chrome's bond got desynced from the device.
+ * to AND reset the BLE-side adapter state by cycling the active transport
+ * through USB. The cycling step replicates the empirical fix users land on
+ * when Chrome's BLE chooser refuses to scan: switching transport modes back
+ * and forth wakes the chooser up.
+ *
+ * Called from the "Vergessen & neu suchen" link in the connection badge.
  */
 export async function forgetCalliopeBleDevices(): Promise<number> {
+  // 1. Drop any active BLE connection cleanly.
+  if (bleConn) {
+    try { await disconnectCalliope(); } catch { /* ignore */ }
+  }
+
+  // 2. Cycle the transport USB ↔ BLE. This is what the user has to do
+  //    manually when the Web Bluetooth picker is stuck in "no devices" mode;
+  //    cycling forces the underlying BLE adapter and the chooser scanner to
+  //    reset. We only do the cycle if USB is supported (it always is on
+  //    desktop Chrome, but mobile Chrome lacks WebUSB).
+  if (usbSupported && activeTransport === 'ble') {
+    try {
+      await setCalliopeTransport('usb');
+      // Brief pause so Chrome actually tears down the BLE adapter view.
+      await new Promise((r) => setTimeout(r, 250));
+      await setCalliopeTransport('ble');
+    } catch (err) {
+      appendLog({
+        direction: 'info',
+        text: `Transport cycle failed (continuing): ${(err as Error).message}`,
+      });
+    }
+  }
+
+  // 3. Forget Chrome's per-origin permissions for any Calliopes we know.
   const bt = (navigator as unknown as {
     bluetooth: {
       getDevices?: () => Promise<BluetoothDevice[]>;
     };
   }).bluetooth;
-  if (!bt?.getDevices) return 0;
   let count = 0;
-  try {
-    const known = await bt.getDevices();
-    for (const d of known) {
-      const dev = d as unknown as { forget?: () => Promise<void>; name?: string; id?: string };
-      if (typeof dev.forget !== 'function') continue;
-      try {
-        await dev.forget();
-        appendLog({
-          direction: 'info',
-          text: `Forgot device: ${dev.name ?? dev.id ?? 'BLE device'}`,
-        });
-        count++;
-      } catch (err) {
-        appendLog({
-          direction: 'error',
-          text: `Could not forget device: ${(err as Error).message}`,
-        });
+  if (bt?.getDevices) {
+    try {
+      const known = await bt.getDevices();
+      for (const d of known) {
+        const dev = d as unknown as { forget?: () => Promise<void>; name?: string; id?: string };
+        if (typeof dev.forget !== 'function') continue;
+        try {
+          await dev.forget();
+          appendLog({
+            direction: 'info',
+            text: `Forgot device: ${dev.name ?? dev.id ?? 'BLE device'}`,
+          });
+          count++;
+        } catch (err) {
+          appendLog({
+            direction: 'error',
+            text: `Could not forget device: ${(err as Error).message}`,
+          });
+        }
       }
+    } catch (err) {
+      appendLog({ direction: 'error', text: `getDevices failed: ${(err as Error).message}` });
     }
-  } catch (err) {
-    appendLog({ direction: 'error', text: `getDevices failed: ${(err as Error).message}` });
   }
-  // Drop our own cached lib state so the next connect re-runs through the
-  // chooser cleanly.
+
+  // 4. Drop our own cached lib state so the next connect re-runs through the
+  //    chooser cleanly with a fresh wrapper instance.
   bleConn = null;
   bleInitPromise = null;
   bleRxChar = null;
