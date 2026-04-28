@@ -5,6 +5,7 @@
   import Toast from '$lib/components/Toast.svelte';
   import LanguageOverlay from '$lib/components/LanguageOverlay.svelte';
   import AIInfoOverlay from '$lib/components/AIInfoOverlay.svelte';
+  import UsbPlugRequestModal from '$lib/components/UsbPlugRequestModal.svelte';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { initApp } from '$lib/machine';
@@ -50,6 +51,7 @@
 
 <LanguageOverlay />
 <AIInfoOverlay />
+<UsbPlugRequestModal />
 <Toast />
 <Header />
 

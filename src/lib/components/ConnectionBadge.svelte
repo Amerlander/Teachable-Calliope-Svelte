@@ -4,9 +4,10 @@
     calliopeState,
     connectCalliope,
     disconnectCalliope,
-    setCalliopeTransport,
+    forgetCalliopeBleDevices,
+    setCalliopeTransportMode,
     type CalliopeStatus,
-    type CalliopeTransport,
+    type CalliopeTransportMode,
   } from '$lib/stores/connection';
   import { currentLang, t } from '$lib/stores/app';
 
@@ -41,13 +42,28 @@
     void connectCalliope();
   }
 
+  function doPickOther() {
+    open = false;
+    void connectCalliope(true);
+  }
+
+  async function doForgetAndReconnect() {
+    open = false;
+    await disconnectCalliope().catch(() => undefined);
+    await forgetCalliopeBleDevices();
+    // Immediately reopen the chooser so the user has a single-click "fresh
+    // start" — Chrome's permissions backend otherwise keeps hiding the
+    // (now forgotten) device from the chooser until the next reload.
+    await connectCalliope(true);
+  }
+
   function doDisconnect() {
     open = false;
     void disconnectCalliope();
   }
 
-  function pickTransport(t: CalliopeTransport) {
-    void setCalliopeTransport(t);
+  function pickMode(m: CalliopeTransportMode) {
+    setCalliopeTransportMode(m);
   }
 </script>
 
@@ -83,26 +99,48 @@
       {/if}
 
       {#if s.usbSupported || s.bleSupported}
-        <div class="transport-tabs" role="tablist" aria-label="Transport">
+        <div class="transport-tabs" role="tablist" aria-label="Übertragungsmodus">
           <button
             type="button"
             role="tab"
             class="tab"
-            class:active={s.transport === 'usb'}
-            aria-selected={s.transport === 'usb'}
+            class:active={s.transportMode === 'usb'}
+            aria-selected={s.transportMode === 'usb'}
             disabled={!s.usbSupported || s.status === 'flashing' || s.status === 'connecting'}
-            onclick={() => pickTransport('usb')}
+            onclick={() => pickMode('usb')}
+            title="Verbinden und Flashen über USB-Kabel"
           >USB</button>
           <button
             type="button"
             role="tab"
             class="tab"
-            class:active={s.transport === 'ble'}
-            aria-selected={s.transport === 'ble'}
+            class:active={s.transportMode === 'ble-full'}
+            aria-selected={s.transportMode === 'ble-full'}
             disabled={!s.bleSupported || s.status === 'flashing' || s.status === 'connecting'}
-            onclick={() => pickTransport('ble')}
-            title={!s.bleSupported ? 'Web Bluetooth nicht verfügbar' : 'Bluetooth (Stream only, no flashing)'}
+            onclick={() => pickMode('ble-full')}
+            title={!s.bleSupported
+              ? 'Web Bluetooth nicht verfügbar'
+              : 'Verbinden und Flashen über Bluetooth (einmaliges OS-Pairing nötig)'}
           >BLE</button>
+          <button
+            type="button"
+            role="tab"
+            class="tab"
+            class:active={s.transportMode === 'ble-hybrid'}
+            aria-selected={s.transportMode === 'ble-hybrid'}
+            disabled={!s.bleSupported || !s.usbSupported || s.status === 'flashing' || s.status === 'connecting'}
+            onclick={() => pickMode('ble-hybrid')}
+            title="Bluetooth für Live-Daten, USB nur beim Flashen"
+          >BLE + USB</button>
+        </div>
+        <div class="mode-hint">
+          {#if s.transportMode === 'usb'}
+            Übertragung und Live-Daten über USB-Kabel.
+          {:else if s.transportMode === 'ble-full'}
+            Drahtlos. Calliope muss einmalig per OS-Bluetooth gekoppelt sein.
+          {:else}
+            Live-Daten drahtlos. Beim Flashen wirst du zum USB-Anschließen aufgefordert.
+          {/if}
         </div>
       {/if}
 
@@ -149,6 +187,18 @@
           </button>
         {/if}
       </div>
+
+      {#if s.transportMode === 'ble-full' || s.transportMode === 'ble-hybrid'}
+        <!-- Escape hatches: always available in BLE modes, even when the lib
+             is stuck in `connecting`. Without this the user gets trapped if
+             a connection attempt hangs and the badge is the only way out. -->
+        <button class="link-row" onclick={doPickOther} type="button">
+          Anderes Bluetooth-Gerät auswählen…
+        </button>
+        <button class="link-row" onclick={doForgetAndReconnect} type="button">
+          Vergessen &amp; neu suchen
+        </button>
+      {/if}
     </div>
   {/snippet}
 </Dropdown>
@@ -268,10 +318,16 @@
   .transport-tabs {
     display: flex;
     gap: 4px;
-    margin: 10px 0 6px;
+    margin: 10px 0 4px;
     padding: 3px;
     background: #f3f4f6;
     border-radius: 8px;
+  }
+  .mode-hint {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.35;
+    margin: 0 2px 6px;
   }
   .tab {
     flex: 1;
@@ -354,5 +410,19 @@
     font-size: 12px;
     color: #666;
     line-height: 1.4;
+  }
+  .link-row {
+    display: block;
+    margin-top: 10px;
+    padding: 6px 4px;
+    background: transparent;
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    width: 100%;
+    text-align: left;
+    font-size: 12px;
+    color: #2563eb;
+    cursor: pointer;
+    &:hover { color: #1d4ed8; text-decoration: underline; }
   }
 </style>

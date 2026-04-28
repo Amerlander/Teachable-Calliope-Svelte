@@ -55,7 +55,7 @@
 	},
 	"dependencies": {
 		"@microbit/makecode-embed": "^0.6.0",
-		"@microbit/microbit-connection": "github:calliope-edu/mini-connection#teachable-calliope",
+		"@microbit/microbit-connection": "link:../mini-connection",
 		"@tensorflow-models/mobilenet": "^2.1.0",
 		"@tensorflow-models/pose-detection": "^2.1.3",
 		"@tensorflow/tfjs": "^4.11.0",
