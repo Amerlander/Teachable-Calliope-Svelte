@@ -4,7 +4,6 @@
     calliopeState,
     connectCalliope,
     disconnectCalliope,
-    forgetCalliopeBleDevices,
     setCalliopeTransportMode,
     type CalliopeStatus,
     type CalliopeTransportMode,
@@ -40,21 +39,6 @@
   function doConnect() {
     open = false;
     void connectCalliope();
-  }
-
-  function doPickOther() {
-    open = false;
-    void connectCalliope(true);
-  }
-
-  async function doForgetAndReconnect() {
-    open = false;
-    await disconnectCalliope().catch(() => undefined);
-    await forgetCalliopeBleDevices();
-    // Immediately reopen the chooser so the user has a single-click "fresh
-    // start" — Chrome's permissions backend otherwise keeps hiding the
-    // (now forgotten) device from the chooser until the next reload.
-    await connectCalliope(true);
   }
 
   function doDisconnect() {
@@ -188,17 +172,6 @@
         {/if}
       </div>
 
-      {#if s.transportMode === 'ble-full' || s.transportMode === 'ble-hybrid'}
-        <!-- Escape hatches: always available in BLE modes, even when the lib
-             is stuck in `connecting`. Without this the user gets trapped if
-             a connection attempt hangs and the badge is the only way out. -->
-        <button class="link-row" onclick={doPickOther} type="button">
-          Anderes Bluetooth-Gerät auswählen…
-        </button>
-        <button class="link-row" onclick={doForgetAndReconnect} type="button">
-          Vergessen &amp; neu suchen
-        </button>
-      {/if}
     </div>
   {/snippet}
 </Dropdown>
@@ -410,19 +383,5 @@
     font-size: 12px;
     color: #666;
     line-height: 1.4;
-  }
-  .link-row {
-    display: block;
-    margin-top: 10px;
-    padding: 6px 4px;
-    background: transparent;
-    border: none;
-    border-top: 1px solid #e5e7eb;
-    width: 100%;
-    text-align: left;
-    font-size: 12px;
-    color: #2563eb;
-    cursor: pointer;
-    &:hover { color: #1d4ed8; text-decoration: underline; }
   }
 </style>

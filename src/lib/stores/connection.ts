@@ -142,11 +142,20 @@ export function clearCalliopeLog() {
   logStore.set([]);
 }
 
-// Nordic UART Service UUIDs — exposed by MakeCode programs that include the
-// `bluetooth` package and call `bluetooth.startUartService()`.
+// micro:bit / Calliope BLE UART Service UUIDs — exposed by MakeCode programs
+// that include the `bluetooth` package and call `bluetooth.startUartService()`.
+//
+// IMPORTANT: micro:bit's UART characteristic naming follows the device's
+// perspective, NOT the standard Nordic UART Service convention. Read carefully:
+//   • 6e400002 = "TX from board's POV" — board writes here, browser SUBSCRIBES.
+//   • 6e400003 = "RX from board's POV" — browser writes here, board reads.
+// We previously had this swapped, which silently routed all our outgoing
+// messages to the board's outbound buffer where they were ignored — the
+// board never received any of the per-class confidence lines, so the
+// `bluetooth.onUartDataReceived` handler in the seed program never fired.
 const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const NUS_RX_CHAR_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // browser → board
-const NUS_TX_CHAR_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // board → browser (notify)
+const NUS_RX_CHAR_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // browser → board (board's RX char)
+const NUS_TX_CHAR_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // board → browser (board's TX char, notify)
 
 let usbConn: MicrobitWebUSBConnection | null = null;
 let usbInitPromise: Promise<MicrobitWebUSBConnection> | null = null;
@@ -504,6 +513,28 @@ interface PickedDevice {
 }
 
 /**
+ * Reset BLE-related cached state to a clean slate. Empirically, Chrome's
+ * Web Bluetooth picker stops scanning for new devices after a few back-to-
+ * back failed/aborted attempts — users found that toggling transport modes
+ * and back unsticks it. Doing the same teardown ourselves before every
+ * connect/picker open avoids the "no devices found" trap without the user
+ * having to mode-cycle manually.
+ */
+async function resetBleConnectionState(): Promise<void> {
+  if (bleConn) {
+    try { await disconnectCalliope(); } catch { /* ignore */ }
+  }
+  bleConn = null;
+  bleInitPromise = null;
+  bleRxChar = null;
+  bleTxChar = null;
+  // Brief pause so Chrome's adapter view actually settles before the next
+  // requestDevice scan. Without this, the chooser frequently opens with an
+  // empty list even though a Calliope is broadcasting in range.
+  await new Promise((r) => setTimeout(r, 250));
+}
+
+/**
  * Pick a Calliope to connect over BLE. We try `getDevices()` first — that
  * returns devices the user has already granted permission to in any prior
  * session, even if they're currently only doing directed advertising (which
@@ -599,6 +630,10 @@ async function attachBleDeviceAndConnect(
 export async function connectCalliope(forceChooser = false): Promise<void> {
   try {
     if (activeTransport === 'ble') {
+      // Reset BLE state before every connect attempt. Mirrors the manual
+      // mode-toggle workaround users had to do when Chrome's picker stopped
+      // scanning between attempts.
+      await resetBleConnectionState();
       const c = await getBleConnection();
       const picked = await pickBleDevice(forceChooser);
       if (!picked) {
@@ -654,81 +689,6 @@ export async function connectCalliope(forceChooser = false): Promise<void> {
     }
     state.update((s) => ({ ...s, status: 'error', errorMessage: message }));
   }
-}
-
-/**
- * Forget every Calliope this origin has ever been granted Web Bluetooth access
- * to AND reset the BLE-side adapter state by cycling the active transport
- * through USB. The cycling step replicates the empirical fix users land on
- * when Chrome's BLE chooser refuses to scan: switching transport modes back
- * and forth wakes the chooser up.
- *
- * Called from the "Vergessen & neu suchen" link in the connection badge.
- */
-export async function forgetCalliopeBleDevices(): Promise<number> {
-  // 1. Drop any active BLE connection cleanly.
-  if (bleConn) {
-    try { await disconnectCalliope(); } catch { /* ignore */ }
-  }
-
-  // 2. Cycle the transport USB ↔ BLE. This is what the user has to do
-  //    manually when the Web Bluetooth picker is stuck in "no devices" mode;
-  //    cycling forces the underlying BLE adapter and the chooser scanner to
-  //    reset. We only do the cycle if USB is supported (it always is on
-  //    desktop Chrome, but mobile Chrome lacks WebUSB).
-  if (usbSupported && activeTransport === 'ble') {
-    try {
-      await setCalliopeTransport('usb');
-      // Brief pause so Chrome actually tears down the BLE adapter view.
-      await new Promise((r) => setTimeout(r, 250));
-      await setCalliopeTransport('ble');
-    } catch (err) {
-      appendLog({
-        direction: 'info',
-        text: `Transport cycle failed (continuing): ${(err as Error).message}`,
-      });
-    }
-  }
-
-  // 3. Forget Chrome's per-origin permissions for any Calliopes we know.
-  const bt = (navigator as unknown as {
-    bluetooth: {
-      getDevices?: () => Promise<BluetoothDevice[]>;
-    };
-  }).bluetooth;
-  let count = 0;
-  if (bt?.getDevices) {
-    try {
-      const known = await bt.getDevices();
-      for (const d of known) {
-        const dev = d as unknown as { forget?: () => Promise<void>; name?: string; id?: string };
-        if (typeof dev.forget !== 'function') continue;
-        try {
-          await dev.forget();
-          appendLog({
-            direction: 'info',
-            text: `Forgot device: ${dev.name ?? dev.id ?? 'BLE device'}`,
-          });
-          count++;
-        } catch (err) {
-          appendLog({
-            direction: 'error',
-            text: `Could not forget device: ${(err as Error).message}`,
-          });
-        }
-      }
-    } catch (err) {
-      appendLog({ direction: 'error', text: `getDevices failed: ${(err as Error).message}` });
-    }
-  }
-
-  // 4. Drop our own cached lib state so the next connect re-runs through the
-  //    chooser cleanly with a fresh wrapper instance.
-  bleConn = null;
-  bleInitPromise = null;
-  bleRxChar = null;
-  bleTxChar = null;
-  return count;
 }
 
 export async function disconnectCalliope(): Promise<void> {
