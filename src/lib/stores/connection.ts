@@ -123,18 +123,65 @@ const state = writable<CalliopeState>(initial);
 export const calliopeState: Readable<CalliopeState> = { subscribe: state.subscribe };
 
 // Ring buffer of TX/RX messages for the "communication log" panel.
+//
+// Repetitive serial traffic (e.g. the per-frame `C 0 100 99` confidence
+// updates the Teachable streamer pumps every ~150 ms) would scroll legitimate
+// info/error events off the top of the panel within a second. To keep the
+// log readable, consecutive same-kind tx/rx entries are merged: only the
+// latest payload is kept, but a `count` prefix shows how many times that
+// pattern repeated. As soon as a different-kind line (info/error or
+// different first token) arrives, a new merged group starts.
 export interface CalliopeLogEntry {
+  /** Stable id for keyed Svelte renders — does not change when a row is merged. */
+  id: number;
+  /** Wall-clock time of the most recent occurrence in this group. */
   time: number;
   direction: 'tx' | 'rx' | 'info' | 'error';
+  /** Most recent payload (for tx/rx) or the message itself (info/error). */
   text: string;
+  /** How many same-kind messages have been merged into this row. ≥ 1. */
+  count: number;
 }
 const LOG_MAX = 200;
+let logIdCounter = 0;
 const logStore = writable<CalliopeLogEntry[]>([]);
 export const calliopeLog: Readable<CalliopeLogEntry[]> = { subscribe: logStore.subscribe };
-function appendLog(entry: Omit<CalliopeLogEntry, 'time'>) {
+
+function messageKind(text: string): string {
+  // First whitespace-delimited token. For protocol lines like "C 24 57 20"
+  // this is just "C"; for "Connected (BLE)" it's "Connected".
+  const idx = text.indexOf(' ');
+  return idx < 0 ? text : text.slice(0, idx);
+}
+
+function appendLog(entry: Omit<CalliopeLogEntry, 'time' | 'id' | 'count'>) {
   logStore.update((arr) => {
+    const last = arr.length > 0 ? arr[arr.length - 1] : undefined;
+    const mergeable =
+      !!last &&
+      (entry.direction === 'tx' || entry.direction === 'rx') &&
+      last.direction === entry.direction &&
+      messageKind(last.text) === messageKind(entry.text);
+    if (mergeable && last) {
+      // Replace the last entry in-place with an updated copy. We can't
+      // mutate `last` directly because the store dispatches based on array
+      // identity, so we shallow-copy the array and the last element.
+      const next = arr.slice();
+      next[next.length - 1] = {
+        ...last,
+        time: Date.now(),
+        text: entry.text,
+        count: last.count + 1,
+      };
+      return next;
+    }
     const next = arr.length >= LOG_MAX ? arr.slice(arr.length - LOG_MAX + 1) : arr.slice();
-    next.push({ time: Date.now(), ...entry });
+    next.push({
+      id: ++logIdCounter,
+      time: Date.now(),
+      count: 1,
+      ...entry,
+    });
     return next;
   });
 }

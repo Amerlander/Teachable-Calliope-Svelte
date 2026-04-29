@@ -69,7 +69,7 @@
       {#if log.length === 0}
         <div class="empty">{t('detail.logEmpty', lang)}</div>
       {:else}
-        {#each log.slice().reverse() as e (e.time + e.direction + e.text)}
+        {#each log.slice().reverse() as e (e.id)}
           <div class="log-row dir-{e.direction}">
             <span class="log-time">{formatTime(e.time)}</span>
             <span class="log-dir">
@@ -78,6 +78,9 @@
               {#if e.direction === 'info'}i{/if}
               {#if e.direction === 'error'}!{/if}
             </span>
+            {#if e.count > 1}
+              <span class="log-count">{e.count}×</span>
+            {/if}
             <span class="log-text">{e.text}</span>
           </div>
         {/each}
@@ -294,6 +297,16 @@
     flex: 0 0 12px;
     text-align: center;
     font-weight: 700;
+  }
+  .log-count {
+    flex: 0 0 auto;
+    padding: 0 4px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.06);
+    color: #475569;
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    font-weight: 600;
   }
   .log-text {
     flex: 1;
