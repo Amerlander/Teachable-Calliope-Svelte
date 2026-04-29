@@ -748,29 +748,34 @@
                 <div class="prep-class-empty">Keine Bilder</div>
               {/if}
             </div>
-            <button
-              type="button"
-              class="record-btn"
-              class:recording={capturingClass === cls || advancedRunningClass === cls}
-              aria-label="Bild aufnehmen"
-              title="Halten zum Aufnehmen"
-              disabled={!!advancedRunningClass && advancedRunningClass !== cls}
-              onpointerdown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); startRecord(cls); }}
-              onpointerup={stopRecord}
-              onpointercancel={stopRecord}
-            >
-              <span class="record-dot"></span>
-              {#if advancedRunningClass === cls}
-                {#if advancedCountdown > 0}
-                  <span class="adv-badge">{advancedCountdown}</span>
-                {:else}
-                  <span class="adv-badge">{advancedRemaining}</span>
-                {/if}
-              {/if}
-            </button>
-            <Dropdown placement="bottom-end" minWidth="260px">
+            <Dropdown triggerMode={'hover'} styling={'basic'}>
               {#snippet trigger()}
-                <Button variant="ghost" size="small" aria-label="Erweiterte Aufnahme" title="Erweiterte Aufnahme">⋯</Button>
+                <button
+                  type="button"
+                  class="record-btn"
+                  class:recording={capturingClass === cls || advancedRunningClass === cls}
+                  aria-label="Bild aufnehmen"
+                  title="Halten zum Aufnehmen"
+                  disabled={!!advancedRunningClass && advancedRunningClass !== cls}
+                  onpointerdown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); startRecord(cls); }}
+                  onpointerup={stopRecord}
+                  onpointercancel={stopRecord}
+                >
+                  <span class="record-dot"></span>
+                  {#if advancedRunningClass === cls}
+                    {#if advancedCountdown > 0}
+                      <span class="adv-badge">{advancedCountdown}</span>
+                    {:else}
+                      <span class="adv-badge">{advancedRemaining}</span>
+                    {/if}
+                  {/if}
+                </button>
+              {/snippet}
+              Halten zum Aufnehmen
+            </Dropdown>
+            <Dropdown minWidth="260px" closeOnClick={false}>
+              {#snippet trigger()}
+                <Button variant="ghost" size="small" aria-label="Erweiterte Aufnahme" title="Erweiterte Aufnahme">Serie</Button>
               {/snippet}
               {#snippet children()}
                 <div class="adv-popover">
