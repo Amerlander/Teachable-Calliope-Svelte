@@ -59,6 +59,7 @@
     if (s.bleStatus === 'connected') {
       if (s.bleCanFlash && s.bleCanCommunicate) return 'Flashen & Kommunikation';
       if (s.bleCanCommunicate) return 'Nur Kommunikation';
+      if (s.bleStaleBond) return 'Verbunden — OS-Pairing veraltet';
       return 'Verbunden — OS-Pairing fehlt';
     }
     if (s.bleStatus === 'connecting') return 'Verbinde…';
@@ -167,7 +168,12 @@
         </div>
         {#if needsPairing}
           <div class="transport-hint">
-            Calliope einmal in den OS-Bluetooth-Einstellungen koppeln.
+            {#if s.bleStaleBond}
+              Calliope in den OS-Bluetooth-Einstellungen entkoppeln und neu pairen
+              (das Pairing wurde nach einem USB-Flash auf dem Calliope verworfen).
+            {:else}
+              Calliope einmal in den OS-Bluetooth-Einstellungen koppeln.
+            {/if}
             <button type="button" class="link-btn" onclick={doShowPairingInfo}>
               Wie pairen?
             </button>

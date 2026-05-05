@@ -63,6 +63,12 @@ export interface CalliopeState {
    *  `bleStatus === 'connected'` but this is false, the most likely cause is a
    *  missing OS-level pairing — we surface a "Wie pairen?" hint. */
   bleCanCommunicate: boolean;
+  /** True when we're connected over BLE to a previously-paired device but
+   *  authenticated services are inaccessible — i.e. the OS still holds a
+   *  bond, but the Calliope has forgotten its whitelist (typically after a
+   *  USB full-flash that wiped the bond store). The fix is to remove the
+   *  Calliope from OS Bluetooth settings and pair again from scratch. */
+  bleStaleBond: boolean;
 
   /** Whether the browser supports each transport. */
   usbSupported: boolean;
@@ -133,6 +139,7 @@ const initial: CalliopeState = recomputeOverall({
   bleHasPaired: false,
   bleCanFlash: false,
   bleCanCommunicate: false,
+  bleStaleBond: false,
   usbSupported,
   bleSupported,
   status: 'disconnected',
@@ -425,6 +432,7 @@ async function getBleConnection(): Promise<MicrobitWebBluetoothConnection> {
           bleErrorMessage: mapped === 'connected' ? undefined : s.bleErrorMessage,
           bleCanCommunicate: mapped === 'connected' ? s.bleCanCommunicate : false,
           bleCanFlash: mapped === 'connected' ? s.bleCanFlash : false,
+          bleStaleBond: mapped === 'connected' ? s.bleStaleBond : false,
           connectedAt: mapped === 'connected' ? Date.now() : s.connectedAt,
         };
       });
@@ -502,12 +510,34 @@ async function setupBleUart(): Promise<void> {
       direction: 'info',
       text: 'No UART service on this board — flash a program with bluetooth.startUartService() to stream data over BLE.',
     });
-    // The Teachable seed program always exposes UART, so on Teachable the
-    // service-missing case nearly always means "BLE connected but the OS
-    // bond is missing — Calliope hides authenticated services from
-    // unbonded peers". Surface this to the UI via bleCanCommunicate=false;
-    // the popover renders a "Wie pairen?" hint based on that.
-    updateState((s) => ({ ...s, bleCanCommunicate: false, bleCanFlash: false }));
+    // Distinguish "never paired" from "stale bond" (OS still has the bond,
+    // but the Calliope has forgotten its whitelist — typical after a USB
+    // full-flash). When the partial-flashing service is *also* hidden on a
+    // device the browser remembers as paired, that's the stale-bond
+    // signature: GATT connect succeeded yet every authenticated service is
+    // unreachable. The fix the user has to do is OS-side (forget +
+    // re-pair), so we surface a distinct message.
+    let staleBond = false;
+    let hasPaired = false;
+    state.update((s) => { hasPaired = s.bleHasPaired; return s; });
+    if (hasPaired && gatt?.connected) {
+      try {
+        await gatt.getPrimaryService('e97dd91d-251d-470a-a062-fa1922dfa9a8');
+        // Partial-flashing service reachable → never-paired (or running a
+        // hex without UART). Leave staleBond=false.
+      } catch {
+        staleBond = true;
+      }
+    }
+    updateState((s) => ({
+      ...s,
+      bleCanCommunicate: false,
+      bleCanFlash: false,
+      bleStaleBond: staleBond,
+      bleErrorMessage: staleBond
+        ? 'OS-Pairing veraltet — Calliope in den OS-Bluetooth-Einstellungen entkoppeln und neu pairen.'
+        : s.bleErrorMessage,
+    }));
     return;
   }
   try {
@@ -545,7 +575,12 @@ async function setupBleUart(): Promise<void> {
       await gatt.getPrimaryService('e97dd91d-251d-470a-a062-fa1922dfa9a8');
       canFlash = true;
     } catch { /* not present */ }
-    updateState((s) => ({ ...s, bleCanCommunicate: true, bleCanFlash: canFlash }));
+    updateState((s) => ({
+      ...s,
+      bleCanCommunicate: true,
+      bleCanFlash: canFlash,
+      bleStaleBond: false,
+    }));
   } catch (e) {
     bleRxChar = null;
     bleTxChar = null;
@@ -818,6 +853,7 @@ export async function connectCalliope(
           bleHasPaired: false,
           bleCanFlash: false,
           bleCanCommunicate: false,
+          bleStaleBond: false,
           bleErrorMessage: undefined,
         }));
       }
@@ -846,6 +882,7 @@ export async function connectCalliope(
             bleHasPaired: false,
             bleCanFlash: false,
             bleCanCommunicate: false,
+            bleStaleBond: false,
           }));
           const re = await pickBleDevice(true);
           if (!re) {
@@ -912,6 +949,7 @@ export async function disconnectAndForget(transport: CalliopeTransport): Promise
     bleHasPaired: false,
     bleCanFlash: false,
     bleCanCommunicate: false,
+    bleStaleBond: false,
   }));
   appendLog({ direction: 'info', text: 'BLE device disconnected and forgotten.' });
 }
