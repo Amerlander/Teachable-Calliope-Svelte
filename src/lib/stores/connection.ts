@@ -13,25 +13,10 @@ import {
 } from '@microbit/microbit-connection';
 
 /**
- * Active transport for an open connection. Mirrors which physical channel is
- * carrying serial today. Distinct from `CalliopeTransportMode` (the user's
- * preferred flashing strategy).
+ * Physical channel carrying serial / flashing. USB and BLE are tracked
+ * independently in `CalliopeState` — both can be open simultaneously.
  */
 export type CalliopeTransport = 'usb' | 'ble';
-
-/**
- * User's preferred way of getting code onto the board.
- *
- * - `usb` — flash and stream over WebUSB. Default for first-time users.
- * - `ble-full` — flash and stream over Web Bluetooth. Requires that the
- *   Calliope is already paired/bonded at OS level (Just Works, no PIN); the
- *   browser cannot trigger bonding itself.
- * - `ble-hybrid` — stream over BLE, but flash over USB. When a flash is
- *   requested we surface a "plug in USB" prompt; after the flash finishes we
- *   return to BLE for live communication. For users who can't or won't pair on
- *   OS level.
- */
-export type CalliopeTransportMode = 'usb' | 'ble-full' | 'ble-hybrid';
 
 export type CalliopeStatus =
   | 'unknown'
@@ -60,35 +45,48 @@ export type CalliopeVersion = 'V1' | 'V2' | 'V3';
 export type CalliopeFlashPhase = 'check' | 'reboot' | 'prepare' | 'flashing' | 'finalising';
 
 export interface CalliopeState {
-  status: CalliopeStatus;
-  boardVersion?: BoardVersion;
-  /** Calliope-family version — V1/V2 (DAL) or V3 (CODAL). */
-  calliopeVersion?: CalliopeVersion;
-  /** 0–100 once the actual flash data transfer is running. Undefined while
-   *  in a pre-flash phase (the UI shows an indeterminate spinner instead). */
-  flashProgress?: number;
-  /** Active phase — only meaningful while `status === 'flashing'`. */
-  flashPhase?: CalliopeFlashPhase;
-  flashPartial?: boolean;
-  errorMessage?: string;
-  lastFlashName?: string;
-  lastFlashAt?: number;
-  /** Which transport `status` currently reflects. */
-  transport: CalliopeTransport;
-  /** User's preferred flash strategy. Persisted in localStorage. */
-  transportMode: CalliopeTransportMode;
+  // ---- Per-transport state. USB and BLE are tracked independently so the
+  // UI can show capabilities for each channel side-by-side. ----
+  usbStatus: CalliopeStatus;
+  usbDeviceName?: string;
+  usbErrorMessage?: string;
+
+  bleStatus: CalliopeStatus;
+  bleDeviceName?: string;
+  bleErrorMessage?: string;
+  /** True when the browser remembers a previously-permitted BLE device for
+   *  this origin. Lets the next Connect resume silently. */
+  bleHasPaired: boolean;
+  /** Partial-flashing service exposed by the running hex (BLE flash possible). */
+  bleCanFlash: boolean;
+  /** UART service exposed (BLE serial communication possible). When
+   *  `bleStatus === 'connected'` but this is false, the most likely cause is a
+   *  missing OS-level pairing — we surface a "Wie pairen?" hint. */
+  bleCanCommunicate: boolean;
+
   /** Whether the browser supports each transport. */
   usbSupported: boolean;
   bleSupported: boolean;
-  /** Human-readable name of the currently-selected mini (e.g. "Calliope mini [vavep]"
-   *  for BLE, "Arm Calliope mini V3 CMSIS-DAP" for USB). Stays populated even
-   *  while disconnected so the popover can show the last paired device. */
-  deviceName?: string;
-  /** Wall-clock time of the most recent successful (re)connect. */
+
+  // ---- Flash state (single op at a time across both transports). ----
+  flashTransport?: CalliopeTransport;
+  flashProgress?: number;
+  flashPhase?: CalliopeFlashPhase;
+  flashPartial?: boolean;
+  lastFlashName?: string;
+  lastFlashAt?: number;
+
+  boardVersion?: BoardVersion;
+  calliopeVersion?: CalliopeVersion;
   connectedAt?: number;
-  /** True when there's a previously-permitted BLE device the browser remembers
-   *  (so a Connect click can silent-resume without opening the picker). */
-  hasPairedBleDevice: boolean;
+
+  /**
+   * Roll-up status — `flashing` if a flash is in flight, else `connected`
+   * if either transport is connected, else `connecting` / `error` /
+   * `disconnected` based on whichever is most active. Useful for badges and
+   * gating that doesn't care which channel.
+   */
+  status: CalliopeStatus;
 }
 
 function detectCalliopeVersion(
@@ -117,31 +115,36 @@ const usbSupported =
 const bleSupported =
   typeof navigator !== 'undefined' && 'bluetooth' in navigator;
 
-const TRANSPORT_MODE_STORAGE_KEY = 'calliope.transportMode';
-
-function loadTransportMode(): CalliopeTransportMode {
-  if (typeof localStorage === 'undefined') return usbSupported ? 'usb' : 'ble-hybrid';
-  const v = localStorage.getItem(TRANSPORT_MODE_STORAGE_KEY);
-  if (v === 'usb' || v === 'ble-full' || v === 'ble-hybrid') {
-    // Sanity-clamp to what the browser actually supports.
-    if (v === 'usb' && !usbSupported && bleSupported) return 'ble-full';
-    if ((v === 'ble-full' || v === 'ble-hybrid') && !bleSupported) return 'usb';
-    return v;
-  }
-  return usbSupported ? 'usb' : bleSupported ? 'ble-full' : 'usb';
+/** Roll-up `status` from per-transport status fields. */
+function recomputeOverall(s: CalliopeState): CalliopeState {
+  let status: CalliopeStatus;
+  if (s.flashTransport) status = 'flashing';
+  else if (s.usbStatus === 'connected' || s.bleStatus === 'connected') status = 'connected';
+  else if (s.usbStatus === 'connecting' || s.bleStatus === 'connecting') status = 'connecting';
+  else if (s.usbStatus === 'error' || s.bleStatus === 'error') status = 'error';
+  else if (!s.usbSupported && !s.bleSupported) status = 'unsupported';
+  else status = 'disconnected';
+  return { ...s, status };
 }
 
-const initial: CalliopeState = {
-  status: usbSupported || bleSupported ? 'disconnected' : 'unknown',
-  transport: usbSupported ? 'usb' : 'ble',
-  transportMode: loadTransportMode(),
+const initial: CalliopeState = recomputeOverall({
+  usbStatus: usbSupported ? 'disconnected' : 'unsupported',
+  bleStatus: bleSupported ? 'disconnected' : 'unsupported',
+  bleHasPaired: false,
+  bleCanFlash: false,
+  bleCanCommunicate: false,
   usbSupported,
   bleSupported,
-  hasPairedBleDevice: false,
-};
+  status: 'disconnected',
+});
 
 const state = writable<CalliopeState>(initial);
 export const calliopeState: Readable<CalliopeState> = { subscribe: state.subscribe };
+
+/** Wrapper around `state.update` that always re-derives overall fields. */
+function updateState(fn: (s: CalliopeState) => CalliopeState): void {
+  state.update((s) => recomputeOverall(fn(s)));
+}
 
 // Ring buffer of TX/RX messages for the "communication log" panel.
 //
@@ -254,17 +257,9 @@ let bleTxChar: BluetoothRemoteGATTCharacteristic | null = null; // board → bro
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let rxBuffer = '';
 let bleRxBuffer = '';
-let activeTransport: CalliopeTransport = initial.transport;
 const HEARTBEAT_MS = 1000;
 
 const bleLineSubs = new Set<(line: string) => void>();
-
-function activeConn():
-  | MicrobitWebUSBConnection
-  | MicrobitWebBluetoothConnection
-  | null {
-  return activeTransport === 'usb' ? usbConn : bleConn;
-}
 
 async function bleSerialWrite(line: string): Promise<void> {
   if (!bleRxChar) return; // UART service wasn't available on this board
@@ -283,11 +278,10 @@ async function bleSerialWrite(line: string): Promise<void> {
 function startHeartbeat() {
   if (heartbeatTimer) return;
   heartbeatTimer = setInterval(() => {
-    if (activeTransport === 'usb') {
-      if (!usbConn || usbConn.status !== ConnectionStatus.CONNECTED) return;
+    // Send over whichever transport is currently connected (USB preferred).
+    if (usbConn?.status === ConnectionStatus.CONNECTED) {
       void usbConn.serialWrite('H\n').catch(() => {});
-    } else {
-      if (!bleConn || bleConn.status !== ConnectionStatus.CONNECTED) return;
+    } else if (bleConn?.status === ConnectionStatus.CONNECTED) {
       void bleSerialWrite('H\n').catch(() => {});
     }
   }, HEARTBEAT_MS);
@@ -338,45 +332,41 @@ async function getUsbConnection(): Promise<MicrobitWebUSBConnection> {
       const pn = (c as unknown as { getDevice?: () => { productName?: string } | undefined })
         .getDevice?.()?.productName;
       const cv = detectCalliopeVersion(pn, bv);
-      // Only apply to the shared state when USB is the active transport.
-      // Otherwise USB's disconnect-on-boot-up would clobber the BLE status.
-      const applyStatus = activeTransport === 'usb';
-      state.update((s) => {
-        if (!applyStatus) return { ...s, boardVersion: bv, calliopeVersion: cv ?? s.calliopeVersion };
-        if (s.status === 'flashing' && mapped === 'connected') return s;
+      updateState((s) => {
+        // Don't let an in-flight USB flash get clobbered by transient
+        // disconnect events from the device's reset cycle.
+        if (s.flashTransport === 'usb' && mapped !== 'connected') return s;
         return {
           ...s,
-          status: mapped,
+          usbStatus: mapped,
+          usbDeviceName: mapped === 'connected'
+            ? (pn ?? s.usbDeviceName ?? 'Calliope mini (USB)')
+            : s.usbDeviceName,
+          usbErrorMessage: mapped === 'connected' ? undefined : s.usbErrorMessage,
           boardVersion: bv,
           calliopeVersion: cv ?? s.calliopeVersion,
-          errorMessage:
-            mapped === 'error' || mapped === 'connected' ? undefined : s.errorMessage,
+          connectedAt: mapped === 'connected' ? Date.now() : s.connectedAt,
         };
       });
-      if (!applyStatus) return;
       if (mapped === 'connected') {
         startHeartbeat();
-        appendLog({ direction: 'info', text: 'Connected' });
-        state.update((s) => ({
-          ...s,
-          deviceName: pn ?? s.deviceName ?? 'Calliope mini (USB)',
-          connectedAt: Date.now(),
-        }));
+        appendLog({ direction: 'info', text: 'Connected (USB)' });
       } else {
-        stopHeartbeat();
+        // Only stop heartbeat if no other transport is connected.
+        let bleConnected = false;
+        state.update((s) => { bleConnected = s.bleStatus === 'connected'; return s; });
+        if (!bleConnected) stopHeartbeat();
         if (mapped === 'disconnected') {
-          appendLog({ direction: 'info', text: 'Disconnected' });
-          state.update((s) => ({ ...s, connectedAt: undefined }));
+          appendLog({ direction: 'info', text: 'Disconnected (USB)' });
         }
       }
     });
     c.addEventListener('backgrounderror', (ev) => {
-      if (activeTransport !== 'usb') return;
-      state.update((s) => ({
+      updateState((s) => ({
         ...s,
-        status: 'error',
-        errorMessage: ev.errorMessage,
-        flashProgress: undefined,
+        usbStatus: 'error',
+        usbErrorMessage: ev.errorMessage,
+        flashProgress: s.flashTransport === 'usb' ? undefined : s.flashProgress,
       }));
       appendLog({ direction: 'error', text: ev.errorMessage });
     });
@@ -395,9 +385,9 @@ async function getUsbConnection(): Promise<MicrobitWebUSBConnection> {
       const bv = c.getBoardVersion();
       const pn = (c as unknown as { getDevice?: () => { productName?: string } | undefined })
         .getDevice?.()?.productName;
-      state.update((s) => ({
+      updateState((s) => ({
         ...s,
-        status: mapStatus(c.status),
+        usbStatus: mapStatus(c.status),
         boardVersion: bv,
         calliopeVersion: detectCalliopeVersion(pn, bv) ?? s.calliopeVersion,
       }));
@@ -426,50 +416,41 @@ async function getBleConnection(): Promise<MicrobitWebBluetoothConnection> {
     const c = createWebBluetoothConnection();
     await c.initialize();
     c.addEventListener('status', (ev) => {
-      if (activeTransport !== 'ble') return;
       const mapped = mapStatus(ev.status);
-      state.update((s) => {
-        if (s.status === 'flashing') return s;
+      updateState((s) => {
+        if (s.flashTransport === 'ble' && mapped !== 'connected') return s;
         return {
           ...s,
-          status: mapped,
-          errorMessage:
-            mapped === 'error' || mapped === 'connected' ? undefined : s.errorMessage,
+          bleStatus: mapped,
+          bleErrorMessage: mapped === 'connected' ? undefined : s.bleErrorMessage,
+          bleCanCommunicate: mapped === 'connected' ? s.bleCanCommunicate : false,
+          bleCanFlash: mapped === 'connected' ? s.bleCanFlash : false,
+          connectedAt: mapped === 'connected' ? Date.now() : s.connectedAt,
         };
       });
       if (mapped === 'connected') {
         startHeartbeat();
         appendLog({ direction: 'info', text: 'Connected (BLE)' });
-        // The lib's auto-reconnect (after a flash reboot or a transient drop)
-        // brings GATT back but does not reopen our UART subscription. Re-run
-        // setupBleUart() on every (re)connect so sendSerialLine() actually
-        // reaches the board. Skip while we're mid-flash — flashCalliopeViaBle
-        // owns the partial-flashing characteristic and reopens UART itself
-        // once the post-flash reset settles.
         let isFlashing = false;
-        state.update((s) => { isFlashing = s.status === 'flashing'; return s; });
-        if (!isFlashing) {
-          void setupBleUart();
-        }
+        state.update((s) => { isFlashing = s.flashTransport === 'ble'; return s; });
+        if (!isFlashing) void setupBleUart();
       } else {
-        stopHeartbeat();
-        // Drop direct GATT handles so subsequent writes don't fire on a
-        // closed device. setupBleUart() reopens them on the next connect.
+        let usbConnected = false;
+        state.update((s) => { usbConnected = s.usbStatus === 'connected'; return s; });
+        if (!usbConnected) stopHeartbeat();
         bleRxChar = null;
         bleTxChar = null;
         bleRxBuffer = '';
         if (mapped === 'disconnected') {
           appendLog({ direction: 'info', text: 'Disconnected (BLE)' });
-          state.update((s) => ({ ...s, connectedAt: undefined }));
         }
       }
     });
     c.addEventListener('backgrounderror', (ev) => {
-      if (activeTransport !== 'ble') return;
-      state.update((s) => ({
+      updateState((s) => ({
         ...s,
-        status: 'error',
-        errorMessage: ev.errorMessage,
+        bleStatus: 'error',
+        bleErrorMessage: ev.errorMessage,
       }));
       appendLog({ direction: 'error', text: ev.errorMessage });
     });
@@ -524,13 +505,9 @@ async function setupBleUart(): Promise<void> {
     // The Teachable seed program always exposes UART, so on Teachable the
     // service-missing case nearly always means "BLE connected but the OS
     // bond is missing — Calliope hides authenticated services from
-    // unbonded peers". Prompt the OS-pairing explainer so the user knows
-    // how to fix it. We don't gate this on `hasSeenBlePairingInfo` —
-    // re-surfacing it on a failed connect is the whole point.
-    const mode = readMode();
-    if (mode === 'ble-full' || mode === 'ble-hybrid') {
-      blePairingInfoVisible.set(true);
-    }
+    // unbonded peers". Surface this to the UI via bleCanCommunicate=false;
+    // the popover renders a "Wie pairen?" hint based on that.
+    updateState((s) => ({ ...s, bleCanCommunicate: false, bleCanFlash: false }));
     return;
   }
   try {
@@ -562,10 +539,18 @@ async function setupBleUart(): Promise<void> {
       }
     });
     appendLog({ direction: 'info', text: 'BLE UART ready' });
+    // Probe the partial-flashing service — if present, we can flash via BLE.
+    let canFlash = false;
+    try {
+      await gatt.getPrimaryService('e97dd91d-251d-470a-a062-fa1922dfa9a8');
+      canFlash = true;
+    } catch { /* not present */ }
+    updateState((s) => ({ ...s, bleCanCommunicate: true, bleCanFlash: canFlash }));
   } catch (e) {
     bleRxChar = null;
     bleTxChar = null;
     appendLog({ direction: 'error', text: `BLE UART setup failed: ${(e as Error).message}` });
+    updateState((s) => ({ ...s, bleCanCommunicate: false }));
   }
 }
 
@@ -627,7 +612,8 @@ interface PickedDevice {
  */
 async function resetBleConnectionState(): Promise<void> {
   if (bleConn) {
-    try { await disconnectCalliope(); } catch { /* ignore */ }
+    const t = new Promise<void>((res) => setTimeout(res, 2000));
+    try { await Promise.race([bleConn.disconnect(), t]); } catch { /* ignore */ }
   }
   bleConn = null;
   bleInitPromise = null;
@@ -729,12 +715,10 @@ async function attachBleDeviceAndConnect(
     direction: 'info',
     text: `${picked.fromCache ? 'Resuming' : 'Selected'}: ${label}`,
   });
-  // Reflect the chosen device immediately in state so the popover shows the
-  // human-readable name even while we're still negotiating the GATT link.
-  state.update((s) => ({ ...s, deviceName: label, hasPairedBleDevice: true }));
+  updateState((s) => ({ ...s, bleDeviceName: label, bleHasPaired: true }));
   await c.connect();
   await setupBleUart();
-  state.update((s) => ({ ...s, connectedAt: Date.now() }));
+  updateState((s) => ({ ...s, connectedAt: Date.now() }));
 }
 
 /**
@@ -751,12 +735,10 @@ async function refreshPairedBleStatus(): Promise<void> {
   try {
     const known = await bt.getDevices();
     const first = known[0] as unknown as { name?: string; id?: string } | undefined;
-    state.update((s) => ({
+    updateState((s) => ({
       ...s,
-      hasPairedBleDevice: known.length > 0,
-      // Only remember the name if we don't already have one from an active
-      // session — an active connection's name is more informative.
-      deviceName: s.deviceName ?? first?.name ?? first?.id,
+      bleHasPaired: known.length > 0,
+      bleDeviceName: s.bleDeviceName ?? first?.name ?? first?.id,
     }));
   } catch {
     /* permissions backend unavailable — leave state alone */
@@ -764,37 +746,11 @@ async function refreshPairedBleStatus(): Promise<void> {
 }
 
 /**
- * Drop the browser's permission grant for the currently-paired BLE device.
- * Useful when the user wants to switch to a different mini: without this, the
- * picker stays empty for the old device (Chrome hides already-permitted
- * devices from the chooser) and the new mini might never appear.
- *
- * Note: this only forgets the *browser* permission. The OS-level Bluetooth
- * pairing is separate and untouched — the user clears that in the OS settings
- * when they want to fully unpair.
+ * Forget all browser-remembered BLE devices for this origin and clear our
+ * cached connection wrappers. Used by `disconnectAndForget('ble')` — keeping
+ * it as a private helper here.
  */
-export async function forgetCalliopeBleDevice(): Promise<void> {
-  // Disconnect first so we don't accidentally keep talking to a device the
-  // user is trying to walk away from.
-  if (bleConn?.status === ConnectionStatus.CONNECTED) {
-    try { await disconnectCalliope(); } catch { /* ignore */ }
-  }
-  const device = (bleConn as unknown as { device?: BluetoothDevice } | null)?.device;
-  const forgetable = device as unknown as { forget?: () => Promise<void> } | undefined;
-  if (forgetable?.forget) {
-    try {
-      await forgetable.forget();
-      appendLog({ direction: 'info', text: 'BLE device permission revoked.' });
-    } catch (err) {
-      appendLog({
-        direction: 'error',
-        text: `Forget failed: ${(err as Error).message}`,
-      });
-    }
-  }
-  // Also forget anything else the browser remembers for this origin so the
-  // next picker is fresh (covers cases where bleConn.device wasn't the same
-  // BluetoothDevice handle returned by getDevices()).
+async function forgetAllBleDevices(): Promise<void> {
   if (typeof navigator !== 'undefined' && 'bluetooth' in navigator) {
     const bt = (navigator as unknown as {
       bluetooth: { getDevices?: () => Promise<BluetoothDevice[]> };
@@ -811,182 +767,169 @@ export async function forgetCalliopeBleDevice(): Promise<void> {
       } catch { /* ignore */ }
     }
   }
-  // Drop our cached connection wrapper so the next connect builds a clean one.
   bleConn = null;
   bleInitPromise = null;
   bleRxChar = null;
   bleTxChar = null;
-  state.update((s) => ({
-    ...s,
-    hasPairedBleDevice: false,
-    deviceName: undefined,
-    connectedAt: undefined,
-  }));
 }
 
-export async function connectCalliope(forceChooser = false): Promise<void> {
+/**
+ * Connect to a Calliope on the chosen transport. Always tries the silent
+ * resume path first (USB: getDevices, BLE: getDevices). If a chooser would
+ * be needed, we first wipe all per-transport device info so the popover
+ * doesn't lie about a stale "paired" state while the picker is open.
+ */
+export async function connectCalliope(
+  transport: CalliopeTransport = 'usb',
+  forceChooser = false,
+): Promise<void> {
   try {
-    if (activeTransport === 'ble') {
-      // Reset BLE state before every connect attempt. Mirrors the manual
-      // mode-toggle workaround users had to do when Chrome's picker stopped
-      // scanning between attempts.
+    if (transport === 'ble') {
+      if (!bleSupported) return;
+      updateState((s) => ({
+        ...s,
+        bleStatus: 'connecting',
+        bleErrorMessage: undefined,
+      }));
+
+      let needPicker = forceChooser;
+      if (!needPicker) {
+        // Probe getDevices() first; only fall through to the picker if there's
+        // no remembered device.
+        const bt = (navigator as unknown as {
+          bluetooth: { getDevices?: () => Promise<BluetoothDevice[]> };
+        }).bluetooth;
+        try {
+          const known = await bt.getDevices?.();
+          if (!known || known.length === 0) needPicker = true;
+        } catch {
+          needPicker = true;
+        }
+      }
+
+      if (needPicker) {
+        // Wipe stale connection info before showing the picker so the user
+        // sees a clean slate.
+        await forgetAllBleDevices();
+        updateState((s) => ({
+          ...s,
+          bleStatus: 'connecting',
+          bleDeviceName: undefined,
+          bleHasPaired: false,
+          bleCanFlash: false,
+          bleCanCommunicate: false,
+          bleErrorMessage: undefined,
+        }));
+      }
+
       await resetBleConnectionState();
       const c = await getBleConnection();
-      const picked = await pickBleDevice(forceChooser);
+      const picked = await pickBleDevice(needPicker);
       if (!picked) {
-        state.update((s) => ({ ...s, status: 'disconnected', errorMessage: undefined }));
+        updateState((s) => ({ ...s, bleStatus: 'disconnected', bleErrorMessage: undefined }));
         return;
       }
       try {
         await attachBleDeviceAndConnect(c, picked);
       } catch (err) {
-        // The cached device may be stale (out of range, OS bond gone,
-        // running a hex without BLE). Fall back to the chooser so the user
-        // can pick a fresh one without having to dig out the "Anderes Gerät"
-        // link first.
         if (picked.fromCache) {
-          appendLog({
-            direction: 'info',
-            text: `Cached device didn't respond — opening chooser…`,
-          });
-          // Chrome's permissions backend hides already-permitted devices
-          // from the chooser even when they're broadcasting. Forget the
-          // cached device first so the new requestDevice() shows it again.
+          appendLog({ direction: 'info', text: `Cached device didn't respond — opening chooser…` });
           const forgetable = picked.device as unknown as { forget?: () => Promise<void> };
           if (typeof forgetable.forget === 'function') {
-            try {
-              await forgetable.forget();
-              appendLog({ direction: 'info', text: 'Forgot stale cached device.' });
-            } catch (forgetErr) {
-              appendLog({
-                direction: 'info',
-                text: `Forget failed (non-fatal): ${(forgetErr as Error).message}`,
-              });
-            }
+            try { await forgetable.forget(); } catch { /* ignore */ }
           }
+          await forgetAllBleDevices();
+          updateState((s) => ({
+            ...s,
+            bleStatus: 'connecting',
+            bleDeviceName: undefined,
+            bleHasPaired: false,
+            bleCanFlash: false,
+            bleCanCommunicate: false,
+          }));
           const re = await pickBleDevice(true);
           if (!re) {
-            state.update((s) => ({ ...s, status: 'disconnected', errorMessage: undefined }));
+            updateState((s) => ({ ...s, bleStatus: 'disconnected', bleErrorMessage: undefined }));
             return;
           }
-          await attachBleDeviceAndConnect(c, re);
+          await attachBleDeviceAndConnect(await getBleConnection(), re);
         } else {
           throw err;
         }
       }
     } else {
+      if (!usbSupported) return;
+      updateState((s) => ({ ...s, usbStatus: 'connecting', usbErrorMessage: undefined }));
       const c = await getUsbConnection();
       await connectWithRetry(c);
     }
   } catch (err) {
     const message = (err as Error)?.message ?? String(err);
     if (/no-device-selected|cancell/i.test(message)) {
-      state.update((s) => ({ ...s, status: 'disconnected', errorMessage: undefined }));
+      updateState((s) => transport === 'ble'
+        ? { ...s, bleStatus: 'disconnected', bleErrorMessage: undefined }
+        : { ...s, usbStatus: 'disconnected', usbErrorMessage: undefined });
       return;
     }
-    state.update((s) => ({ ...s, status: 'error', errorMessage: message }));
-  }
-}
-
-export async function disconnectCalliope(): Promise<void> {
-  const c = activeConn();
-  if (!c) return;
-  // Cap the wait so a stuck lib disconnect can't trap the user — the BLE
-  // wrapper has been seen to wait forever on `gatt.disconnect()` if Chrome
-  // and the device disagree about the link state. After the timeout we just
-  // forge ahead; subsequent connect attempts open a fresh GATT anyway.
-  const t = new Promise<void>((res) => setTimeout(res, 2000));
-  try {
-    await Promise.race([c.disconnect(), t]);
-  } catch {
-    /* ignore */
+    updateState((s) => transport === 'ble'
+      ? { ...s, bleStatus: 'error', bleErrorMessage: message }
+      : { ...s, usbStatus: 'error', usbErrorMessage: message });
   }
 }
 
 /**
- * Whether the user has been shown the BLE OS-pairing explainer at least once.
- * The modal explains a constraint that doesn't change between sessions, so
- * once acknowledged we don't badger them again.
+ * Disconnect the given transport AND forget any browser-remembered device on
+ * it. The next connect on that transport will always show a fresh picker.
+ * This is the merged "Trennen" + "Anderen Calliope verbinden" action.
  */
-const BLE_PAIRING_INFO_SEEN_KEY = 'calliope.blePairingInfoSeen';
-
-function hasSeenBlePairingInfo(): boolean {
-  if (typeof localStorage === 'undefined') return false;
-  return localStorage.getItem(BLE_PAIRING_INFO_SEEN_KEY) === '1';
+export async function disconnectAndForget(transport: CalliopeTransport): Promise<void> {
+  if (transport === 'usb') {
+    if (usbConn) {
+      const t = new Promise<void>((res) => setTimeout(res, 2000));
+      try { await Promise.race([usbConn.disconnect(), t]); } catch { /* ignore */ }
+    }
+    usbConn = null;
+    usbInitPromise = null;
+    updateState((s) => ({
+      ...s,
+      usbStatus: usbSupported ? 'disconnected' : 'unsupported',
+      usbDeviceName: undefined,
+      usbErrorMessage: undefined,
+    }));
+    return;
+  }
+  // BLE: disconnect, then forget all known devices and clear all device info.
+  if (bleConn) {
+    const t = new Promise<void>((res) => setTimeout(res, 2000));
+    try { await Promise.race([bleConn.disconnect(), t]); } catch { /* ignore */ }
+  }
+  await forgetAllBleDevices();
+  updateState((s) => ({
+    ...s,
+    bleStatus: bleSupported ? 'disconnected' : 'unsupported',
+    bleDeviceName: undefined,
+    bleErrorMessage: undefined,
+    bleHasPaired: false,
+    bleCanFlash: false,
+    bleCanCommunicate: false,
+  }));
+  appendLog({ direction: 'info', text: 'BLE device disconnected and forgotten.' });
 }
 
-function markBlePairingInfoSeen(): void {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(BLE_PAIRING_INFO_SEEN_KEY, '1'); } catch { /* ignore */ }
-}
 
 /**
- * Visible signal that the UI should pop up the OS-pairing explainer. The
- * modal component subscribes and clears the flag (via `dismissBlePairingInfo`)
- * once the user closes it.
+ * Visible signal that the UI should pop up the OS-pairing explainer. Shown
+ * on demand when the user clicks the "Wie pairen?" link in the BLE row.
  */
 const blePairingInfoVisible = writable(false);
 export const calliopeBlePairingInfo: Readable<boolean> = {
   subscribe: blePairingInfoVisible.subscribe,
 };
 export function dismissBlePairingInfo(): void {
-  markBlePairingInfoSeen();
   blePairingInfoVisible.set(false);
 }
-/** Force-show the modal (for the "What is OS pairing?" link in the popover). */
 export function showBlePairingInfo(): void {
   blePairingInfoVisible.set(true);
-}
-
-/**
- * Set the user's preferred flash strategy. Persisted across reloads. Updating
- * the mode also picks a sensible active transport: `usb` mode opens USB,
- * `ble-*` modes open BLE (the hybrid mode only switches to USB transiently
- * during a flash). The actual connection is not opened here — the user clicks
- * Connect in the UI.
- */
-export function setCalliopeTransportMode(mode: CalliopeTransportMode): void {
-  if (mode === 'usb' && !usbSupported) return;
-  if ((mode === 'ble-full' || mode === 'ble-hybrid') && !bleSupported) return;
-  if (typeof localStorage !== 'undefined') {
-    try { localStorage.setItem(TRANSPORT_MODE_STORAGE_KEY, mode); } catch { /* ignore */ }
-  }
-  state.update((s) => ({ ...s, transportMode: mode }));
-  // Align active transport with the mode so a fresh Connect uses the right one.
-  const desired: CalliopeTransport = mode === 'usb' ? 'usb' : 'ble';
-  if (desired !== activeTransport) {
-    void setCalliopeTransport(desired);
-  }
-  appendLog({ direction: 'info', text: `Flash mode: ${mode}` });
-  // First-time switch into ble-full triggers the OS-pairing explainer. The
-  // browser has no API to query OS-level pairing state, so we use "no paired
-  // device on file for this origin" as a proxy for "this user probably hasn't
-  // set up bonding yet". Hybrid mode doesn't need this — the BLE side is just
-  // for live data, no flash protocol is involved, no PIN required.
-  if (mode === 'ble-full' && !hasSeenBlePairingInfo()) {
-    let hasPair = false;
-    state.update((s) => { hasPair = s.hasPairedBleDevice; return s; });
-    if (!hasPair) blePairingInfoVisible.set(true);
-  }
-}
-
-/**
- * Switch between USB and BLE. Disconnects whichever transport is currently
- * active before the switch; the user then clicks Connect to pair over the new
- * transport. We never auto-connect on switch because BLE, unlike USB, has no
- * silent "already-authorized" reconnect path.
- */
-export async function setCalliopeTransport(t: CalliopeTransport): Promise<void> {
-  if (t === activeTransport) return;
-  if (t === 'usb' && !usbSupported) return;
-  if (t === 'ble' && !bleSupported) return;
-  const prev = activeConn();
-  if (prev && prev.status === ConnectionStatus.CONNECTED) {
-    try { await prev.disconnect(); } catch { /* ignore */ }
-  }
-  activeTransport = t;
-  state.update((s) => ({ ...s, transport: t, status: 'disconnected', errorMessage: undefined }));
-  appendLog({ direction: 'info', text: `Transport switched to ${t.toUpperCase()}` });
 }
 
 /**
@@ -1080,18 +1023,19 @@ function awaitUsbPlugConfirm(fileName: string): Promise<void> {
   });
 }
 
-/** Top-level flash dispatcher. Routes to USB or BLE based on transportMode. */
+/**
+ * Top-level flash dispatcher. Auto-routes:
+ *  1. USB connected → flash via USB (most reliable, full-flash capable).
+ *  2. BLE connected with partial-flashing service → flash via BLE.
+ *  3. Otherwise → ask the user to plug in USB (hybrid prompt).
+ */
 export async function flashCalliope(
   hex: string,
   name: string = 'project',
 ): Promise<void> {
-  // Re-entrancy guard. The MakeCode iframe can deliver multiple onDownload
-  // events for a single Compile (workspace sync side-effects), and a user
-  // who clicks Download again because the progress bar hasn't moved yet
-  // would otherwise queue a parallel flash that fights the first one for
-  // the device.
   let busy = false;
-  state.update((s) => { busy = s.status === 'flashing'; return s; });
+  let snap: CalliopeState | null = null;
+  state.update((s) => { busy = s.status === 'flashing'; snap = s; return s; });
   if (busy) {
     appendLog({
       direction: 'info',
@@ -1099,45 +1043,50 @@ export async function flashCalliope(
     });
     return;
   }
-
-  const mode = readMode();
-  if (mode === 'ble-full' && bleSupported) {
-    return flashCalliopeViaBle(hex, name);
+  const s = snap as CalliopeState | null;
+  // Prefer BLE when it's OS-paired and exposes the partial-flashing service.
+  // USB flash wipes the Calliope's bonding whitelist, so we'd otherwise
+  // silently lose the OS pairing on every flash. BLE flash keeps it intact.
+  if (s && s.bleStatus === 'connected' && s.bleCanFlash) return flashCalliopeViaBle(hex, name);
+  if (s && s.usbStatus === 'connected') {
+    // BLE is connected but unusable for flash → warn that the user will
+    // need to re-pair / reconnect after the USB flash.
+    if (s.bleStatus === 'connected') {
+      appendLog({
+        direction: 'info',
+        text: 'USB-Flash überschreibt das BLE-Pairing. Nach dem Flashen bitte erneut über BLE verbinden.',
+      });
+    }
+    return flashCalliopeViaUsb(hex, name);
   }
-  if (mode === 'ble-hybrid' && bleSupported) {
-    return flashCalliopeHybrid(hex, name);
+  if (s && s.bleStatus === 'connected' && !s.bleCanFlash) {
+    // BLE is connected but not flash-capable, and no USB. Surface the
+    // explainer so the user can either pair at OS level or plug in USB.
+    blePairingInfoVisible.set(true);
+    updateState((st) => ({
+      ...st,
+      bleErrorMessage:
+        'Zum Flashen über Bluetooth muss der Calliope einmal im Betriebssystem gekoppelt werden — oder schließe ihn per USB an.',
+    }));
+    return;
   }
+  if (usbSupported) return flashCalliopeHybrid(hex, name);
   return flashCalliopeViaUsb(hex, name);
-}
-
-function readMode(): CalliopeTransportMode {
-  let m: CalliopeTransportMode = 'usb';
-  state.update((s) => {
-    m = s.transportMode;
-    return s;
-  });
-  return m;
 }
 
 async function flashCalliopeViaUsb(
   hex: string,
   name: string,
 ): Promise<void> {
-  // BLE cannot reflash via this path; switch active transport to USB so the
-  // flash uses DAPLink. After the flash we leave the user wherever they were
-  // — the higher-level dispatcher decides whether to come back to BLE.
-  if (activeTransport !== 'usb') {
-    await setCalliopeTransport('usb');
-  }
   if (!usbSupported) {
-    state.update((s) => ({ ...s, status: 'error', errorMessage: 'WebUSB not supported — flashing requires USB' }));
+    updateState((s) => ({ ...s, usbStatus: 'error', usbErrorMessage: 'WebUSB not supported — flashing requires USB' }));
     return;
   }
   let c: MicrobitWebUSBConnection;
   try {
     c = await getUsbConnection();
   } catch (err) {
-    state.update((s) => ({ ...s, status: 'error', errorMessage: (err as Error).message }));
+    updateState((s) => ({ ...s, usbStatus: 'error', usbErrorMessage: (err as Error).message }));
     return;
   }
   if (c.status !== ConnectionStatus.CONNECTED) {
@@ -1146,20 +1095,20 @@ async function flashCalliopeViaUsb(
     } catch (err) {
       const message = (err as Error)?.message ?? String(err);
       if (/no-device-selected|cancell/i.test(message)) {
-        state.update((s) => ({ ...s, status: 'disconnected' }));
+        updateState((s) => ({ ...s, usbStatus: 'disconnected' }));
         return;
       }
-      state.update((s) => ({ ...s, status: 'error', errorMessage: message }));
+      updateState((s) => ({ ...s, usbStatus: 'error', usbErrorMessage: message }));
       return;
     }
   }
 
-  state.update((s) => ({
+  updateState((s) => ({
     ...s,
-    status: 'flashing',
+    flashTransport: 'usb',
     flashProgress: 0,
     flashPartial: undefined,
-    errorMessage: undefined,
+    usbErrorMessage: undefined,
     lastFlashName: name,
   }));
 
@@ -1173,7 +1122,7 @@ async function flashCalliopeViaUsb(
       partial: true,
       progress: (pct: number | undefined, partial: boolean) => {
         const intPct = pct === undefined ? undefined : Math.round(pct * 100);
-        state.update((s) => ({
+        updateState((s) => ({
           ...s,
           flashProgress: intPct,
           flashPartial: partial,
@@ -1188,18 +1137,14 @@ async function flashCalliopeViaUsb(
       },
       minimumProgressIncrement: 0.05,
     });
-    state.update((s) => ({
+    updateState((s) => ({
       ...s,
-      status: 'connected',
+      flashTransport: undefined,
       flashProgress: undefined,
       flashPartial: undefined,
       lastFlashAt: Date.now(),
     }));
     appendLog({ direction: 'info', text: `Flash finished: ${name}` });
-    // The board resets after flash → DAPLink drops serial and the library
-    // moves to DISCONNECTED. Reopen the connection so streaming keeps working
-    // without the user clicking Connect again. Give the board a moment to
-    // re-enumerate before the reconnect handshake, or it races the reset.
     await new Promise((r) => setTimeout(r, 600));
     try {
       await connectWithRetry(c, 3);
@@ -1210,10 +1155,11 @@ async function flashCalliopeViaUsb(
       });
     }
   } catch (err) {
-    state.update((s) => ({
+    updateState((s) => ({
       ...s,
-      status: 'error',
-      errorMessage: (err as Error).message,
+      flashTransport: undefined,
+      usbStatus: 'error',
+      usbErrorMessage: (err as Error).message,
       flashProgress: undefined,
     }));
     appendLog({ direction: 'error', text: `Flash failed: ${(err as Error).message}` });
@@ -1230,7 +1176,7 @@ async function flashCalliopeHybrid(
   name: string,
 ): Promise<void> {
   if (!usbSupported) {
-    state.update((s) => ({ ...s, status: 'error', errorMessage: 'Hybrid mode needs WebUSB' }));
+    updateState((s) => ({ ...s, usbStatus: 'error', usbErrorMessage: 'Hybrid mode needs WebUSB' }));
     return;
   }
   appendLog({ direction: 'info', text: `Hybrid flash: prompting for USB cable` });
@@ -1240,22 +1186,7 @@ async function flashCalliopeHybrid(
     appendLog({ direction: 'info', text: 'Hybrid flash cancelled by user' });
     return;
   }
-  // Drop BLE so DAPLink (USB) can take over without contention.
-  if (activeTransport === 'ble' && bleConn?.status === ConnectionStatus.CONNECTED) {
-    try { await bleConn.disconnect(); } catch { /* ignore */ }
-  }
   await flashCalliopeViaUsb(hex, name);
-  // Return to BLE for live communication. Don't auto-pop a chooser — just
-  // flag the desired transport so the next user-initiated Connect uses BLE.
-  // (Requesting a chooser here without user gesture would be blocked.)
-  if (bleSupported) {
-    activeTransport = 'ble';
-    state.update((s) => ({ ...s, transport: 'ble' }));
-    appendLog({
-      direction: 'info',
-      text: 'Flash done — click Connect to resume BLE streaming.',
-    });
-  }
 }
 
 /**
@@ -1282,25 +1213,25 @@ async function flashCalliopeViaBle(
     if (!bleConn) await getBleConnection();
     device = (bleConn as unknown as { device?: BluetoothDevice } | null)?.device;
   } catch (err) {
-    state.update((s) => ({ ...s, status: 'error', errorMessage: (err as Error).message }));
+    updateState((s) => ({ ...s, bleStatus: 'error', bleErrorMessage: (err as Error).message }));
     return;
   }
   if (!device || !device.gatt) {
-    state.update((s) => ({
+    updateState((s) => ({
       ...s,
-      status: 'error',
-      errorMessage: 'No Calliope picked yet — click Connect over BLE first.',
+      bleStatus: 'error',
+      bleErrorMessage: 'No Calliope picked yet — click Connect over BLE first.',
     }));
     return;
   }
 
-  state.update((s) => ({
+  updateState((s) => ({
     ...s,
-    status: 'flashing',
+    flashTransport: 'ble',
     flashProgress: undefined,
     flashPhase: 'check',
     flashPartial: true,
-    errorMessage: undefined,
+    bleErrorMessage: undefined,
     lastFlashName: name,
   }));
   const cleanHex = stripMakeCodeMetadata(hex);
@@ -1327,7 +1258,7 @@ async function flashCalliopeViaBle(
       hex: cleanHex,
       onProgress: (p) => {
         let displayPct = 0;
-        state.update((s: CalliopeState) => {
+        updateState((s: CalliopeState) => {
           const promote =
             s.flashPhase === 'prepare' || s.flashPhase === undefined;
           // Lock in the baseline the first time we enter the flashing phase
@@ -1386,18 +1317,16 @@ async function flashCalliopeViaBle(
         };
         const uiPhase = phaseMap[phase];
         const isPreFlash = uiPhase === 'check' || uiPhase === 'reboot' || uiPhase === 'prepare';
-        state.update((s: CalliopeState) => ({
+        updateState((s: CalliopeState) => ({
           ...s,
           flashPhase: uiPhase,
-          // Clear progress during pre-flash phases so the UI shows a spinner.
-          // Keep whatever progress value we have during flashing/finalising.
           flashProgress: isPreFlash ? undefined : (uiPhase === 'finalising' ? 100 : s.flashProgress),
         }));
       },
     });
-    state.update((s) => ({
+    updateState((s) => ({
       ...s,
-      status: 'connected',
+      flashTransport: undefined,
       flashProgress: undefined,
       flashPhase: undefined,
       flashPartial: undefined,
@@ -1437,26 +1366,30 @@ function handleBleFlashError(err: unknown): void {
   } else {
     userMsg = e?.message ?? String(err);
   }
-  state.update((s: CalliopeState) => ({
+  updateState((s: CalliopeState) => ({
     ...s,
-    status: 'error',
-    errorMessage: userMsg,
+    flashTransport: undefined,
+    bleStatus: 'error',
+    bleErrorMessage: userMsg,
     flashProgress: undefined,
     flashPhase: undefined,
   }));
   appendLog({ direction: 'error', text: `BLE flash failed: ${userMsg}` });
 }
 
-/** Send a newline-terminated line to the board over the active transport. */
+/**
+ * Send a newline-terminated line to the board. Picks whichever transport is
+ * currently connected — USB is preferred when both are available.
+ */
 export async function sendSerialLine(line: string): Promise<void> {
   const out = line.endsWith('\n') ? line : line + '\n';
   try {
-    if (activeTransport === 'usb') {
-      if (!usbConn || usbConn.status !== ConnectionStatus.CONNECTED) return;
+    if (usbConn?.status === ConnectionStatus.CONNECTED) {
       await usbConn.serialWrite(out);
-    } else {
-      if (!bleConn || bleConn.status !== ConnectionStatus.CONNECTED) return;
+    } else if (bleConn?.status === ConnectionStatus.CONNECTED) {
       await bleSerialWrite(out);
+    } else {
+      return;
     }
     if (line.trim() !== 'H') {
       appendLog({ direction: 'tx', text: line.replace(/\n$/, '') });

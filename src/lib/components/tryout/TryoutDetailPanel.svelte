@@ -3,7 +3,7 @@
   import { currentDetection } from '$lib/stores/streaming';
   import { currentLang, t } from '$lib/stores/app';
   import { currentProject } from '$lib/stores/projects';
-  import ConnectionBadge from '$lib/components/ConnectionBadge.svelte';
+  import ConnectionPanel from '$lib/components/ConnectionPanel.svelte';
 
   const lang = $derived($currentLang);
   const det = $derived($currentDetection);
@@ -52,11 +52,10 @@
     {/if}
   </section>
 
-  <!-- Section: Calliope connection — same badge used in the header so transport
-       selection, connect/disconnect, and status all look and behave identically. -->
-  <section>
-    <h4>{t('tryout.calliopeConnection', lang)}</h4>
-    <div class="conn-badge-wrap"><ConnectionBadge appearance="light" /></div>
+  <!-- Section: Calliope connection — full panel inline (the compact dropdown
+       version of this lives in the header). -->
+  <section class="conn-section">
+    <ConnectionPanel />
   </section>
 
   <!-- Section: communication log -->
@@ -106,6 +105,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    &.conn-section { padding: 0; }
   }
   h4 {
     margin: 0 0 4px;
