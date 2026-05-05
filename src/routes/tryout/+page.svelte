@@ -9,6 +9,8 @@
     importProgramFiles,
     onMakeCodeDownload,
     generateProject,
+    switchMakeCodeLang,
+    type MakeCodeLang,
   } from '$lib/makecode';
   import { flashCalliope } from '$lib/stores/connection';
   import { currentLang } from '$lib/stores/app';
@@ -22,8 +24,15 @@
   import TryoutDetailPanel from '$lib/components/tryout/TryoutDetailPanel.svelte';
   import ProgramList from '$lib/components/tryout/ProgramList.svelte';
 
-  let iframeEl: HTMLIFrameElement;
+  let iframeEl: HTMLIFrameElement | undefined = $state();
   const src = createMakeCodeIframeUrl(get(currentLang));
+
+  let editorLang: MakeCodeLang = $state('blocks');
+
+  function pickEditorLang(l: MakeCodeLang) {
+    editorLang = l;
+    void switchMakeCodeLang(l);
+  }
 
   onMount(() => {
     const p = get(currentProject);
@@ -31,7 +40,7 @@
       goto('/');
       return;
     }
-    setMakecodeIframe(iframeEl);
+    setMakecodeIframe(iframeEl ?? null);
 
     // Decide what to open in MakeCode:
     //   1. If the project already has an active saved program → reload that.
@@ -81,13 +90,27 @@
       </Pane>
       <Pane size={64}>
         <div class="panel editor-panel">
+          <div class="lang-toolbar">
+            <button
+              class:active={editorLang === 'blocks'}
+              onclick={() => pickEditorLang('blocks')}
+            >Blöcke</button>
+            <button
+              class:active={editorLang === 'js'}
+              onclick={() => pickEditorLang('js')}
+            >JavaScript</button>
+            <button
+              class:active={editorLang === 'python'}
+              onclick={() => pickEditorLang('python')}
+            >Python</button>
+          </div>
           <iframe
             bind:this={iframeEl}
             title="MakeCode Calliope Editor"
             {src}
             allow="usb; bluetooth; autoplay;"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-            style="width:100%;height:100%;border:0;"
+            style="width:100%;flex:1;border:0;"
             allowfullscreen
           ></iframe>
         </div>
@@ -121,6 +144,40 @@
   }
   .editor-panel {
     padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .lang-toolbar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    background: #f3f4f6;
+    border-bottom: 1px solid #e5e7eb;
+    flex: 0 0 auto;
+
+    button {
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 6px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #4b5563;
+      cursor: pointer;
+      min-height: unset;
+      box-shadow: none;
+      transition: background 0.15s, color 0.15s;
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.06);
+      }
+      &.active {
+        background: #fff;
+        color: #111;
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      }
+    }
   }
 
   :global(.splitpanes.modern-theme) {
