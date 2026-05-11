@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { calliopeUsbPlugRequest } from '$lib/stores/connection';
+  import { calliopeUsbPlugRequest } from '@calliope-edu/mini-connection-widget';
 
   const req = $derived($calliopeUsbPlugRequest);
 </script>

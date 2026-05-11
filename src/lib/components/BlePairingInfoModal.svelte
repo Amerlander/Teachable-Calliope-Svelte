@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { calliopeBlePairingInfo, dismissBlePairingInfo } from '$lib/stores/connection';
+  import { calliopeBlePairingInfo, dismissBlePairingInfo } from '@calliope-edu/mini-connection-widget';
 
   const visible = $derived($calliopeBlePairingInfo);
 </script>

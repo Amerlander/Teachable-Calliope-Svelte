@@ -1,7 +1,7 @@
 <script lang="ts">
   import Dropdown from './ui/Dropdown.svelte';
   import ConnectionPanel from './ConnectionPanel.svelte';
-  import { calliopeState, type CalliopeStatus } from '$lib/stores/connection';
+  import { calliopeState, type CalliopeStatus } from '@calliope-edu/mini-connection-widget';
   import { currentLang, t } from '$lib/stores/app';
 
   type Props = { appearance?: 'dark' | 'light' };

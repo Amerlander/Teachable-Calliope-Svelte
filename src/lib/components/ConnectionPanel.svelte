@@ -6,7 +6,7 @@
     showBlePairingInfo,
     type CalliopeStatus,
     type CalliopeTransport,
-  } from '$lib/stores/connection';
+  } from '@calliope-edu/mini-connection-widget';
   import { currentLang, t } from '$lib/stores/app';
 
   type Props = {
@@ -145,11 +145,11 @@
         </div>
         <div class="transport-row-actions">
           {#if connected}
-            <button class="row-btn ghost" onclick={doForgetUsb} disabled={busy}>
+            <button type="button" class="row-btn ghost" onclick={doForgetUsb} disabled={busy}>
               Trennen
             </button>
           {:else}
-            <button class="row-btn primary" onclick={doConnectUsb} disabled={busy}>
+            <button type="button" class="row-btn primary" onclick={doConnectUsb} disabled={busy}>
               {busy ? 'Verbinde…' : 'Verbinden'}
             </button>
           {/if}
@@ -181,11 +181,11 @@
         {/if}
         <div class="transport-row-actions">
           {#if connected}
-            <button class="row-btn ghost" onclick={doForgetBle} disabled={busy}>
+            <button type="button" class="row-btn ghost" onclick={doForgetBle} disabled={busy}>
               Trennen & vergessen
             </button>
           {:else}
-            <button class="row-btn primary" onclick={doConnectBle} disabled={busy}>
+            <button type="button" class="row-btn primary" onclick={doConnectBle} disabled={busy}>
               {busy ? 'Verbinde…' : 'Verbinden'}
             </button>
           {/if}
@@ -195,7 +195,9 @@
   </div>
 
   {#if s.status === 'flashing'}
+    {@const via = s.flashTransport === 'ble' ? 'Bluetooth' : 'USB'}
     <div class="flash-block">
+      <div class="flash-via">Flashen via {via}</div>
       {#if isIndeterminate}
         <div class="flash-line indeterminate">
           <span class="spinner-inline"></span>
@@ -397,6 +399,12 @@
   }
   .flash-block {
     margin: 10px 0;
+  }
+  .flash-via {
+    font-size: 12px;
+    font-weight: 600;
+    color: #111;
+    margin-bottom: 4px;
   }
   .flash-line {
     font-size: 12px;

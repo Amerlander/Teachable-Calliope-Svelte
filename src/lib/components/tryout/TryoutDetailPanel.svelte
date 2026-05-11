@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { calliopeLog, clearCalliopeLog } from '$lib/stores/connection';
+  import { calliopeLog, clearCalliopeLog } from '@calliope-edu/mini-connection-widget';
   import { currentDetection } from '$lib/stores/streaming';
   import { currentLang, t } from '$lib/stores/app';
   import { currentProject } from '$lib/stores/projects';

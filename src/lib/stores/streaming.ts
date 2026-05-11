@@ -3,7 +3,7 @@
 // are safe no-ops when no board is connected.
 
 import { writable, get, type Readable } from 'svelte/store';
-import { sendSerialLine, calliopeState } from './connection';
+import { sendSerialLine, calliopeState } from '@calliope-edu/mini-connection-widget';
 import { currentProject } from './projects';
 
 export interface CurrentDetection {

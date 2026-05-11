@@ -12,7 +12,7 @@
     switchMakeCodeLang,
     type MakeCodeLang,
   } from '$lib/makecode';
-  import { flashCalliope } from '$lib/stores/connection';
+  import { flashCalliope } from '@calliope-edu/mini-connection-widget';
   import { currentLang } from '$lib/stores/app';
   import {
     currentProject,

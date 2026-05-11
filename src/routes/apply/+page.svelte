@@ -18,7 +18,7 @@
     currentDetection,
     resetStreamState,
   } from '$lib/stores/streaming';
-  import { calliopeState } from '$lib/stores/connection';
+  import { calliopeState } from '@calliope-edu/mini-connection-widget';
 
   const TICK_MS = 100;
   const CLASS_THRESHOLD = 0.7;

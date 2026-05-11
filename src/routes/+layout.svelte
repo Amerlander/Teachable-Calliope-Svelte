@@ -17,6 +17,7 @@
     refreshProjectList,
   } from '$lib/stores/projects';
   import { loadClassifierFromArtifacts } from '$lib/machine';
+  import { initializeCalliopeConnection } from '@calliope-edu/mini-connection-widget';
 
   let { children } = $props();
 
@@ -26,6 +27,7 @@
 
   onMount(async () => {
     initApp();
+    initializeCalliopeConnection();
     try {
       await refreshProjectList();
       if (!get(currentProject)) {
