@@ -3,7 +3,7 @@
   import { page } from '$app/stores';
   import Dropdown from './ui/Dropdown.svelte';
   import DropdownItem from './ui/DropdownItem.svelte';
-  import ConnectionBadge from './ConnectionBadge.svelte';
+  import { ConnectButton } from '@calliope-edu/mini-connection-widget';
   import {
     appMode,
     showLanguageOverlay,
@@ -139,7 +139,7 @@
     </div>
 
     <div class="header-right">
-      <ConnectionBadge />
+      <ConnectButton appearance="dark" />
       {#if $currentProject}
         <button class="header-btn" class:active={active === 'training'} onclick={() => navTo('training')}>
           {t('header.training', lang)}
