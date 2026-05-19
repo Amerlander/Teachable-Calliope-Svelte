@@ -18,6 +18,7 @@
   import {
     initializeCalliopeConnection,
     UsbPlugRequestModal,
+    BleOfflineModal,
   } from '@calliope-edu/mini-connection-widget';
 
   let { children } = $props();
@@ -56,6 +57,7 @@
 <LanguageOverlay />
 <AIInfoOverlay />
 <UsbPlugRequestModal />
+<BleOfflineModal />
 <Toast />
 <Header />
 
