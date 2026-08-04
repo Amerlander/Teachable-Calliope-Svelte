@@ -3,8 +3,30 @@
 // are safe no-ops when no board is connected.
 
 import { writable, get, type Readable } from 'svelte/store';
-import { sendSerialLine, calliopeState } from '@calliope-edu/mini-connection-widget';
+import {
+  sendSerialLine,
+  calliopeState,
+  type CalliopeState,
+} from '@calliope-edu/mini-connection-widget';
 import { currentProject } from './projects';
+
+/**
+ * Whether a transport that actually carries serial is up.
+ *
+ * Not the same as the widget's rolled-up `status`: that also reads
+ * `'connected'` for a Calliope mini 2 linked flash-only (`jlinkUsbStatus`, the
+ * J-Link WebUSB flash path, without the CDC port). Flashing works in that
+ * state, serial does not — every `sendSerialLine` would be silently dropped
+ * while the UI claimed a live connection. These three are exactly the
+ * transports `sendSerialLine` routes over.
+ */
+export function isSerialCapable(s: CalliopeState): boolean {
+  return (
+    s.usbStatus === 'connected' ||
+    s.jlinkSerialStatus === 'connected' ||
+    s.bleStatus === 'connected'
+  );
+}
 
 export interface CurrentDetection {
   /** Label of the current top class (after smoothing). */
@@ -136,7 +158,7 @@ export function streamClassProbabilities(
     at: Date.now(),
   });
 
-  if (get(calliopeState).status !== 'connected') return;
+  if (!isSerialCapable(get(calliopeState))) return;
   if (!smoothed.length) return;
   const encoded = smoothed
     .map((p) => Math.round(Math.max(0, Math.min(1, p)) * 100))
@@ -156,7 +178,7 @@ export function streamPoseKeypoints(
   srcW: number,
   srcH: number,
 ) {
-  if (get(calliopeState).status !== 'connected') return;
+  if (!isSerialCapable(get(calliopeState))) return;
   if (!srcW || !srcH) return;
   const now = Date.now();
   if (now - lastPoseEmitAt < POSE_MIN_INTERVAL_MS) return;

@@ -17,8 +17,9 @@
     streamPoseKeypoints,
     currentDetection,
     resetStreamState,
+    isSerialCapable,
   } from '$lib/stores/streaming';
-  import { calliopeState } from '@calliope-edu/mini-connection-widget';
+  import { calliopeState, setConnectionUiActive } from '@calliope-edu/mini-connection-widget';
 
   const TICK_MS = 100;
   const CLASS_THRESHOLD = 0.7;
@@ -33,8 +34,12 @@
   const mode = $derived($currentProject?.mode ?? 'image');
   const modelReady = $derived(!!$classifierModel && !!$mobilenetModel);
   const det = $derived($currentDetection);
+  // Matches what the streaming gate accepts, so the HUD can't claim a live
+  // board while the lines go nowhere (mini 2 linked flash-only). `flashing` is
+  // kept because a transport can briefly leave 'connected' during the transfer's
+  // reboot and the HUD shouldn't flicker to "nicht verbunden" mid-flash.
   const connected = $derived(
-    $calliopeState.status === 'connected' || $calliopeState.status === 'flashing',
+    isSerialCapable($calliopeState) || $calliopeState.status === 'flashing',
   );
 
   async function tick() {
@@ -87,12 +92,16 @@
       { webcamTryout: videoEl },
       get(selectedCameraId) ?? undefined,
     );
+    // Streaming to a board is the whole purpose of this view, so let the
+    // widget's banner offer a connection while it's open.
+    setConnectionUiActive(true);
     void tick();
   });
 
   onDestroy(() => {
     disposed = true;
     if (tickTimer) clearTimeout(tickTimer);
+    setConnectionUiActive(false);
     setLastPoseCanvas(null);
   });
 </script>

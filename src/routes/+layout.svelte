@@ -17,8 +17,14 @@
   import { loadClassifierFromArtifacts } from '$lib/machine';
   import {
     initializeCalliopeConnection,
+    setSerialConsumer,
     UsbPlugRequestModal,
     BleOfflineModal,
+    ConnectionChoiceModal,
+    Mini2FlashFallbackModal,
+    Mini2SerialOfferModal,
+    Mini12VersionModal,
+    ConnectionBanner,
   } from '@calliope-edu/mini-connection-widget';
 
   let { children } = $props();
@@ -27,9 +33,20 @@
   // /tryout and /apply don't bounce back to the start screen on reload.
   let restored = $state(false);
 
+  // The banner's default layout is a fixed toast at `top: 16px` with z-index
+  // 8000, which #main-header (z-index 100000000, a grid item, so it honours it)
+  // would paint straight over. Portal it into the content row instead — it then
+  // positions absolutely inside, landing just below the header.
+  let appEl: HTMLDivElement | undefined = $state();
+
   onMount(async () => {
     initApp();
     initializeCalliopeConnection();
+    // Teachable streams classification lines the whole time it runs, so it is
+    // always a serial consumer. Declaring it lets the widget offer the mini 2's
+    // CDC port when that board is linked flash-only — without the declaration
+    // it stays silent and the streaming would go nowhere.
+    setSerialConsumer('teachable', true);
     try {
       await refreshProjectList();
       if (!get(currentProject)) {
@@ -56,13 +73,28 @@
 
 <LanguageOverlay />
 <AIInfoOverlay />
+<!-- Every widget modal below is a host-owned singleton driven by a store that
+     carries a pending promise or callback, so each one has to be mounted or its
+     flow dead-ends: the choice modal is what `flashCalliope()` awaits when
+     nothing is connected, and the mini 2 / mini 1-vs-2 modals are the only exits
+     from a failed USB transfer, a missing CDC link, and the BLE RAM-fit gate. -->
 <UsbPlugRequestModal />
 <BleOfflineModal />
+<ConnectionChoiceModal />
+<Mini2FlashFallbackModal />
+<Mini2SerialOfferModal />
+<Mini12VersionModal />
 <Toast />
 <Header />
 
-<div class="app">
+<div class="app" bind:this={appEl}>
   {#if restored}
     {@render children()}
   {/if}
 </div>
+
+<!-- After `.app` so `appEl` is bound before the banner can mount. It portals
+     itself, so its position here doesn't affect where it appears. This is also
+     the only component that can reach `confirmReplug()`, so it owns the USB
+     recovery ladder. -->
+<ConnectionBanner container={appEl} />

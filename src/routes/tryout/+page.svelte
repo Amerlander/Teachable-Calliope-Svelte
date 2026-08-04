@@ -8,11 +8,16 @@
     createMakeCodeIframeUrl,
     importProgramFiles,
     onMakeCodeDownload,
+    compileMakeCodeProject,
     generateProject,
     switchMakeCodeLang,
     type MakeCodeLang,
   } from '$lib/makecode';
-  import { flashCalliope } from '@calliope-edu/mini-connection-widget';
+  import {
+    flashCalliope,
+    setConnectionUiActive,
+    setTransferProgram,
+  } from '@calliope-edu/mini-connection-widget';
   import { currentLang } from '$lib/stores/app';
   import {
     currentProject,
@@ -69,8 +74,17 @@
       void flashCalliope(hex, name || p.name || 'project');
     });
 
+    // This is the one view where a board is the point, so let the widget's
+    // banner prompt for a connection here (it stays quiet elsewhere) and wire
+    // the connection panel's transfer button to a MakeCode compile — the hex
+    // comes back through the download handler above.
+    setConnectionUiActive(true);
+    setTransferProgram('teachable-tryout', { run: () => compileMakeCodeProject() });
+
     return () => {
       unsubDownload();
+      setTransferProgram('teachable-tryout', null);
+      setConnectionUiActive(false);
       setMakecodeIframe(null);
     };
   });

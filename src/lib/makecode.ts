@@ -46,6 +46,27 @@ interface Active {
 
 let active: Active | null = null;
 
+/**
+ * Save a compiled hex to the downloads folder (MakeCode's "Als Datei
+ * herunterladen").
+ *
+ * TEMPORARY: the widget owns this as `downloadHexFile` — same operation as its
+ * connection-choice "Download .hex" and the mini 2 flash fallback, and campus
+ * already switched to it. The export only exists after 73da27a, which is what
+ * we pin, so this stands in until the pin is bumped; then delete this and
+ * import `downloadHexFile` from the widget.
+ *
+ * Uses file-saver (already a dependency) rather than a hand-rolled anchor, so
+ * the object URL isn't revoked out from under an in-flight download.
+ */
+async function saveHexFile(hex: string, name: string): Promise<void> {
+  if (!hex) return;
+  const { saveAs } = await import('file-saver');
+  const base = (name || '').replace(/[\\/:*?"<>|]/g, '-').trim() || 'calliope-program';
+  const fileName = /\.(hex|uf2)$/i.test(base) ? base : `${base}.hex`;
+  saveAs(new Blob([hex], { type: 'application/octet-stream' }), fileName);
+}
+
 function disposeActive() {
   if (!active) return;
   try {
@@ -141,6 +162,15 @@ export function setMakecodeIframe(iframe: HTMLIFrameElement | null) {
           }
         });
       },
+      // "Als Datei herunterladen" — the explicit menu action, distinct from the
+      // main Download button that flashes. Under controller=2 pxt does NOT
+      // write the file itself: it posts `{ save, name }` and leaves it to the
+      // host. Without this handler the menu entry does nothing at all.
+      onSave: (s) => {
+        // eslint-disable-next-line no-console
+        console.log(DBG, 'onSave', { name: s.name, hexLen: s.hex?.length });
+        void saveHexFile(s.hex, s.name);
+      },
     },
     () => self.iframe,
   );
@@ -191,6 +221,17 @@ export async function switchMakeCodeLang(lang: MakeCodeLang): Promise<void> {
   } catch {
     /* driver not ready — user can try again */
   }
+}
+
+/**
+ * Ask MakeCode to compile the current program. The resulting hex arrives
+ * asynchronously through `onMakeCodeDownload`, which is where the flash is
+ * kicked off — so this resolves once the request is sent, not once the board
+ * has the program.
+ */
+export async function compileMakeCodeProject(): Promise<void> {
+  if (!active) return;
+  await active.driver.compile();
 }
 
 export function onMakeCodeDownload(cb: DownloadHandler): () => void {

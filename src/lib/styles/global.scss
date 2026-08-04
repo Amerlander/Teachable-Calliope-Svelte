@@ -27,6 +27,9 @@ body {
   padding: 0;
   gap: 16px;
   overflow: hidden;
+  // Positioning context for the widget's <ConnectionBanner>, which the layout
+  // portals in here so it sits below the header instead of behind it.
+  position: relative;
 }
 
 .view {

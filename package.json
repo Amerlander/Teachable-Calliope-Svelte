@@ -54,7 +54,7 @@
 		"vitest-browser-svelte": "^2.0.1"
 	},
 	"dependencies": {
-		"@calliope-edu/mini-connection-widget": "link:../mini-connection-widget",
+		"@calliope-edu/mini-connection-widget": "github:calliope-edu/mini-connection-widget#73da27a195604bc2a32e8eaf9fbe598aa8b9e005",
 		"@capacitor-community/bluetooth-le": "^7.3.0",
 		"@capacitor/core": "^7.4.4",
 		"@capacitor/filesystem": "^7.1.6",
@@ -84,7 +84,7 @@
 			"esbuild"
 		],
 		"patchedDependencies": {
-			"@microbit/microbit-connection@1.0.0-beta.1": "../mini-connection-widget/patches/@microbit__microbit-connection@1.0.0-beta.1.patch"
+			"@microbit/microbit-connection@1.0.0-beta.1": "patches/@microbit__microbit-connection@1.0.0-beta.1.patch"
 		}
 	}
 }
