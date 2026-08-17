@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from '$lib/components/ui/Modal.svelte';
+  import CampusButton from '$lib/components/ui/CampusButton.svelte';
   import type { ProjectMode } from '$lib/stores/projects';
 
   let {
@@ -63,6 +64,7 @@
             type="button"
             class="mode-card"
             class:selected={mode === 'image'}
+            aria-pressed={mode === 'image'}
             onclick={() => (mode = 'image')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 309.5 198">
@@ -85,6 +87,7 @@
             type="button"
             class="mode-card"
             class:selected={mode === 'pose'}
+            aria-pressed={mode === 'pose'}
             onclick={() => (mode = 'pose')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 309.5 198">
@@ -117,73 +120,105 @@
   {/snippet}
 
   {#snippet actions()}
-    <button class="ghost" onclick={cancel}>Abbrechen</button>
-    <button onclick={submit}>Projekt anlegen</button>
+    <CampusButton variant="secondary" onclick={cancel}>Abbrechen</CampusButton>
+    <CampusButton variant="primary" onclick={submit}>Projekt anlegen</CampusButton>
   {/snippet}
 </Modal>
 
 <style lang="scss">
+  // Campus look: --color-* HSL tokens, 2px borders, 16px card radius, green
+  // accent for the active choice. Matches calliope-campus' modal content style
+  // so this dialog reads the same as the room dialogs over there.
   .form {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 1.5rem;
   }
   .field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0.5rem;
   }
   .field-label {
-    font-size: 12px;
+    font-size: 0.95rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: rgb(var(--md-on-surface-variant));
+    color: hsl(var(--color-text-primary));
+  }
+  // Wins over the global input[type='text'] rule via Svelte's scoping class —
+  // including on :focus, where the global rule swaps border width and padding.
+  .field input[type='text'] {
+    padding: 0.75rem 1rem;
+    border: 2px solid hsl(var(--color-border-secondary));
+    border-radius: 8px;
+    background: #fff;
+    color: hsl(var(--color-text-primary));
+    font-size: 1rem;
+    transition: all 0.2s;
+    &:focus {
+      outline: none;
+      padding: 0.75rem 1rem;
+      border-width: 2px;
+      border-color: hsl(var(--color-border-focus));
+      box-shadow: 0 0 0 3px hsl(var(--color-border-focus) / 0.15);
+    }
   }
   .mode-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 1rem;
   }
   .mode-card {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 14px;
-    background: rgb(var(--md-surface-variant));
-    border: 2px solid transparent;
-    border-radius: var(--md-radius-md);
+    gap: 0.375rem;
+    padding: 1rem;
+    background: #fff;
+    border: 2px solid hsl(var(--color-border-primary));
+    border-radius: 16px;
     cursor: pointer;
-    transition: all 0.15s;
-    box-shadow: none;
-    min-height: unset;
-    color: rgb(var(--md-on-surface));
+    font-family: inherit;
+    color: hsl(var(--color-text-primary));
+    box-shadow: 0 10px 25px -5px hsl(var(--color-neutral-100) / 0.05);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.2s ease,
+      background-color 0.2s ease;
     svg {
       width: 100%;
       max-width: 140px;
       height: auto;
-      border-radius: var(--md-radius-sm);
+      border-radius: 8px;
     }
     .name {
-      font-size: 15px;
-      font-weight: 600;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
     }
     .desc {
-      font-size: 12px;
-      color: rgb(var(--md-on-surface-variant));
+      font-size: 0.85rem;
+      line-height: 1.4;
+      color: hsl(var(--color-text-secondary));
       text-align: center;
     }
     &:hover {
-      border-color: rgba(var(--md-primary), 0.4);
+      transform: translateY(-4px);
+      box-shadow: 0 20px 30px -10px hsl(var(--color-neutral-100) / 0.1);
+      border-color: hsl(var(--color-border-secondary));
+    }
+    &:active {
+      transform: translateY(-1px);
+    }
+    &:focus-visible {
+      outline: 3px solid hsl(var(--color-border-focus));
+      outline-offset: 2px;
     }
     &.selected {
-      border-color: rgb(var(--md-primary));
-      background: rgb(var(--md-primary-container));
+      border-color: hsl(var(--color-green-100));
+      background: hsl(var(--color-green-10));
     }
   }
   .hint {
-    font-size: 12px;
-    color: rgb(var(--md-on-surface-variant));
+    font-size: 0.85rem;
+    font-style: italic;
+    color: hsl(var(--color-text-secondary));
   }
 </style>

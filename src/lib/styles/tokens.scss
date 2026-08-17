@@ -61,4 +61,63 @@
   --btn-green: hsl(83, 100%, 48%);
   --btn-green-hover: hsl(83, 100%, 58%);
   --header-height: 50px;
+
+  // ===================================================================
+  // Campus design system — subset copied from
+  // calliope-campus/src/scss/colors.scss. These are HSL component lists
+  // (used as `hsl(var(--color-…))`, not rgb triplets like the --md-* ones
+  // above), so components shared with the campus — ui/CampusButton.svelte —
+  // render identically in both apps.
+  // ===================================================================
+
+  // Base hues
+  --color-primary-hue: 210;   // #1B1C1D background/dark
+  --color-neutral-hue: 190;   // #90A4A8 active gray
+  --color-accent-hue: 156;    // #E8EDEB hover light
+  --color-light-hue: 0;       // #FAFAFA pure light
+  --color-green-hue: 83;      // #98F600 active/online/green
+  --color-red-hue: 356;       // #E53F4B offline/red
+  --color-blue-hue: 217;      // #3B82F6 blue
+  --color-cyan-hue: 181;      // #42C9CB calliope brand/cyan
+
+  // Neutral scale
+  --color-neutral-0:   var(--color-light-hue) 0% 98%;    // #FAFAFA
+  --color-neutral-10:  var(--color-accent-hue) 12% 92%;  // #E8EDEB
+  --color-neutral-50:  var(--color-neutral-hue) 12% 61%; // #90A4A8
+  --color-neutral-100: var(--color-primary-hue) 4% 11%;  // #1B1C1D
+
+  // Green scale (success/online/active)
+  --color-green-10:  calc(var(--color-green-hue) - 3) 100% 95%;
+  --color-green-50:  calc(var(--color-green-hue) - 2) 100% 70%;
+  --color-green-100: var(--color-green-hue) 100% 48%;           // #98F600
+  --color-green-200: calc(var(--color-green-hue) + 2) 100% 35%;
+
+  // Red scale (error/offline/danger)
+  --color-red-10:  calc(var(--color-red-hue) + 4) 76% 95%;
+  --color-red-50:  calc(var(--color-red-hue) + 2) 76% 70%;
+  --color-red-100: var(--color-red-hue) 76% 57%;               // #E53F4B
+  --color-red-200: calc(var(--color-red-hue) - 2) 76% 40%;
+
+  // Blue scale (info/interactive)
+  --color-blue-10:  calc(var(--color-blue-hue) + 3) 91% 95%;
+  --color-blue-50:  calc(var(--color-blue-hue) + 2) 91% 75%;
+  --color-blue-100: var(--color-blue-hue) 91% 60%;             // #3B82F6
+  --color-blue-200: calc(var(--color-blue-hue) - 2) 91% 45%;
+
+  // Cyan scale (brand/calliope)
+  --color-cyan-10:  calc(var(--color-cyan-hue) + 2) 57% 95%;
+  --color-cyan-50:  calc(var(--color-cyan-hue) + 1) 57% 75%;
+  --color-cyan-100: var(--color-cyan-hue) 57% 53%;             // #42C9CB
+  --color-cyan-200: calc(var(--color-cyan-hue) - 1) 57% 38%;
+
+  // Semantic aliases
+  --color-text-primary:   var(--color-neutral-100);
+  --color-text-secondary: var(--color-neutral-50);
+  --color-text-inverse:   var(--color-neutral-0);
+  --color-bg-primary:     var(--color-neutral-0);
+  --color-bg-secondary:   var(--color-neutral-10);
+  --color-bg-inverse:     var(--color-neutral-100);
+  --color-border-primary:   var(--color-neutral-10);
+  --color-border-secondary: var(--color-neutral-50);
+  --color-border-focus:     var(--color-cyan-100);
 }
