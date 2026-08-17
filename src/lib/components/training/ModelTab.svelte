@@ -11,7 +11,18 @@
   } from '$lib/stores';
   import type { TrainingOptions } from '$lib/stores';
   import { updateProject, currentProject, renameTrainedModel } from '$lib/stores/projects';
-  import { isTraining, trainStatus, modelTrained, modelTabView, draftRoi, roiEditing, trainPhase, DEFAULT_ROI } from '$lib/stores/app';
+  import {
+    isTraining,
+    trainStatus,
+    modelTrained,
+    modelTabView,
+    draftRoi,
+    roiEditing,
+    trainPhase,
+    trainEpoch,
+    trainTotalEpochs,
+    DEFAULT_ROI
+  } from '$lib/stores/app';
   import {
     trainModel,
     saveModelToZip,
@@ -25,12 +36,9 @@
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
   import InfoTooltip from '$lib/components/ui/InfoTooltip.svelte';
   import Button from '$lib/components/ui/Button.svelte';
-  import ModelCharts from './ModelCharts.svelte';
   import ModelHistory from './ModelHistory.svelte';
-  import ModelDetailsModal from './ModelDetailsModal.svelte';
 
   let loadModelEl: HTMLInputElement = $state()!;
-  let detailsOpen = $state(false);
 
   // Same gate as the classes sidebar CTA that leads here — kept in one place so
   // the button and the hint can't drift apart from the CTA's condition.
@@ -45,13 +53,6 @@
   // one block, and nothing in the model list counts as selected.
   const isNewView = $derived($modelTabView === 'new' && !$isTraining);
 
-  // Training progress
-  let trainEpoch = $state(0);
-  let trainTotalEpochs = $state(0);
-  const trainProgress = $derived(
-    trainTotalEpochs ? Math.min(100, Math.round((trainEpoch / trainTotalEpochs) * 100)) : 0
-  );
-
   async function doTrain() {
     const gate = get(trainingReadiness);
     if (!gate.ready) {
@@ -60,8 +61,8 @@
     }
     const opts = get(trainingOptions);
     const roi = get(draftRoi);
-    trainEpoch = 0;
-    trainTotalEpochs = opts.epochs;
+    trainEpoch.set(0);
+    trainTotalEpochs.set(opts.epochs);
     isTraining.set(true);
     trainPhase.set('preparing');
     trainStatus.set('Bilder werden vorbereitet…');
@@ -81,7 +82,7 @@
         },
         (ep) => {
           if (get(trainPhase) !== 'training') trainPhase.set('training');
-          trainEpoch = ep + 1;
+          trainEpoch.set(ep + 1);
           trainStatus.set(`Epoche ${ep + 1}/${opts.epochs}`);
         }
       );
@@ -235,60 +236,17 @@
   {/if}
 
   <div class="tab-body">
-  <!-- Body: depends on view / training state -->
+  <!-- Body: depends on view / training state. Everything about a run — its
+       progress and afterwards its evaluation — is shown under the video, so the
+       sidebar only points there and otherwise stays the model chooser. -->
   {#if $isTraining}
-    <section class="card training-card">
-      <h3>{$trainPhase === 'preparing' ? 'Vorbereitung…' : 'Training läuft…'}</h3>
-      <div class="phase-steps">
-        <div class="phase-step" class:done={$trainPhase !== 'preparing'} class:active={$trainPhase === 'preparing'}>
-          <span class="phase-dot"></span>
-          <span>Bilder vorbereiten (Feature-Extraktion)</span>
-          {#if $trainPhase === 'preparing'}<span class="spinner"></span>{/if}
-        </div>
-        <div class="phase-step" class:active={$trainPhase === 'training'}>
-          <span class="phase-dot"></span>
-          <span>Modell trainieren</span>
-        </div>
-      </div>
-
-      {#if $trainPhase === 'training'}
-        <div class="progress-wrap">
-          <div class="progress-bar"><div class="progress-fill" style="width:{trainProgress}%"></div></div>
-          <div class="progress-label">
-            Epoche {trainEpoch} / {trainTotalEpochs} · {trainProgress}%
-          </div>
-        </div>
-      {:else}
-        <div class="progress-wrap">
-          <div class="progress-bar indeterminate"><div class="progress-fill"></div></div>
-          <div class="progress-label">Features werden aus deinen Bildern berechnet…</div>
-        </div>
-      {/if}
-      <div class="training-detail">{$trainStatus}</div>
-      <div class="training-hint">
-        Das Modell lernt gerade aus deinen Bildern. Das kann je nach Anzahl der Klassen
-        und Bilder ein paar Sekunden bis einige Minuten dauern.
-      </div>
-
-      {#if $trainPhase === 'training'}
-        <div class="live-chart">
-          <ModelCharts initialTab="accuracy" />
-        </div>
-      {/if}
-    </section>
+    <div class="empty">
+      {$trainPhase === 'preparing' ? 'Vorbereitung läuft' : 'Training läuft'} — den Fortschritt
+      siehst du unter dem Video.
+    </div>
   {:else if $modelTabView === 'model'}
     {#if hasArtifacts}
-      <!-- The numbers of the selected model live under the video now; the
-           sidebar keeps the curves and the full details dialog. -->
-      <section class="card">
-        <div class="card-head">
-          <h3>Auswertung</h3>
-          <Button variant="ghost" size="small" onclick={() => (detailsOpen = true)}>
-            Details…
-          </Button>
-        </div>
-        <ModelCharts />
-      </section>
+      <div class="empty">Klassen, Auswertung und Kennzahlen dieses Modells stehen unter dem Video.</div>
     {:else}
       <div class="empty">Wähle ein Modell aus der Liste oder trainiere ein neues.</div>
     {/if}
@@ -598,8 +556,6 @@
   </div>
 </div>
 
-<ModelDetailsModal bind:isOpen={detailsOpen} />
-
 <style lang="scss">
   // The whole tab scrolls as one, so the name row and the options card below it
   // can never drift apart while scrolling.
@@ -692,61 +648,6 @@
       color: rgb(var(--md-on-surface-variant));
     }
   }
-  .training-card h3 {
-    color: rgb(var(--md-primary));
-  }
-  .progress-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 10px;
-  }
-  .progress-bar {
-    height: 10px;
-    background: rgb(var(--md-surface-variant));
-    border-radius: 999px;
-    overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%;
-    background: rgb(var(--md-primary));
-    border-radius: 999px;
-    transition: width 0.3s;
-  }
-  .progress-bar.indeterminate {
-    overflow: hidden;
-    .progress-fill {
-      width: 40%;
-      animation: indeterminate 1.4s ease-in-out infinite;
-    }
-  }
-  @keyframes indeterminate {
-    0%   { transform: translateX(-100%); }
-    100% { transform: translateX(350%); }
-  }
-  .phase-steps {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 10px;
-    .phase-step {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: rgb(var(--md-on-surface-variant));
-      &.active { color: rgb(var(--md-on-surface)); font-weight: 600; }
-      &.done { color: rgb(var(--md-on-surface-variant)); opacity: 0.7; }
-    }
-    .phase-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      border: 2px solid currentColor;
-      flex-shrink: 0;
-    }
-    .phase-step.active .phase-dot { background: rgb(var(--md-primary)); border-color: rgb(var(--md-primary)); }
-    .phase-step.done .phase-dot   { background: rgb(var(--md-tertiary)); border-color: rgb(var(--md-tertiary)); }
-  }
   .advanced {
     margin-top: 12px;
     background: rgba(var(--md-surface-variant), 0.25);
@@ -822,11 +723,6 @@
       margin-bottom: 8px;
     }
   }
-  .live-chart {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px dashed rgba(var(--md-outline-variant), 0.7);
-  }
   .roi-section {
     margin-top: 12px;
     padding: 10px 12px;
@@ -875,22 +771,6 @@
       &:hover { color: rgb(var(--md-primary)); }
     }
   }
-  .progress-label {
-    font-size: 12px;
-    color: rgb(var(--md-on-surface-variant));
-    font-variant-numeric: tabular-nums;
-  }
-  .training-detail {
-    font-size: 13px;
-    font-weight: 500;
-    color: rgb(var(--md-on-surface));
-    margin-bottom: 6px;
-  }
-  .training-hint {
-    font-size: 12px;
-    color: rgb(var(--md-on-surface-variant));
-    line-height: 1.5;
-  }
   .empty {
     padding: 16px;
     text-align: center;
@@ -907,15 +787,6 @@
       font-size: 14px;
       font-weight: 600;
       color: rgb(var(--md-on-surface));
-    }
-  }
-  .card-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-    h3 {
-      margin: 0;
     }
   }
   .opt-grid {
