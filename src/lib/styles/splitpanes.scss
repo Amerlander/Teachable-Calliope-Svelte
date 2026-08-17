@@ -1,0 +1,79 @@
+// Splitpanes — the campus look, adapted to our tokens.
+//
+// The panes are plain surfaces whose content runs all the way to their own
+// edges: no padding, no frame. What separates them is a black bar with two
+// hairline grips in the middle, and the panes' rounded corners let that same
+// black through — so the gutter reads as slightly rounded at the top and the
+// bottom. The panes clip their content, so nothing inside carries a radius of
+// its own.
+//
+// The pages pass `theme="modern-theme"`, which keeps the package's own
+// default-theme CSS (grey panes, white splitter, hairline borders) out of the
+// cascade — everything below is ours, so no !important is needed.
+
+.splitpanes.modern-theme {
+  // The campus's own black (#1B1C1D) and its grip colour, with the literal
+  // values as fallbacks so the theme still holds up without those tokens.
+  --gutter-bg: hsl(var(--color-bg-inverse, 210 4% 11%));
+  --gutter-grip: hsl(var(--color-text-inverse, 0 0% 98%) / 0.48);
+  --gutter-grip-hover: hsl(var(--color-text-inverse, 0 0% 98%));
+
+  background: var(--gutter-bg);
+
+  .splitpanes__pane {
+    background: rgb(var(--md-surface));
+    border-radius: var(--md-radius-lg);
+    // Panes are layout containers for a single content column; every pane in
+    // the app fills its height and manages its own scrolling.
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .splitpanes__splitter {
+    position: relative;
+    flex-shrink: 0;
+    border: none;
+    background: var(--gutter-bg);
+
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      background: var(--gutter-grip);
+      transition: background 0.15s;
+    }
+    &:hover::before,
+    &:hover::after {
+      background: var(--gutter-grip-hover);
+    }
+  }
+
+  &.splitpanes--vertical > .splitpanes__splitter {
+    width: 12px;
+    cursor: col-resize;
+    &::before,
+    &::after {
+      transform: translateY(-50%);
+      width: 1px;
+      height: 30px;
+    }
+    &::before { margin-left: -2px; }
+    &::after  { margin-left: 1px; }
+  }
+
+  &.splitpanes--horizontal > .splitpanes__splitter {
+    height: 12px;
+    cursor: row-resize;
+    &::before,
+    &::after {
+      transform: translateX(-50%);
+      width: 30px;
+      height: 1px;
+    }
+    &::before { margin-top: -2px; }
+    &::after  { margin-top: 1px; }
+  }
+}

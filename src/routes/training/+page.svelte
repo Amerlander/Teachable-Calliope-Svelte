@@ -58,9 +58,11 @@
 </div>
 
 <style lang="scss">
+  // No padding: the panes reach the window edges, and the black splitter bar is
+  // what separates them. See src/lib/styles/splitpanes.scss for the theme.
   .training-view {
     display: block;
-    padding: 16px;
+    padding: 0;
   }
 
   // Transition wrapper inside the pane — has to carry the pane's own flex
@@ -70,39 +72,5 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-  }
-
-  :global(.splitpanes.modern-theme) {
-    background: transparent;
-  }
-  :global(.splitpanes.modern-theme .splitpanes__pane) {
-    background: transparent;
-    padding: 0 8px;
-    &:first-child { padding-left: 0; }
-    &:last-child  { padding-right: 0; }
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-  :global(.splitpanes.modern-theme .splitpanes__splitter) {
-    background: transparent;
-    position: relative;
-    width: 6px;
-    margin: 0 -3px;
-    z-index: 2;
-    cursor: col-resize;
-    &::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      margin: auto 2px;
-      width: 2px;
-      background: rgba(var(--md-outline-variant), 0.7);
-      border-radius: 2px;
-      transition: background 0.15s;
-    }
-    &:hover::before {
-      background: rgb(var(--md-primary));
-    }
   }
 </style>

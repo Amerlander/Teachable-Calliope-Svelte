@@ -11,10 +11,13 @@
 </div>
 
 <style lang="scss">
+  // The pane itself has no padding anymore (its content runs to the edges), so
+  // the column brings the breathing room its text needs.
   .workspace {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    padding: 12px;
   }
   .tab-content {
     flex: 1;
