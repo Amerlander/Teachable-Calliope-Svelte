@@ -59,7 +59,7 @@
 		"wuchale": "^0.25.7"
 	},
 	"dependencies": {
-		"@calliope-edu/mini-connection-widget": "github:calliope-edu/mini-connection-widget#94ed36614bd42801b093add21c3393b60eb3689e",
+		"@calliope-edu/mini-connection-widget": "github:calliope-edu/mini-connection-widget#a107863685bc08a59a636f1d5b86bcd10cd837b5",
 		"@capacitor-community/bluetooth-le": "^7.3.0",
 		"@capacitor/core": "^7.4.4",
 		"@capacitor/filesystem": "^7.1.6",
