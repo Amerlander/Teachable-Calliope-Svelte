@@ -43,10 +43,11 @@
     workspaceTab,
     modelTabView,
     draftRoi,
-    roiEditing,
-    DEFAULT_ROI,
-    type Roi
+    roiEditing
   } from '$lib/stores/app';
+  import { DEFAULT_ROI, mirrorRoi, roiSizeLabel } from '$lib/roi';
+  import RoiOverlay from '$lib/components/RoiOverlay.svelte';
+  import type { Roi } from '$lib/stores/projects';
   import ModelStats from '$lib/components/training/ModelStats.svelte';
   import ModelCharts from '$lib/components/training/ModelCharts.svelte';
   import ModelDetailsModal from '$lib/components/training/ModelDetailsModal.svelte';
@@ -71,12 +72,9 @@
   let poseRaf: number | null = null;
 
   const thresholds = $derived($currentProject?.classThresholds ?? {});
-  const currentModelRoi = $derived.by(() => {
-    const p = $currentProject;
-    if (!p?.currentModelId) return null;
-    const m = p.modelHistory.find((x) => x.id === p.currentModelId);
-    return m?.roi ?? null;
-  });
+  // The selected model's own region — shown while testing so it is visible what
+  // the model is looking at, and never editable there.
+  const currentModelRoi = $derived($activeModel?.roi ?? null);
   let videoAspect = $state(4 / 3);
   // Winner is chosen by threshold-normalized score across all classes (see
   // pickWinnerIndex) — a class with lots of headroom above its threshold beats
@@ -117,7 +115,9 @@
       return {
         kind: 'prep',
         label: 'Vorbereitung',
-        hint: 'ROI auswählen – wird mit dem nächsten Training gespeichert'
+        hint: $draftRoi
+          ? 'Bereich wird mit dem nächsten Modell gespeichert'
+          : 'Ganzes Bild – du kannst einen Bereich festlegen'
       };
     return { kind: 'train', label: 'Aufnahme', hint: 'Bild wird zur aktiven Klasse aufgenommen' };
   });
@@ -252,10 +252,37 @@
     lastTickAt = 0;
   }
 
-  // ---------- ROI editor (prep mode) ----------
-  // draftRoi is the source of truth: null = no ROI (full image).
-  // "Add ROI" in ModelTab creates a default; drag handlers mutate via draftRoi.set.
+  // ---------- Region editor (prep mode) ----------
+  // `draftRoi` is the source of truth and holds camera-frame coordinates:
+  // null = whole image, which is where every project starts. The feed is shown
+  // mirrored, so the box is edited in mirrored coordinates and converted on the
+  // way in and out — see $lib/roi.
   let roiContainer: HTMLDivElement | null = $state(null);
+
+  /** The draft box as it appears on the mirrored feed. */
+  const editRoi = $derived($draftRoi ? mirrorRoi($draftRoi) : null);
+
+  function commitEditRoi(displayRoi: Roi) {
+    draftRoi.set(mirrorRoi(displayRoi));
+  }
+
+  // The default box is centred, so it needs no mirroring to start from.
+  function defineRoi() {
+    draftRoi.set({ ...DEFAULT_ROI });
+    roiEditing.set(true);
+  }
+
+  /** Back to the whole image — the one reset there is. */
+  function useFullFrame() {
+    draftRoi.set(null);
+    roiEditing.set(false);
+  }
+
+  // Editing belongs to the prep view; leaving it must not leave handles behind
+  // on a view where the region is read-only.
+  $effect(() => {
+    if (mode !== 'prep' && $roiEditing) roiEditing.set(false);
+  });
 
   type DragMode = 'move' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
   let drag: null | {
@@ -280,7 +307,7 @@
   function onPointerDown(mode: DragMode, e: PointerEvent) {
     e.stopPropagation();
     if (!roiContainer) return;
-    const current = $draftRoi;
+    const current = editRoi;
     if (!current) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const p = normPointer(e);
@@ -331,7 +358,7 @@
         break;
       }
     }
-    draftRoi.set(r);
+    commitEditRoi(r);
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -339,14 +366,6 @@
       (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
       drag = null;
     }
-  }
-
-  function resetRoi() {
-    draftRoi.set({ ...DEFAULT_ROI });
-  }
-
-  function fullRoi() {
-    draftRoi.set({ x: 0, y: 0, w: 1, h: 1 });
   }
 
   // ---------- Threshold drag (directly on the sub-bar) ----------
@@ -815,14 +834,8 @@
         </div>
       {/if}
 
-      {#if currentModelRoi && mode === 'test'}
-        <div class="roi-container readonly" style="aspect-ratio: {videoAspect};">
-          <div
-            class="roi-rect readonly"
-            style="left:{currentModelRoi.x * 100}%; top:{currentModelRoi.y * 100}%; width:{currentModelRoi.w * 100}%; height:{currentModelRoi.h * 100}%;"
-            title="Aktiver Modell-ROI"
-          ></div>
-        </div>
+      {#if mode === 'test' && !isPose}
+        <RoiOverlay roi={currentModelRoi} aspect={videoAspect} />
       {/if}
     </div>
 
@@ -919,47 +932,57 @@
         </div>
       {/if}
 
-      {#if $roiEditing && $draftRoi && !isPose}
-        <!-- ROI overlay (editable) -->
-        <div class="roi-container editing" style="aspect-ratio: {videoAspect};" bind:this={roiContainer}>
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div
-            class="roi-rect"
-            role="region"
-            aria-label="Trainingsbereich"
-            style="left:{$draftRoi.x * 100}%; top:{$draftRoi.y * 100}%; width:{$draftRoi.w * 100}%; height:{$draftRoi.h * 100}%;"
-            onpointerdown={(e) => onPointerDown('move', e)}
-            onpointermove={onPointerMove}
-            onpointerup={onPointerUp}
-            onpointercancel={onPointerUp}
-          >
-            {#each ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as h (h)}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <span
-                class="handle {h}"
-                onpointerdown={(e) => onPointerDown(h as DragMode, e)}
-                onpointermove={onPointerMove}
-                onpointerup={onPointerUp}
-                onpointercancel={onPointerUp}
-              ></span>
-            {/each}
+      <!-- The region for the next model is defined here, in the camera: there is
+           nowhere else it could be judged. Everything about it is one control
+           set — define it, drag it, or go back to the whole image. -->
+      {#if !isPose}
+        {#if $roiEditing && editRoi}
+          <div class="roi-container editing" style="aspect-ratio: {videoAspect};" bind:this={roiContainer}>
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+            <div
+              class="roi-rect"
+              role="region"
+              aria-label="Trainingsbereich"
+              style="left:{editRoi.x * 100}%; top:{editRoi.y * 100}%; width:{editRoi.w * 100}%; height:{editRoi.h * 100}%;"
+              onpointerdown={(e) => onPointerDown('move', e)}
+              onpointermove={onPointerMove}
+              onpointerup={onPointerUp}
+              onpointercancel={onPointerUp}
+            >
+              {#each ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as h (h)}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <span
+                  class="handle {h}"
+                  onpointerdown={(e) => onPointerDown(h as DragMode, e)}
+                  onpointermove={onPointerMove}
+                  onpointerup={onPointerUp}
+                  onpointercancel={onPointerUp}
+                ></span>
+              {/each}
+            </div>
           </div>
-        </div>
+        {:else if $draftRoi}
+          <RoiOverlay roi={$draftRoi} aspect={videoAspect} title="Bereich für das nächste Modell" />
+        {/if}
 
         <div class="roi-actions">
-          <button type="button" class="roi-btn" onclick={resetRoi}>Zurücksetzen</button>
-          <button type="button" class="roi-btn" onclick={fullRoi}>Ganzes Bild</button>
-          <span class="roi-readout">
-            {Math.round($draftRoi.w * 100)}×{Math.round($draftRoi.h * 100)}% @ ({Math.round($draftRoi.x * 100)},{Math.round($draftRoi.y * 100)})
-          </span>
-        </div>
-      {:else if $draftRoi && !isPose}
-        <!-- Read-only preview of the currently chosen ROI -->
-        <div class="roi-container readonly" style="aspect-ratio: {videoAspect};">
-          <div
-            class="roi-rect readonly"
-            style="left:{$draftRoi.x * 100}%; top:{$draftRoi.y * 100}%; width:{$draftRoi.w * 100}%; height:{$draftRoi.h * 100}%;"
-          ></div>
+          {#if $roiEditing}
+            <button type="button" class="roi-btn primary" onclick={() => roiEditing.set(false)}>
+              Fertig
+            </button>
+            <button type="button" class="roi-btn" onclick={useFullFrame}>Ganzes Bild</button>
+            {#if $draftRoi}
+              <span class="roi-readout">{roiSizeLabel($draftRoi)}</span>
+            {/if}
+          {:else if $draftRoi}
+            <button type="button" class="roi-btn" onclick={() => roiEditing.set(true)}>
+              Bereich ändern
+            </button>
+            <button type="button" class="roi-btn" onclick={useFullFrame}>Ganzes Bild</button>
+            <span class="roi-readout">Bereich {roiSizeLabel($draftRoi)}</span>
+          {:else}
+            <button type="button" class="roi-btn" onclick={defineRoi}>Bereich festlegen</button>
+          {/if}
         </div>
       {/if}
     </div>
@@ -967,7 +990,9 @@
     <div class="prep-classes">
       <div class="prep-classes-head">
         <span>Klassen &amp; Bilder</span>
-        <span class="hint">werden mit der gewählten ROI trainiert</span>
+        <span class="hint">
+          {#if $draftRoi}werden im festgelegten Bereich trainiert{:else}werden mit dem ganzen Bild trainiert{/if}
+        </span>
       </div>
       {#each $classes as cls (cls)}
         {@const imgs = [...($examples[cls] ?? [])]}
@@ -1418,7 +1443,6 @@
     aspect-ratio: 4 / 3;
     z-index: 4;
     pointer-events: none;
-    &.readonly { pointer-events: none; }
   }
   .roi-rect {
     position: absolute;
@@ -1428,14 +1452,6 @@
     pointer-events: auto;
     touch-action: none;
     box-sizing: border-box;
-    &.readonly {
-      cursor: default;
-      pointer-events: none;
-      box-shadow: none;
-      border-style: dashed;
-      border-color: rgb(var(--md-tertiary));
-      background: rgba(var(--md-tertiary), 0.08);
-    }
     .handle {
       position: absolute;
       width: 12px;
@@ -1478,6 +1494,13 @@
     min-height: unset;
     box-shadow: none;
     &:hover { background: rgba(var(--md-primary), 0.12); border-color: rgb(var(--md-primary)); }
+    &.primary {
+      background: rgb(var(--md-primary));
+      border-color: rgb(var(--md-primary));
+      color: rgb(var(--md-on-primary));
+      font-weight: 600;
+      &:hover { background: rgb(var(--md-primary)); filter: brightness(0.95); }
+    }
   }
   .roi-readout {
     font-size: 11px;

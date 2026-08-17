@@ -1,15 +1,30 @@
-import { writable, type Readable } from 'svelte/store';
+import { get, writable, type Readable } from 'svelte/store';
+import type { MakeCodeProject as MkcProject } from '@microbit/makecode-embed';
 import {
-  MakeCodeFrameDriver,
-  createMakeCodeURL,
-  type MakeCodeProject as MkcProject,
-} from '@microbit/makecode-embed';
+  createMakeCodeDriver,
+  makeCodeIframeUrl,
+  makeCodeEditorOrigin,
+  createSerialMonitorBridge,
+  sendSerialLineToEditor,
+  JacdacHost,
+  parseExtensions,
+  removeExtension,
+  getHardwareVersion,
+  setHardwareVersion,
+  type DriverHandle,
+  type MakeCodeExtension,
+  type MakeCodeMode,
+  type CalliopeHardwareVersion,
+  type ShareResult,
+} from '@calliope-edu/mini-connection-widget/makecode';
+import { calliopeState } from '@calliope-edu/mini-connection-widget';
 import {
   generateProject as generateProjectImpl,
   createCalliopeSeedProject,
   type GenerateOptions,
 } from './makecode/generate';
 import {
+  activeModel,
   addMakeCodeProgram,
   updateMakeCodeProgramFiles,
   getCurrentMakeCodeProgram,
@@ -17,17 +32,19 @@ import {
 
 export const MAKECODE_BASE_URL = 'https://makecode.calliope.cc';
 export const CONTROLLER_ID = 'CalliopeTeachable';
+/** Owner key in the widget's serial-consumer registry. */
+const SERIAL_CONSUMER_ID = 'teachable-makecode';
 
 export type MakeCodeProject = MkcProject;
 
 export { createCalliopeSeedProject };
-export type { GenerateOptions };
+export type { GenerateOptions, MakeCodeExtension, MakeCodeMode, ShareResult };
+
+/** Origin every message to and from the editor is checked against. */
+export const MAKECODE_ORIGIN = makeCodeEditorOrigin(MAKECODE_BASE_URL);
 
 export function createMakeCodeIframeUrl(lang?: string): string {
-  return createMakeCodeURL(MAKECODE_BASE_URL, undefined, lang, 2, {
-    hidemenu: '1',
-    nocookiebanner: '1',
-  });
+  return makeCodeIframeUrl({ baseUrl: MAKECODE_BASE_URL, lang });
 }
 
 // ---- Driver lifecycle ----
@@ -37,44 +54,43 @@ type DownloadHandler = (d: { name: string; hex: string }) => void;
 
 interface Active {
   iframe: HTMLIFrameElement;
-  driver: MakeCodeFrameDriver;
+  handle: DriverHandle;
   pending: MakeCodeProject | null;
-  project: ReturnType<typeof writable<MakeCodeProject | null>>;
-  ready: ReturnType<typeof writable<boolean>>;
   downloadHandlers: Set<DownloadHandler>;
+  dispose: () => void;
 }
 
 let active: Active | null = null;
 
-/**
- * Save a compiled hex to the downloads folder (MakeCode's "Als Datei
- * herunterladen").
- *
- * TEMPORARY: the widget owns this as `downloadHexFile` — same operation as its
- * connection-choice "Download .hex" and the mini 2 flash fallback, and campus
- * already switched to it. The export only exists after 73da27a, which is what
- * we pin, so this stands in until the pin is bumped; then delete this and
- * import `downloadHexFile` from the widget.
- *
- * Uses file-saver (already a dependency) rather than a hand-rolled anchor, so
- * the object URL isn't revoked out from under an in-flight download.
- */
-async function saveHexFile(hex: string, name: string): Promise<void> {
-  if (!hex) return;
-  const { saveAs } = await import('file-saver');
-  const base = (name || '').replace(/[\\/:*?"<>|]/g, '-').trim() || 'calliope-program';
-  const fileName = /\.(hex|uf2)$/i.test(base) ? base : `${base}.hex`;
-  saveAs(new Blob([hex], { type: 'application/octet-stream' }), fileName);
+const projectStore = writable<MakeCodeProject | null>(null);
+const readyStore = writable(false);
+const modeStore = writable<MakeCodeMode>('blocks');
+const extensionsStore = writable<MakeCodeExtension[]>([]);
+const hardwareVersionStore = writable<CalliopeHardwareVersion | null>(null);
+
+/** The project as MakeCode last saved it. */
+export const makeCodeProject: Readable<MakeCodeProject | null> = {
+  subscribe: projectStore.subscribe,
+};
+export const makeCodeReady: Readable<boolean> = { subscribe: readyStore.subscribe };
+export const makeCodeMode: Readable<MakeCodeMode> = { subscribe: modeStore.subscribe };
+export const makeCodeExtensions: Readable<MakeCodeExtension[]> = {
+  subscribe: extensionsStore.subscribe,
+};
+export const makeCodeHardwareVersion: Readable<CalliopeHardwareVersion | null> = {
+  subscribe: hardwareVersionStore.subscribe,
+};
+
+/** Re-read what the toolbar shows about the project. */
+function refreshProjectFacts(project: MakeCodeProject | null): void {
+  extensionsStore.set(project ? parseExtensions(project) : []);
+  hardwareVersionStore.set(project ? getHardwareVersion(project) : null);
 }
 
 function disposeActive() {
   if (!active) return;
-  try {
-    active.driver.dispose();
-  } catch {
-    /* ignore */
-  }
-  active.ready.set(false);
+  active.dispose();
+  readyStore.set(false);
   active = null;
 }
 
@@ -86,105 +102,108 @@ export function setMakecodeIframe(iframe: HTMLIFrameElement | null) {
   if (active && active.iframe === iframe) return;
   disposeActive();
 
-  const project = writable<MakeCodeProject | null>(null);
-  const ready = writable(false);
   const downloadHandlers = new Set<DownloadHandler>();
 
-  const self: Active = {
+  const handle = createMakeCodeDriver({
     iframe,
-    driver: undefined as unknown as MakeCodeFrameDriver,
-    pending: null,
-    project,
-    ready,
-    downloadHandlers,
-  };
-
-  const DBG = '[makecode]';
-  // eslint-disable-next-line no-console
-  console.log(DBG, 'initializing driver', {
     controllerId: CONTROLLER_ID,
-    src: iframe.src,
+    // Replaced right after construction with whatever the caller staged; the
+    // list is only read when the iframe runs its workspacesync.
+    initialProjects: [createCalliopeSeedProject()],
+    onEditorReady: () => readyStore.set(true),
+    onWorkspaceSave: (project) => {
+      projectStore.set(project);
+      refreshProjectFacts(project);
+
+      // Persist into the current program so reloads don't lose work.
+      const files = (project.text ?? {}) as Record<string, string>;
+      if (Object.keys(files).length === 0) return;
+      const current = getCurrentMakeCodeProgram();
+      if (current) {
+        updateMakeCodeProgramFiles(current.id, files, project.header);
+      } else {
+        // First-ever save with no program slot yet — create one so the user
+        // doesn't lose their edits if they reload before clicking anywhere
+        // else. It binds to the model in use, if there is one; a project
+        // without any model produces an unbound program that gets its model
+        // as soon as one is trained and a starter is generated.
+        addMakeCodeProgram({
+          name: 'Programm 1',
+          files,
+          header: project.header,
+          model: get(activeModel),
+        });
+      }
+    },
+    // Teachable fans the compiled hex out to its own handlers — the tryout page
+    // flashes it under the project's name — rather than letting the shared
+    // driver flash it directly.
+    onDownload: (d) => {
+      downloadHandlers.forEach((h) => {
+        try {
+          h(d);
+        } catch {
+          /* one bad handler must not stop the others */
+        }
+      });
+    },
+    // "Als Datei herunterladen" falls through to the widget's downloadHexFile.
   });
 
-  const driver = new MakeCodeFrameDriver(
-    {
-      controllerId: CONTROLLER_ID,
-      initialProjects: async () => {
-        const p = self.pending;
-        // eslint-disable-next-line no-console
-        console.log(DBG, 'initialProjects requested by MakeCode', {
-          hasPending: !!p,
-        });
-        if (p) return [p];
-        return [createCalliopeSeedProject()];
-      },
-      onWorkspaceLoaded: () => {
-        // eslint-disable-next-line no-console
-        console.log(DBG, 'onWorkspaceLoaded — controller=2 sync complete');
-      },
-      onEditorContentLoaded: () => {
-        // eslint-disable-next-line no-console
-        console.log(DBG, 'onEditorContentLoaded');
-        self.ready.set(true);
-      },
-      onWorkspaceSave: (ev) => {
-        // eslint-disable-next-line no-console
-        console.log(DBG, 'onWorkspaceSave', {
-          name: ev.project?.header?.name,
-          files: Object.keys(ev.project?.text ?? {}),
-        });
-        if (!ev.project) return;
-        self.project.set(ev.project);
-        // Persist into the current program so reloads don't lose work.
-        const files = (ev.project.text ?? {}) as Record<string, string>;
-        if (Object.keys(files).length === 0) return;
-        const active = getCurrentMakeCodeProgram();
-        if (active) {
-          updateMakeCodeProgramFiles(active.id, files, ev.project.header);
-        } else {
-          // First-ever save with no program slot yet — create one so the user
-          // doesn't lose their edits if they reload before clicking anywhere else.
-          addMakeCodeProgram({
-            name: 'Programm 1',
-            files,
-            header: ev.project.header,
-          });
-        }
-      },
-      onDownload: (d) => {
-        // eslint-disable-next-line no-console
-        console.log(DBG, 'onDownload', { name: d.name, hexLen: d.hex?.length });
-        self.downloadHandlers.forEach((h) => {
-          try {
-            h(d);
-          } catch {
-            /* ignore */
-          }
-        });
-      },
-      // "Als Datei herunterladen" — the explicit menu action, distinct from the
-      // main Download button that flashes. Under controller=2 pxt does NOT
-      // write the file itself: it posts `{ save, name }` and leaves it to the
-      // host. Without this handler the menu entry does nothing at all.
-      onSave: (s) => {
-        // eslint-disable-next-line no-console
-        console.log(DBG, 'onSave', { name: s.name, hexLen: s.hex?.length });
-        void saveHexFile(s.hex, s.name);
-      },
+  // ---- Serial monitor bridge ----
+  // In controller=2 the widget owns the device, so pxt can never open its own
+  // serial and its monitor would stay empty. Forwarding the device's lines in
+  // is also what raises the "Show data — Device" badge. Declaring the serial
+  // consumer gets a flash-only mini 2 the widget's "Serial verbinden?" offer,
+  // which Teachable needs anyway to stream its predictions to the board.
+  const serialBridge = createSerialMonitorBridge({
+    iframe: () => active?.iframe ?? null,
+    origin: MAKECODE_ORIGIN,
+    consumerId: SERIAL_CONSUMER_ID,
+  });
+
+  // ---- Jacdac bridge ----
+  // The embed driver handles only the controller protocol and silently drops
+  // `messagepacket`, so Jacdac frames need their own raw window listener.
+  // Inert until a Jacdac program is on the device.
+  const jacdacHost = new JacdacHost({
+    iframe: () => active?.iframe ?? null,
+    origin: MAKECODE_ORIGIN,
+  });
+  const onWindowMessage = (event: MessageEvent) => {
+    if (event.source !== iframe.contentWindow) return;
+    if (event.origin !== MAKECODE_ORIGIN) return;
+    // Same gate as the serial bridge: the Blocks LIVE runtime multiplexes
+    // binary frames over the serial link, leaving no valid path for Jacdac.
+    if (get(calliopeState).programType === 'blocks') return;
+    jacdacHost.handleMessage(event.data);
+  };
+  window.addEventListener('message', onWindowMessage);
+
+  active = {
+    iframe,
+    handle,
+    pending: null,
+    downloadHandlers,
+    dispose: () => {
+      window.removeEventListener('message', onWindowMessage);
+      jacdacHost.dispose();
+      serialBridge.dispose();
+      handle.dispose();
     },
-    () => self.iframe,
-  );
-  self.driver = driver;
-  driver.initialize();
-  active = self;
+  };
 }
 
 /** Push a fully-formed MakeCode project into the editor. */
 export function importProject(project: MakeCodeProject): boolean {
   if (!active) return false;
   active.pending = project;
+  // Also stage it for the workspacesync: an import issued before the iframe has
+  // connected would otherwise be answered with the seed project.
+  active.handle.setPendingProjects([project]);
+  refreshProjectFacts(project);
   try {
-    void active.driver.importProject({ project });
+    void active.handle.driver.importProject({ project });
     return true;
   } catch {
     return false;
@@ -210,14 +229,13 @@ export function importProgramFiles(
 /** Expose the generator for callers that want to inspect/persist the project. */
 export const generateProject = generateProjectImpl;
 
-export type MakeCodeLang = 'blocks' | 'js' | 'python';
-
-export async function switchMakeCodeLang(lang: MakeCodeLang): Promise<void> {
+export async function switchMakeCodeLang(mode: MakeCodeMode): Promise<void> {
+  modeStore.set(mode);
   if (!active) return;
   try {
-    if (lang === 'blocks') await active.driver.switchBlocks();
-    else if (lang === 'js') await active.driver.switchJavascript();
-    else await active.driver.switchPython();
+    if (mode === 'blocks') await active.handle.driver.switchBlocks();
+    else if (mode === 'javascript') await active.handle.driver.switchJavascript();
+    else await active.handle.driver.switchPython();
   } catch {
     /* driver not ready — user can try again */
   }
@@ -231,7 +249,7 @@ export async function switchMakeCodeLang(lang: MakeCodeLang): Promise<void> {
  */
 export async function compileMakeCodeProject(): Promise<void> {
   if (!active) return;
-  await active.driver.compile();
+  await active.handle.driver.compile();
 }
 
 export function onMakeCodeDownload(cb: DownloadHandler): () => void {
@@ -240,21 +258,84 @@ export function onMakeCodeDownload(cb: DownloadHandler): () => void {
   return () => active?.downloadHandlers.delete(cb);
 }
 
-export function makeCodeProjectStore(): Readable<MakeCodeProject | null> {
-  const s = writable<MakeCodeProject | null>(null);
-  if (active) return { subscribe: active.project.subscribe };
-  return s;
+// ---- Toolbar actions --------------------------------------------------------
+
+/**
+ * The project the toolbar acts on: MakeCode's last save when there is one, else
+ * the stored program's file map, which is what a freshly-opened editor still
+ * holds before its first autosave.
+ */
+function currentEditableProject(): MakeCodeProject | null {
+  const saved = get(projectStore);
+  if (saved?.text && Object.keys(saved.text).length > 0) return saved;
+  const program = getCurrentMakeCodeProgram();
+  if (!program) return null;
+  return { header: program.header as MkcProject['header'], text: program.files };
 }
 
-export function makeCodeReadyStore(): Readable<boolean> {
-  const s = writable(false);
-  if (active) return { subscribe: active.ready.subscribe };
-  return s;
+/** Persist a toolbar-driven project change and push it back into the editor. */
+function applyProjectChange(next: MakeCodeProject): void {
+  const files = (next.text ?? {}) as Record<string, string>;
+  const program = getCurrentMakeCodeProgram();
+  if (program) updateMakeCodeProgramFiles(program.id, files, next.header);
+  projectStore.set(next);
+  importProject(next);
+}
+
+/**
+ * Switch the project's Calliope mini revision. pxt-calliope carries the board
+ * in the project's `v1`/`v2`/`v3` dependency, so this is a pxt.json rewrite
+ * plus a re-import — there is no controller action for it.
+ */
+export function setMakeCodeHardwareVersion(version: CalliopeHardwareVersion): void {
+  const project = currentEditableProject();
+  if (!project) return;
+  const next = setHardwareVersion(project, version) as MakeCodeProject;
+  if (next === project) return;
+  applyProjectChange(next);
+}
+
+export function removeMakeCodeExtension(extensionId: string): void {
+  const project = currentEditableProject();
+  if (!project) return;
+  const next = removeExtension(project, extensionId) as MakeCodeProject;
+  if (next === project) return;
+  applyProjectChange(next);
+}
+
+/**
+ * Publish the active program and return its public URL + QR. The editor runs
+ * with `hidemenu=1`, so pxt's own share UI is hidden and this is the only route.
+ */
+export async function shareMakeCodeProject(projectName: string): Promise<ShareResult> {
+  if (!active) throw new Error('editor not ready');
+  const headerId =
+    (get(projectStore)?.header as { id?: string } | undefined)?.id ??
+    (getCurrentMakeCodeProgram()?.header as { id?: string } | undefined)?.id;
+  if (!headerId) throw new Error('no program to share');
+  // shareProject awaits a postMessage reply; if the share service is
+  // unreachable that reply never arrives, so bound the wait.
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('share timeout')), 25000),
+  );
+  return Promise.race([
+    active.handle.driver.shareProject({ headerId, projectName }),
+    timeout,
+  ]);
+}
+
+/**
+ * Feed one line to the editor. The serial monitor always shows it; a running
+ * simulator receives it as `serial.readLine()` input on a pxt carrying the
+ * simdriver forwarding fix. This is how live predictions reach the simulator
+ * when no board is connected.
+ */
+export function sendLineToMakeCode(line: string): boolean {
+  if (!active) return false;
+  return sendSerialLineToEditor(active.iframe, MAKECODE_ORIGIN, line);
 }
 
 // ---- Back-compat shims for existing callers ----
-// ModelTab.svelte still imports these — keep the signatures stable while the
-// body now delegates to the mode-aware generator.
 
 export function generateMakeCodeProject(
   name: string,

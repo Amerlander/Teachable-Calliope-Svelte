@@ -793,74 +793,161 @@ export async function downloadAllClassImages(allExamples: Record<string, { data:
   saveAs(content, `teachable_machine_dataset_${Date.now()}.zip`);
 }
 
-export async function saveModelToZip(model: any, meta: any) {
-  if (!model) throw new Error('No model to save');
+/**
+ * What a model ZIP carries beyond the weights. Written by
+ * {@link exportModelToZip} and read back by {@link readModelZip}, so an
+ * exported model describes itself the same way an in-app model does: which
+ * classes it outputs, which image region it was trained on, which feature
+ * extractor produced its inputs.
+ */
+type ModelZipMetadata = ModelMetadata & {
+  teachableFormat?: number;
+  label?: string;
+  trainedAt?: number;
+  roi?: Roi;
+  featureExtractor?: FeatureExtractor;
+  mode?: ProjectMode;
+};
+
+const MODEL_ZIP_FORMAT = 2;
+
+/**
+ * Write a model out as a ZIP. Everything comes off the stored model, not off
+ * whatever classifier happens to be in memory, so exporting the third model in
+ * the list really exports that one.
+ */
+export async function exportModelToZip(model: TrainedModel): Promise<void> {
   const JSZip = (await import('jszip')).default;
   const saveAs = (await import('file-saver')).saveAs;
-  const tfModule = await import('@tensorflow/tfjs');
   const zip = new JSZip();
+  const meta: ModelZipMetadata = {
+    ...model.metadata,
+    teachableFormat: MODEL_ZIP_FORMAT,
+    classes: [...model.classes],
+    label: model.label,
+    trainedAt: model.trainedAt,
+    mode: model.mode,
+    featureExtractor: resolveFeatureExtractor(model.featureExtractor ?? model.options?.featureExtractor),
+    ...(model.roi ? { roi: model.roi } : {})
+  };
   zip.file('metadata.json', JSON.stringify(meta, null, 2));
-  // Save model via TF.js handler
-  await model.save(tfModule.io.withSaveHandler(async (artifacts: any) => {
-    zip.file('model.json', new Blob([JSON.stringify(artifacts.modelTopology)], { type: 'application/json' }));
-    zip.file('weights.json', new Blob([JSON.stringify(artifacts.weightSpecs)], { type: 'application/json' }));
-    zip.file('weights.bin', new Blob([artifacts.weightData], { type: 'application/octet-stream' }));
-    return ({ modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' } } as any);
-  }));
+  zip.file(
+    'model.json',
+    new Blob([JSON.stringify(model.artifacts.topology)], { type: 'application/json' })
+  );
+  zip.file(
+    'weights.json',
+    new Blob([JSON.stringify(model.artifacts.weightSpecs)], { type: 'application/json' })
+  );
+  zip.file(
+    'weights.bin',
+    new Blob([model.artifacts.weightData], { type: 'application/octet-stream' })
+  );
   const content = await zip.generateAsync({ type: 'blob' });
-  saveAs(content, `teachable_machine_model_${Date.now()}.zip`);
-  // update model metadata store
-  try { updateModelMetadata(meta); } catch (e) { /* ignore */ }
+  const safeName = (model.label || 'teachable_machine_model').replace(/[^a-z0-9_\- ]/gi, '_');
+  saveAs(content, `${safeName}_${Date.now()}.zip`);
 }
 
-export async function loadModelFromZip(file: File) {
-  const tfModule = await import('@tensorflow/tfjs');
+export type ModelZipContents = {
+  artifacts: ModelArtifacts;
+  metadata: ModelMetadata;
+  /** Classes the model outputs, in output-unit order. */
+  classes: string[];
+  label?: string;
+  roi?: Roi;
+  featureExtractor?: FeatureExtractor;
+  mode?: ProjectMode;
+  /** The loaded classifier, ready to hand to `classifierModel`. */
+  model: any;
+};
+
+/**
+ * Parse a model ZIP into everything a model entry needs, without touching app
+ * state. ZIPs written before the metadata carried a class list fall back to
+ * generated labels sized to the classifier's output layer — a model with
+ * unnamed classes is still usable, one with the wrong number of classes is not.
+ */
+export async function readModelZip(file: File): Promise<ModelZipContents> {
   const JSZip = (await import('jszip')).default;
-  const arrayBuffer = await file.arrayBuffer();
-  const zip = await JSZip.loadAsync(arrayBuffer);
-  if (!zip.file('model.json') || !zip.file('weights.json') || !zip.file('weights.bin')) {
-    throw new Error('Model ZIP is missing required files');
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const topologyEntry = zip.file('model.json');
+  const specsEntry = zip.file('weights.json');
+  const weightsEntry = zip.file('weights.bin');
+  if (!topologyEntry || !specsEntry || !weightsEntry) {
+    throw new Error('Ungültiges Modell-ZIP: model.json, weights.json oder weights.bin fehlt');
   }
-  const modelFileObj = zip.file('model.json');
-  if (!modelFileObj) throw new Error('Missing model.json in zip');
-  const modelFile = await modelFileObj.async('string');
-  const modelTopology = JSON.parse(modelFile);
-  const weightSpecsObj = zip.file('weights.json');
-  if (!weightSpecsObj) throw new Error('Missing weights.json in zip');
-  const weightSpecsFile = await weightSpecsObj.async('string');
-  const weightSpecs = JSON.parse(weightSpecsFile);
-  const weightsObj = zip.file('weights.bin');
-  if (!weightsObj) throw new Error('Missing weights.bin in zip');
-  const weightsArrayBuffer = await weightsObj.async('arraybuffer');
-  const weightData = new Uint8Array(weightsArrayBuffer);
-  // Use browserFiles handler for TensorFlow.js to load model from model.json + weights
-  const modelJsonBlob = new Blob([JSON.stringify(modelTopology)], { type: 'application/json' });
-  const weightsBlob = new Blob([weightData.buffer], { type: 'application/octet-stream' });
-  const modelJsonFile = new File([modelJsonBlob], 'model.json', { type: 'application/json' });
-  const weightsFileObj = new File([weightsBlob], 'weights.bin', { type: 'application/octet-stream' });
-  const model = await tfModule.loadLayersModel(tfModule.io.browserFiles([modelJsonFile, weightsFileObj]));
-  classifierModel.set(model);
-  // update metadata store if present
-  if (zip.file('metadata.json')) {
+  const topology = JSON.parse(await topologyEntry.async('string'));
+  const weightSpecs = JSON.parse(await specsEntry.async('string'));
+  const weightData = await weightsEntry.async('arraybuffer');
+  const artifacts: ModelArtifacts = { topology, weightSpecs, weightData };
+
+  let meta: ModelZipMetadata = { name: '', date: '', version: '1.0', classes: [] };
+  const metaEntry = zip.file('metadata.json');
+  if (metaEntry) {
     try {
-      const metaStr = await zip.file('metadata.json')!.async('string');
-      const meta = JSON.parse(metaStr);
-      updateModelMetadata(meta);
-    } catch (e) { /* ignore */ }
+      meta = { ...meta, ...JSON.parse(await metaEntry.async('string')) };
+    } catch {
+      /* keep the defaults — a broken metadata.json must not sink the import */
+    }
   }
-  // compute params/layers/size when model loaded
-  try {
-    const computed = computeModelMetadataFromModel(model);
-    updateModelMetadata({ params: computed.params, layers: computed.layers, sizeBytes: computed.sizeBytes });
-  } catch (e) { /* ignore */ }
-  try {
-    await persistClassifierArtifacts(model);
-  } catch (e) { /* ignore */ }
-  return model;
+
+  const model = await loadClassifierFromArtifacts(artifacts);
+  const outputs = outputUnitsOf(model);
+  let classes = (meta.classes ?? []).filter((c) => typeof c === 'string');
+  if (outputs && classes.length !== outputs) {
+    classes = Array.from({ length: outputs }, (_, i) => classes[i] || `Klasse ${i + 1}`);
+  }
+
+  const computed = computeModelMetadataFromModel(model);
+  return {
+    artifacts,
+    metadata: {
+      name: meta.name || file.name.replace(/\.zip$/i, ''),
+      date: meta.date || new Date().toISOString(),
+      version: meta.version || '1.0',
+      classes,
+      params: computed.params,
+      layers: computed.layers,
+      sizeBytes: computed.sizeBytes
+    },
+    classes,
+    label: meta.label,
+    roi: meta.roi,
+    featureExtractor: meta.featureExtractor,
+    mode: meta.mode,
+    model
+  };
 }
 
-// Backwards-compat alias for the Tryout UI
-export const loadTryoutModel = loadModelFromZip;
+/** Number of output units of a loaded classifier, or null when unreadable. */
+function outputUnitsOf(model: any): number | null {
+  try {
+    const shape = model?.outputs?.[0]?.shape as (number | null)[] | undefined;
+    const units = shape?.[shape.length - 1];
+    return typeof units === 'number' && units > 0 ? units : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Import a model ZIP into the open project as a selectable model, and load it.
+ * Returns the new model's id.
+ */
+export async function importModelFromZip(file: File): Promise<string | null> {
+  const contents = await readModelZip(file);
+  const id = recordImportedModel({
+    artifacts: contents.artifacts,
+    metadata: contents.metadata,
+    classes: contents.classes,
+    label: contents.label || contents.metadata.name || file.name.replace(/\.zip$/i, ''),
+    roi: contents.roi,
+    featureExtractor: contents.featureExtractor,
+    mode: contents.mode
+  });
+  classifierModel.set(contents.model);
+  return id;
+}
 
 export async function predictFromVideo(video: HTMLVideoElement) {
   const classifier = get(classifierModel);

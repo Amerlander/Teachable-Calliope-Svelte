@@ -1,6 +1,7 @@
 <script lang="ts">
   import { modelMetadata, trainingHistory, examples } from '$lib/stores';
   import { currentProject, type TrainedModel } from '$lib/stores/projects';
+  import { roiSizeLabel } from '$lib/roi';
   import InfoTooltip from '$lib/components/ui/InfoTooltip.svelte';
 
   // With `model` given, every number comes from that training run's snapshot —
@@ -64,11 +65,7 @@
     return opts && opts.epochs !== run ? `${run} / ${opts.epochs}` : String(run);
   });
   const roiLabel = $derived(
-    model?.roi
-      ? `${Math.round(model.roi.w * 100)}×${Math.round(model.roi.h * 100)} %`
-      : model
-        ? 'Ganzes Bild'
-        : '–'
+    model?.roi ? roiSizeLabel(model.roi) : model ? 'Ganzes Bild' : '–'
   );
   const extractorLabel = $derived.by(() => {
     const key = model?.featureExtractor ?? opts?.featureExtractor;

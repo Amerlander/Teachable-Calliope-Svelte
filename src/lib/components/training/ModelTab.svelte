@@ -1,37 +1,33 @@
 <script lang="ts">
   import { get } from 'svelte/store';
   import {
-    classes,
     trainingOptions,
     setTrainingOptions,
     classifierModel,
-    modelMetadata,
-    setModelArtifacts,
     trainingReadiness
   } from '$lib/stores';
   import type { TrainingOptions } from '$lib/stores';
-  import { updateProject, currentProject, renameTrainedModel } from '$lib/stores/projects';
+  import {
+    activeModel,
+    currentProject,
+    deleteTrainedModel,
+    getModelById,
+    renameTrainedModel
+  } from '$lib/stores/projects';
   import {
     isTraining,
     trainStatus,
     modelTrained,
     modelTabView,
     draftRoi,
-    roiEditing,
     trainPhase,
     trainEpoch,
-    trainTotalEpochs,
-    DEFAULT_ROI
+    trainTotalEpochs
   } from '$lib/stores/app';
-  import {
-    trainModel,
-    saveModelToZip,
-    loadModelFromZip
-  } from '$lib/machine';
+  import { trainModel, exportModelToZip } from '$lib/machine';
+  import { activateModel, importModelFile, modelLabel } from '$lib/models';
+  import { createProgramForModel } from '$lib/programs';
   import { showNotification } from '$lib/stores/notifications';
-  import { generateMakeCodeProject, importProgramFiles } from '$lib/makecode';
-  import { addMakeCodeProgram } from '$lib/stores/projects';
-  import { examples } from '$lib/stores';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
   import InfoTooltip from '$lib/components/ui/InfoTooltip.svelte';
@@ -44,6 +40,9 @@
   // the button and the hint can't drift apart from the CTA's condition.
   const readiness = $derived($trainingReadiness);
   const hasArtifacts = $derived(!!$classifierModel);
+  // Export and delete need a model entry to act on, which an in-memory-only
+  // classifier isn't — every model now comes from the list.
+  const hasSelectedModel = $derived(!!$activeModel);
   const isPose = $derived($currentProject?.mode === 'pose');
 
   modelTabView.set(get(classifierModel) ? 'model' : 'new');
@@ -93,31 +92,22 @@
       const id = get(currentProject)?.currentModelId;
       const label = newModelName.trim();
       if (id && label) renameTrainedModel(id, label);
-      // ROI is now recorded inside machine.ts during training (per model), no post-hoc set needed.
+      // Classes, region and extractor were recorded on the model during
+      // training (see machine.ts) — nothing to attach after the fact.
       newModelName = '';
       modelTabView.set('model');
+      // A run with new classes can't be programmed with any existing program,
+      // so it brings its own starter along. Previous programs stay untouched
+      // and keep running on the models they were built for.
       try {
-        const p = get(currentProject);
-        const project = generateMakeCodeProject(
-          p?.name || 'Teachable Project',
-          get(classes),
-          get(examples),
-          p?.mode ?? 'image',
-        );
-        // Save the fresh starter as a new program so the user's previous
-        // programs stay around and switch to it as the active one.
-        const files = (project.text ?? {}) as Record<string, string>;
-        const created = addMakeCodeProgram({
-          name: `Starter — ${new Date().toLocaleTimeString(undefined, {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}`,
-          files,
-          header: project.header,
-        });
-        if (created) importProgramFiles(created.files, created.header);
+        const trained = getModelById(id);
+        if (trained) {
+          createProgramForModel(trained, {
+            name: `Starter — ${modelLabel(trained)}`
+          });
+        }
       } catch {
-        /* ignore */
+        /* a starter that fails to generate must not fail the training */
       }
     } catch (err) {
       trainPhase.set('error');
@@ -128,14 +118,16 @@
     }
   }
 
+  // Export/delete act on the selected model, not on whatever classifier happens
+  // to sit in memory: the list is the subject of this sidebar.
   async function onExportModel() {
-    const model = get(classifierModel);
+    const model = $activeModel;
     if (!model) {
-      showNotification('Kein Modell vorhanden', { type: 'warning' });
+      showNotification('Kein Modell ausgewählt', { type: 'warning' });
       return;
     }
     try {
-      await saveModelToZip(model, get(modelMetadata));
+      await exportModelToZip(model);
       showNotification('Modell exportiert', { type: 'success' });
     } catch {
       showNotification('Fehler beim Speichern', { type: 'error' });
@@ -146,23 +138,36 @@
     const input = e.target as HTMLInputElement;
     if (!input.files?.length) return;
     try {
-      await loadModelFromZip(input.files[0]);
-      modelTrained.set(true);
-      showNotification('Modell geladen', { type: 'success' });
+      const imported = await importModelFile(input.files[0]);
+      if (imported) {
+        modelTrained.set(true);
+        modelTabView.set('model');
+        showNotification(`Modell „${modelLabel(imported)}“ importiert`, { type: 'success' });
+      } else {
+        showNotification('Modell konnte nicht gelesen werden', { type: 'error' });
+      }
     } catch (err) {
       showNotification('Fehler: ' + (err as Error).message, { type: 'error' });
     }
     input.value = '';
   }
 
-  function onDeleteModel() {
-    if (!confirm('Trainiertes Modell löschen?')) return;
-    classifierModel.set(null);
-    modelTrained.set(false);
-    setModelArtifacts(null);
-    updateProject((p) => {
-      p.trainingHistory = { epochs: [], accuracy: [], loss: [] };
-    });
+  async function onDeleteModel() {
+    const model = $activeModel;
+    if (!model) return;
+    if (!confirm(`Modell „${modelLabel(model)}“ löschen?`)) return;
+    deleteTrainedModel(model.id);
+    // Programs that used it were moved to a fitting model (or left model-less)
+    // by the store; here we only have to bring the runtime classifier in line
+    // with whatever is selected now.
+    const next = get(currentProject)?.currentModelId;
+    if (next) {
+      await activateModel(next);
+    } else {
+      classifierModel.set(null);
+      modelTrained.set(false);
+      modelTabView.set('new');
+    }
     showNotification('Modell gelöscht', { type: 'success' });
   }
 
@@ -191,13 +196,13 @@
           <Button variant="ghost" size="small" aria-label="Modell-Aktionen" title="Mehr Aktionen">⋯</Button>
         {/snippet}
         {#snippet children()}
-          <DropdownItem onclick={onExportModel} disabled={!hasArtifacts}>
+          <DropdownItem onclick={onExportModel} disabled={!hasSelectedModel}>
             Modell exportieren
           </DropdownItem>
           <DropdownItem onclick={() => loadModelEl?.click()}>
             Modell importieren
           </DropdownItem>
-          <DropdownItem onclick={onDeleteModel} disabled={!hasArtifacts}>
+          <DropdownItem onclick={onDeleteModel} disabled={!hasSelectedModel}>
             Modell löschen
           </DropdownItem>
         {/snippet}
@@ -444,53 +449,6 @@
           {/if}
         </div>
 
-        {#if !isPose}
-          <div class="roi-section">
-            <div class="roi-head">
-              <span class="opt-label">
-                Bildbereich (ROI)
-                <InfoTooltip
-                  text="Begrenzt den Trainings- und Erkennungsbereich auf einen Ausschnitt des Kamerabildes. Wird mit dem trainierten Modell gespeichert."
-                />
-              </span>
-              {#if $draftRoi}
-                <Button
-                  variant={$roiEditing ? 'active' : 'ghost'}
-                  size="small"
-                  onclick={() => roiEditing.update((v) => !v)}
-                >
-                  {$roiEditing ? 'Fertig' : 'ROI ändern'}
-                </Button>
-              {:else}
-                <Button
-                  variant="ghost"
-                  size="small"
-                  onclick={() => { draftRoi.set({ ...DEFAULT_ROI }); roiEditing.set(true); }}
-                >
-                  ROI hinzufügen
-                </Button>
-              {/if}
-            </div>
-            {#if $draftRoi}
-              <div class="roi-meta">
-                <span class="roi-chip">
-                  {Math.round($draftRoi.w * 100)}×{Math.round($draftRoi.h * 100)}%
-                  &nbsp;@&nbsp;({Math.round($draftRoi.x * 100)}, {Math.round($draftRoi.y * 100)})
-                </span>
-                <button
-                  type="button"
-                  class="roi-clear"
-                  onclick={() => { draftRoi.set(null); roiEditing.set(false); }}
-                >
-                  Entfernen
-                </button>
-              </div>
-            {:else}
-              <div class="hint">Kein ROI – gesamtes Kamerabild wird verwendet.</div>
-            {/if}
-          </div>
-        {/if}
-
         {#if !isPose && augSettingsOpen && $trainingOptions.augmentation}
           {@const a = $trainingOptions.augmentationSettings}
           <div class="aug-settings">
@@ -721,54 +679,6 @@
       font-weight: 600;
       color: rgb(var(--md-on-surface));
       margin-bottom: 8px;
-    }
-  }
-  .roi-section {
-    margin-top: 12px;
-    padding: 10px 12px;
-    background: rgba(var(--md-surface-variant), 0.35);
-    border-radius: var(--md-radius-md);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    .roi-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .opt-label {
-      font-size: 12px;
-      color: rgb(var(--md-on-surface-variant));
-      display: inline-flex;
-      align-items: center;
-    }
-    .roi-meta {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .roi-chip {
-      flex: 1;
-      font-size: 12px;
-      font-variant-numeric: tabular-nums;
-      padding: 4px 8px;
-      background: rgb(var(--md-surface));
-      border: 1px solid rgb(var(--md-outline-variant));
-      border-radius: var(--md-radius-sm);
-    }
-    .roi-clear {
-      background: transparent;
-      border: none;
-      color: rgb(var(--md-on-surface-variant));
-      font: inherit;
-      font-size: 12px;
-      text-decoration: underline;
-      cursor: pointer;
-      padding: 0 4px;
-      min-height: unset;
-      box-shadow: none;
-      &:hover { color: rgb(var(--md-primary)); }
     }
   }
   .empty {

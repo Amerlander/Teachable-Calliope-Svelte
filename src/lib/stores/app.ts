@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { loadLocale } from 'wuchale/load-utils';
-import { currentProject } from './projects';
+import { currentProject, type Roi } from './projects';
 // Importing the loaders is what registers them with wuchale's global registry,
 // so `loadLocale` below has something to load. Nothing else uses these exports.
 import '../../locales/main.loader.svelte.js';
@@ -68,12 +68,16 @@ export const workspaceTab = persisted<WorkspaceTab>('teachable-workspace-tab', '
 export type ModelTabView = 'model' | 'new';
 export const modelTabView = persisted<ModelTabView>('teachable-model-tab-view', 'new');
 
-// --- Draft ROI for the next training run (normalized to video frame, 0..1) ---
-export type Roi = { x: number; y: number; w: number; h: number };
+/**
+ * The region the next training run will use, in camera-frame coordinates
+ * (see $lib/roi); null means the whole image. It is set in the camera panel and
+ * kept for the session so a second run can use the same framing. Once a run
+ * finishes, the region it used belongs to that model and is read-only there —
+ * this draft only ever describes the *next* model.
+ */
 export const draftRoi = writable<Roi | null>(null);
-export const DEFAULT_ROI: Roi = { x: 0.15, y: 0.15, w: 0.7, h: 0.7 };
 
-// --- When true, the prep video shows an editable ROI overlay ---
+// --- When true, the camera shows the draft ROI with drag handles ---
 export const roiEditing = writable(false);
 
 // --- Training phase indicator: what's happening right now ---
@@ -148,6 +152,30 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     'tryout.connect': 'Verbinden',
     'tryout.disconnect': 'Trennen',
     'tryout.sendEveryPrediction': 'Jede Klasse dauerhaft senden (ab 70% Wahrscheinlichkeit)',
+    'makecode.programmingMode': 'Programmiermodus',
+    'makecode.modeBlocks': 'Blöcke',
+    'makecode.share': 'Teilen',
+    'makecode.shareProgram': 'Programm teilen',
+    'makecode.sharingInProgress': 'Wird geteilt…',
+    'makecode.extensions': 'Erweiterungen',
+    'makecode.extension': 'Erweiterung',
+    'makecode.noExtensionsAdded': 'Keine Erweiterungen hinzugefügt',
+    'makecode.openOnGithub': 'Auf GitHub öffnen',
+    'makecode.removeExtension': 'Erweiterung entfernen',
+    'makecode.calliopeMiniVersion': 'Calliope mini Version',
+    'makecode.shareModalTitle': 'Programm teilen',
+    'makecode.shareCreatingLink': 'Link wird erstellt…',
+    'makecode.shareIntroBefore': 'Jeder mit diesem Link kann ',
+    'makecode.shareIntroAfter': ' öffnen und kopieren.',
+    'makecode.shareThisProgram': 'dieses Programm',
+    'makecode.shareLinkAria': 'Link zum Programm',
+    'makecode.shareCopyLink': 'Link kopieren',
+    'makecode.shareLinkCopied': 'Link kopiert',
+    'makecode.shareCopyFailed': 'Kopieren fehlgeschlagen',
+    'makecode.shareQrAlt': 'QR-Code zum Programm',
+    'makecode.shareClose': 'Schließen',
+    'makecode.shareOpen': 'Öffnen',
+    'makecode.shareFailed': 'Der Link konnte nicht erstellt werden. Versuche es später erneut.',
     'connection.connected': 'Verbunden',
     'connection.connecting': 'Verbinde…',
     'connection.flashing': 'Flashe',
@@ -238,6 +266,30 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     'tryout.connect': 'Connect',
     'tryout.disconnect': 'Disconnect',
     'tryout.sendEveryPrediction': 'Send every class continuously (≥70% confidence)',
+    'makecode.programmingMode': 'Programming mode',
+    'makecode.modeBlocks': 'Blocks',
+    'makecode.share': 'Share',
+    'makecode.shareProgram': 'Share program',
+    'makecode.sharingInProgress': 'Sharing…',
+    'makecode.extensions': 'Extensions',
+    'makecode.extension': 'Extension',
+    'makecode.noExtensionsAdded': 'No extensions added',
+    'makecode.openOnGithub': 'Open on GitHub',
+    'makecode.removeExtension': 'Remove extension',
+    'makecode.calliopeMiniVersion': 'Calliope mini version',
+    'makecode.shareModalTitle': 'Share program',
+    'makecode.shareCreatingLink': 'Creating link…',
+    'makecode.shareIntroBefore': 'Anyone with this link can open and copy ',
+    'makecode.shareIntroAfter': '.',
+    'makecode.shareThisProgram': 'this program',
+    'makecode.shareLinkAria': 'Link to the program',
+    'makecode.shareCopyLink': 'Copy link',
+    'makecode.shareLinkCopied': 'Link copied',
+    'makecode.shareCopyFailed': 'Copying failed',
+    'makecode.shareQrAlt': 'QR code for the program',
+    'makecode.shareClose': 'Close',
+    'makecode.shareOpen': 'Open',
+    'makecode.shareFailed': 'The link could not be created. Please try again later.',
     'connection.connected': 'Connected',
     'connection.connecting': 'Connecting…',
     'connection.flashing': 'Flashing',

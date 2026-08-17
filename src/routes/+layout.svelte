@@ -15,6 +15,7 @@
     refreshProjectList,
   } from '$lib/stores/projects';
   import { loadClassifierFromArtifacts } from '$lib/machine';
+  import { ensureActiveModelLoaded } from '$lib/models';
   import {
     initializeCalliopeConnection,
     setSerialConsumer,
@@ -53,9 +54,15 @@
         const lastId = getLastProjectId();
         if (lastId) {
           const p = await loadProject(lastId);
-          if (p?.modelArtifacts) {
-            try { await loadClassifierFromArtifacts(p.modelArtifacts); } catch { /* ignore */ }
-          }
+          // Bring back the model the project had selected. Falls back to the
+          // stored artifacts for projects whose model list predates them
+          // being the single source of truth.
+          try {
+            const restored = await ensureActiveModelLoaded();
+            if (!restored && p?.modelArtifacts) {
+              await loadClassifierFromArtifacts(p.modelArtifacts);
+            }
+          } catch { /* ignore */ }
         }
       }
     } finally {

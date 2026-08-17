@@ -9,22 +9,33 @@
     importProgramFiles,
     onMakeCodeDownload,
     compileMakeCodeProject,
-    generateProject,
     switchMakeCodeLang,
-    type MakeCodeLang,
+    setMakeCodeHardwareVersion,
+    removeMakeCodeExtension,
+    shareMakeCodeProject,
+    makeCodeMode,
+    makeCodeExtensions,
+    makeCodeHardwareVersion,
+    type MakeCodeMode,
+    type ShareResult,
   } from '$lib/makecode';
   import {
+    MakeCodeToolbar,
+    MakeCodeShareModal,
+    type MakeCodeLabels,
+  } from '@calliope-edu/mini-connection-widget/makecode';
+  import {
+    ConnectButton,
     flashCalliope,
     setConnectionUiActive,
     setTransferProgram,
   } from '@calliope-edu/mini-connection-widget';
-  import { currentLang } from '$lib/stores/app';
-  import {
-    currentProject,
-    addMakeCodeProgram,
-    getCurrentMakeCodeProgram,
-  } from '$lib/stores/projects';
-  import { classes } from '$lib/stores';
+  import { currentLang, t } from '$lib/stores/app';
+  import { currentProject, getCurrentMakeCodeProgram } from '$lib/stores/projects';
+  import { activeModel, availableModels } from '$lib/stores/projects';
+  import { createProgramForModel, loadProgramModel } from '$lib/programs';
+  import { ensureActiveModelLoaded } from '$lib/models';
+  import { showNotification } from '$lib/stores/notifications';
   import TryoutCamera from '$lib/components/tryout/TryoutCamera.svelte';
   import TryoutDetailPanel from '$lib/components/tryout/TryoutDetailPanel.svelte';
   import ProgramList from '$lib/components/tryout/ProgramList.svelte';
@@ -48,26 +59,25 @@
     setMakecodeIframe(iframeEl ?? null);
 
     // Decide what to open in MakeCode:
-    //   1. If the project already has an active saved program → reload that.
-    //   2. Else create one: a fresh generated starter from current classes if
-    //      training has happened, or a bare empty project otherwise. Either way
-    //      it becomes program 1 so future edits are persisted automatically.
+    //   1. The project's active saved program → reload it, together with the
+    //      model it is programmed against, so the prediction that reaches the
+    //      board comes from that program's model.
+    //   2. No program yet but a model to program against → generate a starter
+    //      for it, which becomes program 1 and is persisted from then on.
+    //   3. No model at all → nothing to generate blocks from; the program list
+    //      shows the way to train or import one.
     const active = getCurrentMakeCodeProgram();
     if (active) {
       importProgramFiles(active.files, active.header);
+      void loadProgramModel(active).then((m) => {
+        if (!m) void ensureActiveModelLoaded();
+      });
     } else {
-      const cls = get(classes);
-      const mcp = generateProject({
-        name: p.name || 'Teachable Project',
-        mode: p.mode ?? 'image',
-        classes: cls ?? [],
-        thresholds: p.classThresholds ?? {},
-      });
-      const fresh = addMakeCodeProgram({
-        files: (mcp.text ?? {}) as Record<string, string>,
-        header: mcp.header,
-      });
-      if (fresh) importProgramFiles(fresh.files, fresh.header);
+      const model = get(activeModel) ?? get(availableModels)[0] ?? null;
+      if (model) {
+        createProgramForModel(model);
+        void ensureActiveModelLoaded();
+      }
     }
 
     const unsubDownload = onMakeCodeDownload(({ name, hex }) => {

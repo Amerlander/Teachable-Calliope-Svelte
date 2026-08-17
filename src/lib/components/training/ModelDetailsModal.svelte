@@ -53,7 +53,7 @@
   // class list — the two drift apart as soon as classes are added or renamed.
   const perClassCounts = $derived(
     $activeModel
-      ? ($activeModel.classesSnapshot ?? []).map((c) => ({
+      ? ($activeModel.classes ?? []).map((c) => ({
           name: c,
           count: $activeModel.exampleCounts?.[c] ?? 0
         }))

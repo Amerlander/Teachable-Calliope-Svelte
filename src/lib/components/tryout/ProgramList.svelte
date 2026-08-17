@@ -1,56 +1,66 @@
 <script lang="ts">
   import { get } from 'svelte/store';
   import {
+    activeModel,
+    availableModels,
     currentProject,
-    addMakeCodeProgram,
     deleteMakeCodeProgram,
+    modelsForProgram,
     renameMakeCodeProgram,
-    selectMakeCodeProgram,
-    isMakeCodeProgramOutdated,
     type MakeCodeProgram,
   } from '$lib/stores/projects';
-  import { importProgramFiles, generateProject } from '$lib/makecode';
-  import { classes } from '$lib/stores';
-  import { currentLang, t } from '$lib/stores/app';
+  import { createProgramForModel, openProgram, switchProgramModel } from '$lib/programs';
+  import { modelLabel } from '$lib/models';
+  import { showNotification } from '$lib/stores/notifications';
+  import ModelPicker from '$lib/components/ModelPicker.svelte';
+  import NoModelNotice from '$lib/components/NoModelNotice.svelte';
 
-  const lang = $derived($currentLang);
   const programs = $derived($currentProject?.makeCodePrograms ?? []);
   const activeId = $derived($currentProject?.currentProgramId ?? null);
 
   let renamingId: string | null = $state(null);
   let renameDraft = $state('');
 
-  function handleSelect(p: MakeCodeProgram) {
+  async function handleSelect(p: MakeCodeProgram) {
     if (renamingId === p.id) return;
     if (p.id === activeId) return;
-    selectMakeCodeProgram(p.id);
-    importProgramFiles(p.files, p.header);
+    await openProgram(p);
   }
 
+  /**
+   * A new program is programmed against the model that is currently selected —
+   * its classes decide which blocks the program gets. Without a model there is
+   * nothing to program against, which is what the notice above the list is for.
+   */
   function handleNew() {
-    const proj = get(currentProject);
-    if (!proj) return;
-    const mcp = generateProject({
-      name: proj.name || 'Teachable',
-      mode: proj.mode ?? 'image',
-      classes: get(classes),
-      thresholds: proj.classThresholds ?? {},
-    });
-    const fresh = addMakeCodeProgram({
-      files: (mcp.text ?? {}) as Record<string, string>,
-      header: mcp.header,
-    });
-    if (fresh) importProgramFiles(fresh.files, fresh.header);
+    const model = $activeModel ?? $availableModels[0] ?? null;
+    if (!model) {
+      showNotification('Trainiere oder importiere zuerst ein Modell', { type: 'warning' });
+      return;
+    }
+    createProgramForModel(model);
   }
 
-  function handleDelete(p: MakeCodeProgram, e: Event) {
+  async function handlePickModel(program: MakeCodeProgram, modelId: string) {
+    const model = await switchProgramModel(program.id, modelId);
+    if (!model) {
+      showNotification('Dieses Modell passt nicht zu den Klassen des Programms', {
+        type: 'warning',
+      });
+      return;
+    }
+    showNotification(`Programm nutzt jetzt „${modelLabel(model)}“`, { type: 'success' });
+  }
+
+  async function handleDelete(p: MakeCodeProgram, e: Event) {
     e.stopPropagation();
     if (!confirm(`"${p.name}" löschen?`)) return;
     deleteMakeCodeProgram(p.id);
-    // If we just deleted the active program, load whatever is newly active.
+    // If we just deleted the active program, open whatever is newly active —
+    // including its model, so the prediction follows the program on screen.
     const now = get(currentProject);
     const next = (now?.makeCodePrograms ?? []).find((x) => x.id === now?.currentProgramId);
-    if (next) importProgramFiles(next.files, next.header);
+    if (next) await openProgram(next);
   }
 
   function startRename(p: MakeCodeProgram, e: Event) {
@@ -82,15 +92,28 @@
 
 <div class="program-list">
   <div class="head">
-    <h4>{t('programs.title', lang)}</h4>
-    <button class="add-btn" onclick={handleNew} title={t('programs.new', lang)}>+</button>
+    <h4>Programme</h4>
+    <button
+      class="add-btn"
+      onclick={handleNew}
+      title="Neues Programm"
+      disabled={$availableModels.length === 0}
+    >+</button>
   </div>
 
-  {#if programs.length === 0}
-    <div class="empty">{t('programs.empty', lang)}</div>
+  <!-- Nothing can be programmed without a model, so the way to get one is
+       offered right here instead of leaving an empty list behind. -->
+  {#if $availableModels.length === 0}
+    <NoModelNotice
+      message="Ein Programm wird immer für ein Modell erstellt. Trainiere eines mit deinen Bildern oder importiere ein fertiges."
+    />
+  {:else if programs.length === 0}
+    <div class="empty">Noch kein Programm gespeichert.</div>
   {:else}
     <ul>
       {#each programs as p (p.id)}
+        {@const model = $availableModels.find((m) => m.id === p.modelId) ?? null}
+        {@const options = modelsForProgram(p, $availableModels)}
         <li class:active={p.id === activeId}>
           {#if renamingId === p.id}
             <div class="main-row">
@@ -107,20 +130,40 @@
             <div class="meta">{formatDate(p.updatedAt)}</div>
           {:else}
             <button type="button" class="program-row" onclick={() => handleSelect(p)}>
-              <span class="name">
-                {p.name}
-                {#if isMakeCodeProgramOutdated(p)}
-                  <span class="outdated-tag" title={t('programs.outdatedHint', lang)}>
-                    {t('programs.outdated', lang)}
-                  </span>
-                {/if}
+              <span class="name">{p.name}</span>
+              <span class="meta">
+                {formatDate(p.updatedAt)} · {p.classes.length} Klassen
               </span>
-              <span class="meta">{formatDate(p.updatedAt)}</span>
             </button>
             <div class="actions">
-              <button class="icon-btn" title={t('programs.rename', lang)} onclick={(e) => startRename(p, e)}>✎</button>
-              <button class="icon-btn danger" title={t('programs.delete', lang)} onclick={(e) => handleDelete(p, e)}>✕</button>
+              <button class="icon-btn" title="Umbenennen" onclick={(e) => startRename(p, e)}>✎</button>
+              <button class="icon-btn danger" title="Löschen" onclick={(e) => handleDelete(p, e)}>✕</button>
             </div>
+            <!-- Which model this program runs on. Swappable within its own class
+                 list: a later run on the same classes fits, a model with
+                 different classes needs its own program. -->
+            {#if p.classes.length}
+              <div class="model-row">
+                <span class="model-caption">Modell</span>
+                <ModelPicker
+                  models={options}
+                  selectedId={model?.id ?? null}
+                  onselect={(id) => handlePickModel(p, id)}
+                  placeholder={options.length ? 'Modell wählen' : 'Kein passendes Modell'}
+                  compact
+                />
+                {#if !model}
+                  <span class="model-warn" title="Das Modell dieses Programms wurde gelöscht.">
+                    fehlt
+                  </span>
+                {/if}
+              </div>
+              <div class="classes" title={p.classes.join(', ')}>{p.classes.join(' · ')}</div>
+            {:else}
+              <!-- Built in the editor before any model existed, so it has no
+                   class blocks and nothing to bind a model to. -->
+              <div class="classes">ohne Klassen-Blöcke</div>
+            {/if}
           {/if}
         </li>
       {/each}
@@ -158,7 +201,8 @@
     font-size: 16px;
     line-height: 1;
     color: #444;
-    &:hover { background: #f3f4f6; }
+    &:hover:not(:disabled) { background: #f3f4f6; }
+    &:disabled { opacity: 0.4; cursor: default; }
   }
   .empty {
     font-size: 12px;
@@ -180,7 +224,7 @@
     border: 1px solid transparent;
     background: #fff;
     transition: background 0.12s, border-color 0.12s;
-    overflow: hidden;
+    padding-bottom: 8px;
 
     &:hover { background: #f3f4f6; }
     &.active {
@@ -194,7 +238,7 @@
     align-items: flex-start;
     gap: 2px;
     width: 100%;
-    padding: 8px 44px 8px 10px;
+    padding: 8px 44px 4px 10px;
     background: transparent;
     border: none;
     cursor: pointer;
@@ -213,7 +257,21 @@
     align-items: center;
     gap: 6px;
   }
-  .outdated-tag {
+  .model-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    min-width: 0;
+  }
+  .model-caption {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #888;
+    flex-shrink: 0;
+  }
+  .model-warn {
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
@@ -223,6 +281,14 @@
     background: #fef3c7;
     color: #92400e;
     border: 1px solid #fde68a;
+  }
+  .classes {
+    padding: 4px 10px 0;
+    font-size: 11px;
+    color: #888;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .main-row {
     display: flex;

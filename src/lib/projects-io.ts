@@ -3,13 +3,13 @@ import {
   currentProject,
   createBlankProject,
   newProject,
+  recordImportedModel,
   saveCurrentProject,
   refreshProjectList,
-  type Project,
-  type ModelArtifacts
+  type Project
 } from '$lib/stores/projects';
 import { idbPut, idbGet, STORES } from '$lib/db';
-import { loadClassifierFromArtifacts } from '$lib/machine';
+import { loadClassifierFromArtifacts, readModelZip } from '$lib/machine';
 
 type SerializedProject = Omit<Project, 'modelArtifacts'> & {
   modelArtifacts: {
@@ -118,46 +118,37 @@ export async function importProjectFromFile(file: File): Promise<Project> {
   return p;
 }
 
+/**
+ * Turn a model ZIP into a fresh project whose only model is the imported one.
+ * The model keeps everything the ZIP described (classes, ROI, extractor), and
+ * the project's class list is seeded from it so recording more material and
+ * retraining picks up where the import left off.
+ */
 export async function importModelAsNewProject(file: File): Promise<Project> {
-  const JSZip = (await import('jszip')).default;
-  const zip = await JSZip.loadAsync(await file.arrayBuffer());
-  const topologyEntry = zip.file('model.json');
-  const specsEntry = zip.file('weights.json');
-  const weightsEntry = zip.file('weights.bin');
-  if (!topologyEntry || !specsEntry || !weightsEntry) {
-    throw new Error('Ungültiges Modell-ZIP: model.json, weights.json oder weights.bin fehlt');
-  }
-  const topology = JSON.parse(await topologyEntry.async('string'));
-  const weightSpecs = JSON.parse(await specsEntry.async('string'));
-  const weightData = await weightsEntry.async('arraybuffer');
-  let meta: Partial<Project['modelMetadata']> = {};
-  const metaEntry = zip.file('metadata.json');
-  if (metaEntry) {
-    try {
-      meta = JSON.parse(await metaEntry.async('string'));
-    } catch {
-      /* ignore */
-    }
-  }
-  const artifacts: ModelArtifacts = { topology, weightSpecs, weightData };
-  const p = createBlankProject(meta.name || file.name.replace(/\.zip$/i, ''));
-  p.classes = meta.classes || [];
+  const contents = await readModelZip(file);
+  const p = createBlankProject(
+    contents.label || contents.metadata.name || file.name.replace(/\.zip$/i, ''),
+    contents.mode ?? 'image'
+  );
+  p.classes = [...contents.classes];
   for (const c of p.classes) p.examples[c] = [];
-  p.modelArtifacts = artifacts;
-  p.modelMetadata = {
-    ...p.modelMetadata,
-    ...(meta as Project['modelMetadata'])
-  };
   await idbPut(STORES.projects, p);
   currentProject.set(p);
   localStorage.setItem('teachable-last-project-id', p.id);
+  // Has to run against the now-current project: this is what puts the model in
+  // the list the pickers read, selects it, and stores its artifacts.
+  recordImportedModel({
+    artifacts: contents.artifacts,
+    metadata: contents.metadata,
+    classes: contents.classes,
+    label: contents.label || contents.metadata.name,
+    roi: contents.roi,
+    featureExtractor: contents.featureExtractor,
+    mode: contents.mode ?? 'image'
+  });
+  await saveCurrentProject();
   await refreshProjectList();
-  try {
-    await loadClassifierFromArtifacts(artifacts);
-  } catch (err) {
-    console.warn('Could not load imported classifier', err);
-  }
-  return p;
+  return get(currentProject) ?? p;
 }
 
 export { newProject, saveCurrentProject };

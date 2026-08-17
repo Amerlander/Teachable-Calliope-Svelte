@@ -9,9 +9,14 @@
     drawPoseSkeleton,
     setLastPoseCanvas,
   } from '$lib/machine';
-  import { setVideoRef, mobilenetModel, classifierModel } from '$lib/stores';
+  import { setVideoRef, mobilenetModel, classifierModel, predictionClasses } from '$lib/stores';
   import { selectedCameraId } from '$lib/stores/camera';
-  import { currentProject } from '$lib/stores/projects';
+  import { activeModel, availableModels, currentProject } from '$lib/stores/projects';
+  import { activateModel, ensureActiveModelLoaded, modelLabel } from '$lib/models';
+  import { showNotification } from '$lib/stores/notifications';
+  import ModelPicker from '$lib/components/ModelPicker.svelte';
+  import NoModelNotice from '$lib/components/NoModelNotice.svelte';
+  import RoiOverlay from '$lib/components/RoiOverlay.svelte';
   import {
     streamClassProbabilities,
     streamPoseKeypoints,
@@ -26,6 +31,7 @@
 
   let videoEl: HTMLVideoElement | null = $state(null);
   let skeletonCanvas: HTMLCanvasElement | null = $state(null);
+  let videoAspect = $state(4 / 3);
 
   let tickTimer: ReturnType<typeof setTimeout> | null = null;
   let tickInFlight = false;
@@ -34,6 +40,18 @@
   const mode = $derived($currentProject?.mode ?? 'image');
   const modelReady = $derived(!!$classifierModel && !!$mobilenetModel);
   const det = $derived($currentDetection);
+
+  // Anwenden is the one view where every model is on offer: it runs a model, it
+  // isn't bound to a program's class list.
+  async function pickModel(id: string) {
+    try {
+      const model = await activateModel(id);
+      resetStreamState();
+      if (model) showNotification(`Modell „${modelLabel(model)}“ aktiv`, { type: 'success' });
+    } catch (err) {
+      showNotification('Fehler beim Laden: ' + (err as Error).message, { type: 'error' });
+    }
+  }
   // Matches what the streaming gate accepts, so the HUD can't claim a live
   // board while the lines go nowhere (mini 2 linked flash-only). `flashing` is
   // kept because a transport can briefly leave 'connected' during the transfer's
@@ -70,8 +88,9 @@
       if (modelReady) {
         const p = await predictFromVideo(videoEl);
         if (p) {
-          const labels = $currentProject?.classes ?? [];
-          streamClassProbabilities(labels, p.allProbs);
+          // Labels come from the running model, not from the project's live
+          // class list — those two drift apart as soon as a class is added.
+          streamClassProbabilities($predictionClasses, p.allProbs);
         }
       }
     } finally {
@@ -88,6 +107,14 @@
     }
     resetStreamState();
     setVideoRef('webcamTryout', videoEl);
+    videoEl?.addEventListener('loadedmetadata', () => {
+      if (videoEl?.videoWidth && videoEl.videoHeight) {
+        videoAspect = videoEl.videoWidth / videoEl.videoHeight;
+      }
+    });
+    // The selection survives reloads on the project; the classifier itself does
+    // not, so it may still need loading before the first prediction.
+    void ensureActiveModelLoaded();
     await initSharedCamera(
       { webcamTryout: videoEl },
       get(selectedCameraId) ?? undefined,
@@ -113,6 +140,25 @@
       <track kind="captions" />
     </video>
 
+    <!-- The region the running model was trained on. Read-only here: Anwenden
+         uses models, the region belongs to the model. -->
+    {#if mode !== 'pose'}
+      <RoiOverlay roi={$activeModel?.roi} aspect={videoAspect} />
+    {/if}
+
+    <!-- Model chooser: every model of the project is selectable here. -->
+    {#if $availableModels.length}
+      <div class="hud hud-model">
+        <span class="hud-model-caption">Modell</span>
+        <ModelPicker
+          models={$availableModels}
+          selectedId={$activeModel?.id ?? null}
+          onselect={pickModel}
+          placeholder="Modell wählen"
+        />
+      </div>
+    {/if}
+
     <!-- HUD: current detection -->
     {#if det}
       <div class="hud hud-detection" class:confident={det.confidence >= CLASS_THRESHOLD}>
@@ -122,8 +168,17 @@
         </div>
         <div class="conf">{(det.confidence * 100).toFixed(0)}%</div>
       </div>
+    {:else if $availableModels.length === 0}
+      <!-- No model at all: offer both ways out right here instead of sending the
+           user off to look for them. -->
+      <div class="empty-stage">
+        <NoModelNotice
+          variant="panel"
+          message="Zum Anwenden brauchst du ein Modell. Trainiere eines mit deinen Bildern oder importiere ein fertiges."
+        />
+      </div>
     {:else if !modelReady}
-      <div class="hud hud-empty">Kein Modell geladen — bitte zuerst trainieren.</div>
+      <div class="hud hud-empty">Wähle oben rechts ein Modell aus.</div>
     {/if}
 
     <!-- HUD: connection indicator -->
@@ -215,6 +270,32 @@
     color: rgba(255, 255, 255, 0.78);
     text-align: center;
     max-width: 60vw;
+  }
+  // Sits where the detection HUD would be, so an empty project reads as "here is
+  // what's missing" rather than as a broken camera view.
+  .empty-stage {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    z-index: 6;
+  }
+  .hud-model {
+    top: 20px;
+    left: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    font-size: 13px;
+    z-index: 6;
+  }
+  .hud-model-caption {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.7);
   }
 
   .hud-conn {

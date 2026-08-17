@@ -8,9 +8,11 @@
     drawPoseSkeleton,
     setLastPoseCanvas,
   } from '$lib/machine';
-  import { setVideoRef, mobilenetModel, classifierModel } from '$lib/stores';
+  import { setVideoRef, mobilenetModel, classifierModel, predictionClasses } from '$lib/stores';
   import { selectedCameraId } from '$lib/stores/camera';
-  import { currentProject } from '$lib/stores/projects';
+  import { activeModel, currentProject } from '$lib/stores/projects';
+  import { modelLabel } from '$lib/models';
+  import RoiOverlay from '$lib/components/RoiOverlay.svelte';
   import {
     streamClassProbabilities,
     streamPoseKeypoints,
@@ -22,6 +24,7 @@
 
   let videoEl: HTMLVideoElement | null = $state(null);
   let skeletonCanvas: HTMLCanvasElement | null = $state(null);
+  let videoAspect = $state(4 / 3);
 
   let tickTimer: ReturnType<typeof setTimeout> | null = null;
   let tickInFlight = false;
@@ -62,8 +65,10 @@
       if (modelReady) {
         const p = await predictFromVideo(videoEl);
         if (p) {
-          const labels = $currentProject?.classes ?? [];
-          streamClassProbabilities(labels, p.allProbs);
+          // The loaded model's own classes — the project's live list may have
+          // moved on since it was trained, and the board's class ids follow the
+          // model, not the project.
+          streamClassProbabilities($predictionClasses, p.allProbs);
         }
       }
     } finally {
@@ -75,6 +80,11 @@
   onMount(async () => {
     resetStreamState();
     setVideoRef('webcamTryout', videoEl);
+    videoEl?.addEventListener('loadedmetadata', () => {
+      if (videoEl?.videoWidth && videoEl.videoHeight) {
+        videoAspect = videoEl.videoWidth / videoEl.videoHeight;
+      }
+    });
     await initSharedCamera(
       { webcamTryout: videoEl },
       get(selectedCameraId) ?? undefined,
@@ -98,6 +108,12 @@
     <video bind:this={videoEl} autoplay playsinline muted>
       <track kind="captions" />
     </video>
+    <!-- The region the running model was trained on, shown as it is: this view
+         uses a model, it does not define one. -->
+    {#if mode !== 'pose'}
+      <RoiOverlay roi={$activeModel?.roi} aspect={videoAspect} />
+    {/if}
+
     {#if det}
       <div class="prediction-overlay" class:confident={det.confidence >= confidentThreshold}>
         <div class="pred-label">{det.label}</div>
@@ -107,9 +123,21 @@
         <div class="pred-confidence">{(det.confidence * 100).toFixed(0)}%</div>
       </div>
     {:else if !modelReady}
-      <div class="hint">Kein Modell geladen — bitte zuerst trainieren.</div>
+      <div class="hint">Kein Modell geladen — wähle oben ein Programm mit Modell.</div>
     {/if}
   </div>
+
+  {#if $activeModel}
+    <!-- Names the model the prediction above comes from; which model a program
+         uses is chosen on its card in the list. -->
+    <div class="model-line">
+      <span class="model-name" title={modelLabel($activeModel)}>{modelLabel($activeModel)}</span>
+      <span class="model-meta">
+        {$activeModel.classes.length} Klassen
+        {#if $activeModel.roi}· Bereich{:else}· Ganzes Bild{/if}
+      </span>
+    </div>
+  {/if}
 
   {#if mode === 'pose'}
     <canvas bind:this={skeletonCanvas} width="512" height="512" class="offscreen"></canvas>
@@ -195,6 +223,24 @@
     font-size: 13px;
     text-align: center;
     padding: 20px;
+  }
+  .model-line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    font-size: 12px;
+    color: #555;
+  }
+  .model-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .model-meta {
+    color: #888;
+    flex-shrink: 0;
   }
   .offscreen {
     position: absolute;

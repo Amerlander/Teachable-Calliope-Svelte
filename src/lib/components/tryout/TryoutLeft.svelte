@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { loadTryoutModel, initSharedCamera, predictFromVideo } from '$lib/machine';
+  import { importModelFromZip, initSharedCamera, predictFromVideo } from '$lib/machine';
   import { getModelDiagnostics } from '$lib/machine';
   import { get } from 'svelte/store';
   import { classifierModel, mobilenetModel, classes } from '$lib/stores';
@@ -36,7 +36,7 @@
     if (!target.files?.length) return;
     const file = target.files[0];
     try {
-      await loadTryoutModel(file);
+      await importModelFromZip(file);
       tryoutModelInfo = 'Modell geladen';
       tryoutStatus = 'Bereit zum Ausprobieren';
     } catch (err) {

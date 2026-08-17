@@ -1,11 +1,13 @@
 <script lang="ts">
   import {
+    availableModels,
     currentProject,
-    setCurrentModel,
     deleteTrainedModel,
     renameTrainedModel
   } from '$lib/stores/projects';
-  import { loadClassifierFromArtifacts } from '$lib/machine';
+  import { exportModelToZip } from '$lib/machine';
+  import { activateModel } from '$lib/models';
+  import { roiSizeLabel } from '$lib/roi';
   import { showNotification } from '$lib/stores/notifications';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
@@ -17,12 +19,12 @@
     highlightActive = true
   }: { onselect?: (id: string) => void; highlightActive?: boolean } = $props();
 
-  const history = $derived($currentProject?.modelHistory ?? []);
   const currentId = $derived(
     highlightActive ? ($currentProject?.currentModelId ?? null) : null
   );
 
-  const sorted = $derived([...history].sort((a, b) => b.trainedAt - a.trainedAt));
+  // One list of models for the whole app — trained runs and imported ZIPs.
+  const sorted = $derived($availableModels);
 
   let editingId = $state<string | null>(null);
   let draft = $state('');
@@ -61,21 +63,30 @@
   }
 
   async function onLoad(id: string) {
-    const m = setCurrentModel(id);
     onselect?.(id);
-    if (!m) return;
     try {
-      await loadClassifierFromArtifacts(m.artifacts);
-      showNotification('Modell geladen', { type: 'success' });
+      const m = await activateModel(id);
+      if (m) showNotification('Modell geladen', { type: 'success' });
     } catch (err) {
       showNotification('Fehler beim Laden: ' + (err as Error).message, { type: 'error' });
     }
   }
 
   function onDelete(id: string) {
-    if (!confirm('Diesen Trainingslauf löschen?')) return;
+    if (!confirm('Dieses Modell löschen?')) return;
     deleteTrainedModel(id);
-    showNotification('Trainingslauf gelöscht', { type: 'success' });
+    showNotification('Modell gelöscht', { type: 'success' });
+  }
+
+  async function onExport(id: string) {
+    const model = $availableModels.find((m) => m.id === id);
+    if (!model) return;
+    try {
+      await exportModelToZip(model);
+      showNotification('Modell exportiert', { type: 'success' });
+    } catch {
+      showNotification('Fehler beim Speichern', { type: 'error' });
+    }
   }
 </script>
 
@@ -120,21 +131,29 @@
             {#if run.id === currentId}
               <span class="chip">aktiv</span>
             {/if}
-          </div>
-          <div class="meta">
-            <span class="acc">{acc != null ? (acc * 100).toFixed(1) + ' %' : '–'}</span>
-            <span>·</span>
-            <span>{run.history.epochs.length} Ep.</span>
-            <span>·</span>
-            <span>{run.classesSnapshot.length} Klassen</span>
-            <span>·</span>
-            <span>{Object.values(run.exampleCounts).reduce((a, b) => a + b, 0)} Bilder</span>
-            {#if run.roi}
-              <span class="roi-badge" title="Trainiert mit ROI {Math.round(run.roi.w * 100)}×{Math.round(run.roi.h * 100)}% @ ({Math.round(run.roi.x * 100)}, {Math.round(run.roi.y * 100)})">
-                ROI {Math.round(run.roi.w * 100)}×{Math.round(run.roi.h * 100)}%
-              </span>
+            {#if run.source === 'imported'}
+              <span class="chip muted">importiert</span>
             {/if}
           </div>
+          <!-- What this model is: its own classes and the region it looks at,
+               both read straight off the model. -->
+          <div class="meta">
+            {#if run.source === 'imported'}
+              <span>{run.classes.length} Klassen</span>
+            {:else}
+              <span class="acc">{acc != null ? (acc * 100).toFixed(1) + ' %' : '–'}</span>
+              <span>·</span>
+              <span>{run.history.epochs.length} Ep.</span>
+              <span>·</span>
+              <span>{run.classes.length} Klassen</span>
+              <span>·</span>
+              <span>{Object.values(run.exampleCounts).reduce((a, b) => a + b, 0)} Bilder</span>
+            {/if}
+            <span class="roi-badge" title={run.roi ? `Trainiert im Bildbereich ${roiSizeLabel(run.roi)}` : 'Trainiert mit dem ganzen Bild'}>
+              {run.roi ? `Bereich ${roiSizeLabel(run.roi)}` : 'Ganzes Bild'}
+            </span>
+          </div>
+          <div class="classes">{run.classes.join(' · ')}</div>
         </div>
         <Dropdown placement="bottom-end">
           {#snippet trigger()}
@@ -143,6 +162,7 @@
           {#snippet children()}
             <DropdownItem onclick={() => onLoad(run.id)}>Dieses Modell laden</DropdownItem>
             <DropdownItem onclick={() => startEdit(run.id, run.label)}>Umbenennen</DropdownItem>
+            <DropdownItem onclick={() => onExport(run.id)}>Exportieren</DropdownItem>
             <DropdownItem onclick={() => onDelete(run.id)}>Löschen</DropdownItem>
           {/snippet}
         </Dropdown>
@@ -262,6 +282,20 @@
     border-radius: 99px;
     background: rgb(var(--md-primary));
     color: rgb(var(--md-on-primary));
+    flex-shrink: 0;
+    &.muted {
+      background: rgba(var(--md-on-surface), 0.12);
+      color: rgb(var(--md-on-surface-variant));
+    }
+  }
+  // The model's own class list, so a model can be told apart from its siblings
+  // without opening it.
+  .classes {
+    font-size: 11px;
+    color: rgb(var(--md-on-surface-variant));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .meta {
     font-size: 12px;
