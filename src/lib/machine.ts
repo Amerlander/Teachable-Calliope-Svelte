@@ -12,13 +12,18 @@ import {
   setModelArtifacts,
   trainingHistory,
   modelMetadata,
-  trainingOptions
+  trainingOptions,
+  type VideoRefs
 } from './stores';
 import {
   recordTrainedModel,
+  recordImportedModel,
   currentProject,
   resolveFeatureExtractor,
+  type ModelArtifacts,
+  type ProjectMode,
   type Roi,
+  type TrainedModel,
   type FeatureExtractor,
   type Optimizer,
   type AugmentationSettings
@@ -27,16 +32,10 @@ import type { ModelMetadata } from './stores';
 
 // We will dynamically import TensorFlow and other libs on the client side
 
-type CameraVideoRefs = {
-  webcam?: HTMLVideoElement | null;
-  webcamTest?: HTMLVideoElement | null;
-  webcamTryout?: HTMLVideoElement | null;
-};
-
 let currentStream: MediaStream | null = null;
 
 export async function initSharedCamera(
-  videoElements: CameraVideoRefs = {},
+  videoElements: VideoRefs = {},
   deviceId?: string
 ): Promise<MediaStream | null> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices) return null;
@@ -50,8 +49,7 @@ export async function initSharedCamera(
     };
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     currentStream = stream;
-    const els = [videoElements.webcam, videoElements.webcamTest, videoElements.webcamTryout];
-    for (const vid of els) {
+    for (const vid of Object.values(videoElements)) {
       if (!vid) continue;
       try {
         vid.srcObject = stream;
@@ -67,19 +65,13 @@ export async function initSharedCamera(
   }
 }
 
-export async function listCameras(): Promise<MediaDeviceInfo[]> {
-  if (typeof navigator === 'undefined' || !navigator.mediaDevices) return [];
-  try {
-    // Probe once so device labels become available
-    if (!currentStream) {
-      const probe = await navigator.mediaDevices.getUserMedia({ video: true });
-      probe.getTracks().forEach((t) => t.stop());
-    }
-    const devs = await navigator.mediaDevices.enumerateDevices();
-    return devs.filter((d) => d.kind === 'videoinput');
-  } catch {
-    return [];
-  }
+/**
+ * True while a shared stream is live. Device enumeration only yields usable
+ * labels once permission has been granted, so the camera picker uses this to
+ * enumerate off the back of a running view instead of prompting on its own.
+ */
+export function isCameraRunning(): boolean {
+  return currentStream !== null;
 }
 
 // ---------- Feature extractor abstraction ----------
@@ -494,10 +486,19 @@ export async function initApp() {
 
 export const init = initApp;
 
-export function captureFrameFromVideo(video: HTMLVideoElement) {
+/**
+ * Capture a still at the camera's own aspect ratio, short side `short`.
+ * Squashing the frame into a square here would only show up as distorted
+ * thumbnails and previews — training squashes every example to 224² anyway
+ * (see drawWithRoi), so the pixels the model ends up seeing are the same.
+ */
+export function captureFrameFromVideo(video: HTMLVideoElement, short = 224) {
+  const vw = video.videoWidth || short;
+  const vh = video.videoHeight || short;
+  const scale = short / Math.min(vw, vh);
   const canvas = document.createElement('canvas');
-  canvas.width = 224;
-  canvas.height = 224;
+  canvas.width = Math.max(1, Math.round(vw * scale));
+  canvas.height = Math.max(1, Math.round(vh * scale));
   const ctx = canvas.getContext('2d')!;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/png');
@@ -660,7 +661,11 @@ export async function trainModel(
           get(trainingOptions),
           [...get(classes)],
           counts,
-          { roi: opts.roi ?? undefined, featureExtractor }
+          {
+            roi: opts.roi ?? undefined,
+            featureExtractor,
+            mode: get(currentProject)?.mode ?? 'image'
+          }
         );
         return { modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' } } as any;
       })
@@ -862,12 +867,13 @@ export async function predictFromVideo(video: HTMLVideoElement) {
   const classesList = get(classes);
   if (!classifier || !video) return null;
 
-  // Use ROI + feature extractor stored on the currently loaded trained model.
+  // Everything inference needs is on the selected model: its classes, the image
+  // region it was trained on, and the extractor its embeddings came from.
   const proj = get(currentProject);
   const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
   // Output units map onto the classes the model was trained with — the live
   // class list may have grown or been renamed since.
-  const labels = active?.classesSnapshot?.length ? active.classesSnapshot : classesList;
+  const labels = active?.classes?.length ? active.classes : classesList;
   const extractor = resolveFeatureExtractor(active?.featureExtractor);
   await ensureExtractor(extractor);
   const canvas = document.createElement('canvas');
@@ -974,14 +980,18 @@ export function computeModelMetadataFromModel(model: any) {
 
 export async function calculateConfusionMatrix() {
   const classifier = get(classifierModel);
-  const classesList = get(classes);
   const ex = get(examples);
   if (!classifier) throw new Error('Model not ready');
-  const n = classesList.length;
-  const matrix: number[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
 
   const proj = get(currentProject);
   const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
+  // Rows and columns are the model's own classes: its output units line up with
+  // that list, and scoring the project's live classes against it would put
+  // predictions in the wrong column as soon as a class was added or renamed.
+  const classesList = active?.classes?.length ? active.classes : get(classes);
+  const n = classesList.length;
+  const matrix: number[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
+
   const roi = active?.roi ?? null;
   const extractor = resolveFeatureExtractor(active?.featureExtractor);
   await ensureExtractor(extractor);

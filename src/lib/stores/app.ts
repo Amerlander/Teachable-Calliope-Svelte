@@ -1,13 +1,32 @@
 import { writable, derived } from 'svelte/store';
+import { loadLocale } from 'wuchale/load-utils';
 import { currentProject } from './projects';
+// Importing the loaders is what registers them with wuchale's global registry,
+// so `loadLocale` below has something to load. Nothing else uses these exports.
+import '../../locales/main.loader.svelte.js';
+import '../../locales/js.loader.js';
 
 // --- App mode (derived from current project — fixed per project) ---
 export type AppMode = 'image' | 'pose';
 export const appMode = derived(currentProject, (p): AppMode | null => p?.mode ?? null);
 
 // --- Language ---
-export type Lang = 'de' | 'en' | 'fr' | 'es' | 'it' | 'el';
-export const currentLang = writable<Lang>('de');
+// `de` is wuchale's source locale (see wuchale.config.js), so its catalog is the
+// source text itself and can never be missing.
+export type Lang = 'de' | 'en';
+export const SOURCE_LANG: Lang = 'de';
+export const currentLang = writable<Lang>(SOURCE_LANG);
+
+/**
+ * Switch the UI language. The catalog has to be in place *before* the store
+ * updates, otherwise the components re-render against a catalog that isn't
+ * there yet and fall back to wuchale's placeholders for a frame.
+ */
+export async function setLang(lang: Lang): Promise<void> {
+  await loadLocale(lang);
+  currentLang.set(lang);
+  if (typeof document !== 'undefined') document.documentElement.lang = lang;
+}
 
 // --- UI overlays ---
 export const showLanguageOverlay = writable(false);
@@ -61,6 +80,16 @@ export const roiEditing = writable(false);
 export type TrainPhase = 'idle' | 'preparing' | 'training' | 'done' | 'error';
 export const trainPhase = writable<TrainPhase>('idle');
 
+// Epoch counter of the running training. The run is started from the sidebar
+// but its progress is shown under the video, so the two numbers have to live
+// outside both components.
+export const trainEpoch = writable(0);
+export const trainTotalEpochs = writable(0);
+export const trainProgress = derived(
+  [trainEpoch, trainTotalEpochs],
+  ([ep, total]) => (total ? Math.min(100, Math.round((ep / total) * 100)) : 0)
+);
+
 // --- Bluetooth ---
 export const btConnected = writable(false);
 export const btStatusText = writable('Nicht verbunden');
@@ -73,6 +102,7 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     'header.tryout': 'Programmieren',
     'header.apply': 'Anwenden',
     'header.settings': 'Einstellungen',
+    'settings.camera': 'Kamera',
     'settings.language': 'Sprachen',
     'settings.aiInfo': 'KI-Hinweise',
     'settings.switchMode': 'Modus wechseln',
@@ -162,6 +192,7 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
     'header.tryout': 'Program',
     'header.apply': 'Apply',
     'header.settings': 'Settings',
+    'settings.camera': 'Camera',
     'settings.language': 'Languages',
     'settings.aiInfo': 'AI Information',
     'settings.switchMode': 'Switch Mode',

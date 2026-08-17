@@ -39,6 +39,7 @@
     t,
     isTesting,
     isTraining,
+    trainStatus,
     workspaceTab,
     modelTabView,
     draftRoi,
@@ -46,8 +47,10 @@
     DEFAULT_ROI,
     type Roi
   } from '$lib/stores/app';
-  import CameraSelect from '$lib/components/CameraSelect.svelte';
   import ModelStats from '$lib/components/training/ModelStats.svelte';
+  import ModelCharts from '$lib/components/training/ModelCharts.svelte';
+  import ModelDetailsModal from '$lib/components/training/ModelDetailsModal.svelte';
+  import TrainingProgress from '$lib/components/training/TrainingProgress.svelte';
   import { activeModel, currentProject, setClassThreshold } from '$lib/stores/projects';
   import { streamClassProbabilities, streamPoseKeypoints, smoothingWindow, pickWinnerIndex } from '$lib/stores/streaming';
 
@@ -100,17 +103,38 @@
         : 'test'
   );
 
+  // A running training takes over both the indicator and the panel under the
+  // video — that run is what is happening, not a live test.
+  const indicator = $derived.by(() => {
+    if ($isTraining) return { kind: 'training', label: 'Training', hint: $trainStatus };
+    if (mode === 'test')
+      return {
+        kind: 'test',
+        label: 'Test',
+        hint: !$classifierModel ? 'Kein Modell – bitte erst trainieren' : 'Live-Vorhersage aktiv'
+      };
+    if (mode === 'prep')
+      return {
+        kind: 'prep',
+        label: 'Vorbereitung',
+        hint: 'ROI auswählen – wird mit dem nächsten Training gespeichert'
+      };
+    return { kind: 'train', label: 'Aufnahme', hint: 'Bild wird zur aktiven Klasse aufgenommen' };
+  });
+
+  let detailsOpen = $state(false);
+
   onMount(async () => {
+    // All six feeds are registered, not just the two front ones: the camera can
+    // now be switched from the header while any of these views is showing, and
+    // the switch rebinds whatever is in the registry.
     setVideoRef('webcam', webcamEl);
+    setVideoRef('webcamBg', webcamBgEl);
     setVideoRef('webcamTest', webcamTestEl);
-    const stream = await initSharedCamera({ webcam: webcamEl, webcamTest: webcamTestEl }, get(selectedCameraId) ?? undefined);
-    if (stream) {
-      for (const el of [webcamBgEl, webcamTestBgEl, webcamPrepEl, webcamPrepBgEl]) {
-        if (!el) continue;
-        el.srcObject = stream;
-        el.onloadedmetadata = () => el.play().catch(() => {});
-      }
-    }
+    setVideoRef('webcamTestBg', webcamTestBgEl);
+    setVideoRef('webcamPrep', webcamPrepEl);
+    setVideoRef('webcamPrepBg', webcamPrepBgEl);
+    await initSharedCamera(get(videoRefs), get(selectedCameraId) ?? undefined);
     const capture = webcamPrepEl ?? webcamEl;
     if (capture) {
       capture.addEventListener('loadedmetadata', () => {
@@ -125,6 +149,10 @@
   onDestroy(() => {
     stopTest();
     stopPoseLoop();
+    // Leave no detached elements behind for the next camera switch to bind to.
+    for (const key of ['webcam', 'webcamBg', 'webcamTest', 'webcamTestBg', 'webcamPrep', 'webcamPrepBg'] as const) {
+      setVideoRef(key, null);
+    }
   });
 
   // ---------- Pose overlay loop (MoveNet) ----------
@@ -178,10 +206,12 @@
   });
 
   // Auto-start/stop the test loop whenever mode or classifier availability changes.
+  // While a training runs, the previously loaded classifier must stay idle — it
+  // is about to be replaced and predicting against it competes for the GPU.
   $effect(() => {
     const m = mode;
     const hasModel = !!$classifierModel;
-    if (m === 'test' && hasModel) {
+    if (m === 'test' && hasModel && !$isTraining) {
       startTest();
     } else {
       stopTest();
@@ -349,15 +379,55 @@
   let capturingClass = $state<string | null>(null);
   let captureInterval: ReturnType<typeof setInterval> | null = null;
 
-  function createClass() {
-    const name = newClassName.trim();
-    if (!name) return;
-    addClass(name);
+  /** First unused "Klasse n" — what an unnamed class gets called. */
+  function autoClassName(): string {
+    const taken = new Set($classes);
+    let n = taken.size + 1;
+    while (taken.has(`Klasse ${n}`)) n++;
+    return `Klasse ${n}`;
+  }
+
+  const pendingClassName = $derived(newClassName.trim() || autoClassName());
+
+  /**
+   * Turn the placeholder row at the bottom of the list into a real class and
+   * return its name. Recording from that row goes through here, so a class can
+   * be created by just hitting record — the name is optional.
+   */
+  function commitNewClass(): string {
+    const name = pendingClassName;
     newClassName = '';
+    if (!$classes.includes(name)) addClass(name);
+    return name;
   }
 
   function onNewClassKey(e: KeyboardEvent) {
-    if (e.key === 'Enter') createClass();
+    if (e.key === 'Enter') {
+      commitNewClass();
+      (e.target as HTMLInputElement).blur();
+    }
+  }
+
+  // A typed name makes the class real; an untouched row stays a placeholder.
+  function onNewClassBlur() {
+    if (newClassName.trim()) commitNewClass();
+  }
+
+  // Recording straight from the placeholder row: create the class first, then
+  // hand the still-held pointer over to the regular capture loop.
+  let ghostRecording = $state(false);
+
+  function startGhostRecord(e: PointerEvent) {
+    // Don't create a class we then fail to record into.
+    if (capturingClass || advancedRunningClass) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    ghostRecording = true;
+    startRecord(commitNewClass());
+  }
+
+  function stopGhostRecord() {
+    ghostRecording = false;
+    stopRecord();
   }
 
   function startEditClass(cls: string) {
@@ -472,7 +542,36 @@
   let previewSrc = $state<string | null>(null);
   let selectionClass = $state<string | null>(null);
   const selectedIdx = new SvelteSet<number>();
-  let thumbDrag: { cls: string; startIdx: number; moved: boolean } | null = null;
+  let thumbDrag = $state<{ cls: string; startIdx: number; moved: boolean } | null>(null);
+  // Which stack the pointer is currently inside — a drag that wanders off the
+  // stack must not tear down the preview, so pointerleave defers to this.
+  let hoveredStack = $state<string | null>(null);
+
+  // ---------- Thumb stack geometry ----------
+  // The stack is anchored on its newest image: the per-image offset shrinks
+  // until everything fits, and once the thumbs would get too narrow to aim at,
+  // the oldest ones drop out of the row instead of running past its right edge.
+  const STACK_THUMB = 56;      // keep in sync with --thumb in .thumb-stack
+  const STACK_MAX_OFFSET = 14;
+  const STACK_MIN_OFFSET = 6;
+  const STACK_MORE_WIDTH = 36; // room the "+N older" chip claims on the left
+
+  // Every stack sits in the same column, so one measurement serves them all.
+  let stackWidth = $state(0);
+
+  function stackLayout(n: number) {
+    const plain = { offset: STACK_MAX_OFFSET, start: 0, hidden: 0, pad: 0 };
+    if (n <= 1 || stackWidth <= 0) return plain;
+    const avail = Math.max(0, stackWidth - STACK_THUMB);
+    const fitted = avail / (n - 1);
+    if (fitted >= STACK_MIN_OFFSET) {
+      return { offset: Math.min(STACK_MAX_OFFSET, fitted), start: 0, hidden: 0, pad: 0 };
+    }
+    const room = Math.max(0, avail - STACK_MORE_WIDTH);
+    const visible = Math.max(1, Math.floor(room / STACK_MIN_OFFSET) + 1);
+    const start = Math.max(0, n - visible);
+    return { offset: STACK_MIN_OFFSET, start, hidden: start, pad: STACK_MORE_WIDTH };
+  }
 
   function clearSelection() {
     selectedIdx.clear();
@@ -516,6 +615,9 @@
       window.removeEventListener('pointercancel', finish);
       const drag = thumbDrag;
       thumbDrag = null;
+      // The stack stayed fanned out for the whole drag; now that it is over,
+      // the preview only survives if the pointer is still on the thumbs.
+      if (hoveredStack !== cls) previewSrc = null;
       if (!drag || drag.moved || ev.type === 'pointercancel') return;
       if (hadSelection) {
         if (selectedIdx.has(i)) selectedIdx.delete(i);
@@ -582,24 +684,18 @@
 <svelte:window onkeydown={onWindowKeydown} />
 
 <div class="right-panel">
-  <!-- Top bar: mode indicator + camera select (above the video) -->
+  <!-- Top bar: mode indicator (above the video) -->
   <div class="top-bar">
-    <div class="mode-indicator" class:test={mode === 'test'} class:prep={mode === 'prep'}>
+    <div
+      class="mode-indicator"
+      class:test={indicator.kind === 'test'}
+      class:prep={indicator.kind === 'prep'}
+      class:training={indicator.kind === 'training'}
+    >
       <span class="dot"></span>
-      <span class="label">
-        {mode === 'test' ? 'Test' : mode === 'prep' ? 'Vorbereitung' : 'Aufnahme'}
-      </span>
-      <span class="hint">
-        {#if mode === 'test'}
-          {!$classifierModel ? 'Kein Modell – bitte erst trainieren' : 'Live-Vorhersage aktiv'}
-        {:else if mode === 'prep'}
-          ROI auswählen – wird mit dem nächsten Training gespeichert
-        {:else}
-          Bild wird zur aktiven Klasse aufgenommen
-        {/if}
-      </span>
+      <span class="label">{indicator.label}</span>
+      <span class="hint">{indicator.hint}</span>
     </div>
-    <CameraSelect />
   </div>
 
   <!-- Train view -->
@@ -713,7 +809,7 @@
         </div>
       {/if}
 
-      {#if mode === 'test' && !$classifierModel}
+      {#if mode === 'test' && !$classifierModel && !$isTraining}
         <div class="overlay">
           <div class="status warning">{t('training.testStatus', lang)}</div>
         </div>
@@ -730,57 +826,68 @@
       {/if}
     </div>
 
-    <div class="model-info">
-      <div class="model-info-head">
-        <span>Modell-Info</span>
-        <span class="hint">
-          {#if $activeModel}
-            {$activeModel.label || new Date($activeModel.trainedAt).toLocaleString('de-DE')}
-          {:else if $classifierModel}
-            importiertes Modell
-          {:else}
-            kein Modell geladen
+    <!-- One slot, two states: the running training, then the model it produced.
+         Kept unmounted while the test view is hidden — the charts inside measure
+         their container on mount and would come back zero-width otherwise. -->
+    <div class="model-info" class:hidden={mode !== 'test'}>
+      {#if mode !== 'test'}
+        <!-- nothing: the whole test view is off-screen -->
+      {:else if $isTraining}
+        <TrainingProgress />
+      {:else}
+        <div class="model-info-head">
+          <span class="mi-title">Modell-Info</span>
+          <span class="hint">
+            {#if $activeModel}
+              {$activeModel.label || new Date($activeModel.trainedAt).toLocaleString('de-DE')}
+            {:else if $classifierModel}
+              importiertes Modell
+            {:else}
+              kein Modell geladen
+            {/if}
+          </span>
+          {#if $classifierModel}
+            <span class="mi-head-actions">
+              <Button variant="ghost" size="small" onclick={() => (detailsOpen = true)}>
+                Details…
+              </Button>
+            </span>
           {/if}
-        </span>
-      </div>
-
-      {#if $classifierModel}
-        <ModelStats model={$activeModel} />
-
-        <div class="mi-classes">
-          <div class="mi-classes-head">
-            <span>Klassen des Modells</span>
-            <span class="hint">Stand des Trainings</span>
-          </div>
-          {#each $predictionClasses as cls (cls)}
-            {@const count = $activeModel
-              ? ($activeModel.exampleCounts?.[cls] ?? 0)
-              : ($examples[cls]?.length ?? 0)}
-            <div class="mi-class">
-              <span class="mi-class-name">{cls}</span>
-              <span class="mi-class-count">{count} Bilder</span>
-            </div>
-          {/each}
         </div>
 
-        {#if $activeModel}
-          <div class="mi-chips">
-            <span class="mi-chip">
-              {$activeModel.roi
-                ? `ROI ${Math.round($activeModel.roi.w * 100)}×${Math.round($activeModel.roi.h * 100)}%`
-                : 'Ganzes Bild'}
-            </span>
-            <span class="mi-chip">{$activeModel.featureExtractor ?? 'mobilenet-v1'}</span>
-            {#if $activeModel.options}
-              <span class="mi-chip">{$activeModel.options.epochs} Epochen</span>
-              <span class="mi-chip">Lernrate {$activeModel.options.learningRate}</span>
-            {/if}
+        {#if $classifierModel}
+          <!-- Left: what the model can tell apart. Right: how well it does it. -->
+          <div class="mi-main">
+            <div class="mi-classes">
+              <div class="mi-classes-head">
+                <span>Klassen des Modells</span>
+                <span class="hint">{$predictionClasses.length} Klassen</span>
+              </div>
+              {#each $predictionClasses as cls (cls)}
+                {@const count = $activeModel
+                  ? ($activeModel.exampleCounts?.[cls] ?? 0)
+                  : ($examples[cls]?.length ?? 0)}
+                <div class="mi-class">
+                  <span class="mi-class-name">{cls}</span>
+                  <span class="mi-class-count">{count} Bilder</span>
+                </div>
+              {/each}
+            </div>
+
+            <div class="mi-eval">
+              <div class="mi-eval-head">
+                <span>Auswertung</span>
+              </div>
+              <ModelCharts />
+            </div>
+          </div>
+
+          <ModelStats model={$activeModel} />
+        {:else}
+          <div class="mi-empty">
+            Wähle links ein Modell aus oder trainiere ein neues, um es hier zu testen.
           </div>
         {/if}
-      {:else}
-        <div class="mi-empty">
-          Wähle links ein Modell aus oder trainiere ein neues, um es hier zu testen.
-        </div>
       {/if}
     </div>
   </div>
@@ -864,6 +971,7 @@
       </div>
       {#each $classes as cls (cls)}
         {@const imgs = [...($examples[cls] ?? [])]}
+        {@const layout = stackLayout(imgs.length)}
         <div class="prep-class">
           <div class="prep-class-head">
             {#if editingClass === cls}
@@ -913,17 +1021,30 @@
               class="thumb-stack"
               class:empty={!imgs.length}
               class:selecting={selectionClass === cls && selectedIdx.size > 0}
+              class:dragging={thumbDrag?.cls === cls}
+              style="--offset: {layout.offset}px; --pad: {layout.pad}px; --n: {imgs.length - layout.start};"
               role="group"
               aria-label="Bilder von {cls}"
-              onpointerleave={() => (previewSrc = null)}
+              bind:clientWidth={stackWidth}
+              onpointerenter={() => (hoveredStack = cls)}
+              onpointerleave={() => {
+                hoveredStack = null;
+                // A drag that runs off the stack keeps its preview and its
+                // fanned-out thumbs until the pointer is actually released.
+                if (!thumbDrag) previewSrc = null;
+              }}
             >
               {#if imgs.length}
-                {#each imgs as ex, i (cls + '_' + i)}
+                {#if layout.hidden}
+                  <span class="stack-more" title="{layout.hidden} ältere Bilder">+{layout.hidden}</span>
+                {/if}
+                {#each imgs.slice(layout.start) as ex, vi (cls + '_' + (layout.start + vi))}
+                  {@const i = layout.start + vi}
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div
                     class="stack-item"
                     class:selected={selectionClass === cls && selectedIdx.has(i)}
-                    style="--i: {i}; --n: {imgs.length};"
+                    style="--i: {vi};"
                     role="button"
                     tabindex="0"
                     aria-label="Bild {i + 1} löschen"
@@ -1007,27 +1128,89 @@
         </div>
       {/each}
 
-      <div class="new-class-row">
-        <input
-          class="new-class-input"
-          type="text"
-          placeholder="Neue Klasse hinzufügen"
-          bind:value={newClassName}
-          onkeydown={onNewClassKey}
-        />
-        <Button
-          class="add-btn"
-          size="small"
-          onclick={createClass}
-          disabled={!newClassName.trim()}
-          aria-label="Klasse hinzufügen"
-        >
-          +
-        </Button>
+      <!-- Placeholder row: not a class yet (hence the dimming), but recording
+           from here works right away and creates it on the first frame. -->
+      <div class="prep-class ghost" class:armed={!!newClassName.trim()}>
+        <div class="prep-class-head">
+          <input
+            class="new-class-input"
+            type="text"
+            placeholder="Neue Klasse hinzufügen"
+            aria-label="Neue Klasse hinzufügen"
+            bind:value={newClassName}
+            onkeydown={onNewClassKey}
+            onblur={onNewClassBlur}
+          />
+        </div>
+
+        <div class="prep-thumbs-row">
+          <div class="thumb-stack empty">
+            <span class="ghost-note">
+              {#if newClassName.trim()}
+                Enter legt „{pendingClassName}“ an
+              {:else}
+                Aufnahme legt „{pendingClassName}“ an
+              {/if}
+            </span>
+          </div>
+          <Dropdown triggerMode={'hover'} styling={'basic'}>
+            {#snippet trigger()}
+              <button
+                type="button"
+                class="record-btn"
+                class:recording={ghostRecording}
+                aria-label="Neue Klasse aufnehmen"
+                title="Halten zum Aufnehmen"
+                disabled={!!advancedRunningClass}
+                onpointerdown={startGhostRecord}
+                onpointerup={stopGhostRecord}
+                onpointercancel={stopGhostRecord}
+              >
+                <span class="record-dot"></span>
+              </button>
+            {/snippet}
+            Halten zum Aufnehmen — legt die Klasse an
+          </Dropdown>
+          <Dropdown minWidth="260px" closeOnClick={false}>
+            {#snippet trigger()}
+              <Button variant="ghost" size="small" aria-label="Erweiterte Aufnahme" title="Erweiterte Aufnahme">Serie</Button>
+            {/snippet}
+            {#snippet children()}
+              <div class="adv-popover">
+                <div class="adv-title">Erweiterte Aufnahme</div>
+                <label class="adv-row">
+                  <span>Verzögerung vor Start (s)</span>
+                  <input type="number" min="0" max="30" bind:value={advDelaySec} />
+                </label>
+                <label class="adv-row">
+                  <span>Anzahl Bilder</span>
+                  <input type="number" min="1" max="500" bind:value={advCount} />
+                </label>
+                <label class="adv-row">
+                  <span>Abstand (ms)</span>
+                  <input type="number" min="50" max="5000" step="50" bind:value={advIntervalMs} />
+                </label>
+                <div class="adv-actions">
+                  {#if advancedRunningClass}
+                    <button class="adv-btn danger" type="button" onclick={cancelAdvanced}>Abbrechen</button>
+                  {:else}
+                    <button
+                      class="adv-btn primary"
+                      type="button"
+                      onclick={() => startAdvanced(commitNewClass())}
+                    >Start</button>
+                  {/if}
+                </div>
+              </div>
+            {/snippet}
+          </Dropdown>
+        </div>
       </div>
     </div>
   </div>
 </div>
+
+<ModelDetailsModal bind:isOpen={detailsOpen} />
 
 <style lang="scss">
   .right-panel {
@@ -1075,6 +1258,10 @@
       background: #f5a54c;
       box-shadow: 0 0 0 3px rgba(245, 165, 76, 0.25);
     }
+    &.training .dot {
+      background: rgb(var(--md-primary));
+      animation: pulsePrimary 1.2s ease-in-out infinite;
+    }
   }
 
   // ----- Test view -----
@@ -1091,12 +1278,14 @@
   }
   .test-video {
     flex: 1 1 auto;
-    min-height: 180px;
+    min-height: 160px;
   }
   .model-info {
     // Takes what it needs, gives space back to the video when it gets tight.
+    // It now carries the classes, the curves and the facts, so it may claim more
+    // room than the plain stats block did — and scrolls once it hits the cap.
     flex: 0 1 auto;
-    max-height: 45%;
+    max-height: 62%;
     overflow-y: auto;
     background: rgba(var(--md-surface-variant), 0.3);
     border-radius: var(--md-radius-lg);
@@ -1104,25 +1293,60 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+    &.hidden { display: none; }
   }
   .model-info-head {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
+    align-items: center;
     gap: 8px;
     font-size: 13px;
     font-weight: 600;
     color: rgb(var(--md-on-surface));
+    .mi-title {
+      flex-shrink: 0;
+    }
     .hint {
+      min-width: 0;
       font-size: 11px;
       font-weight: 400;
       color: rgb(var(--md-on-surface-variant));
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mi-head-actions {
+      margin-left: auto;
+      flex-shrink: 0;
     }
   }
+  // Classes on the left, the evaluation on the right; wraps to one column when
+  // the camera pane is dragged narrow.
+  .mi-main {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+  }
   .mi-classes {
+    flex: 1 1 200px;
+    min-width: 180px;
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+  .mi-eval {
+    flex: 2 1 320px;
+    min-width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .mi-eval-head {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgb(var(--md-on-surface-variant));
   }
   .mi-classes-head {
     display: flex;
@@ -1162,19 +1386,6 @@
       font-variant-numeric: tabular-nums;
       color: rgb(var(--md-on-surface-variant));
     }
-  }
-  .mi-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .mi-chip {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 99px;
-    background: rgba(var(--md-surface-variant), 0.6);
-    color: rgb(var(--md-on-surface-variant));
-    font-variant-numeric: tabular-nums;
   }
   .mi-empty {
     font-size: 12px;
@@ -1368,13 +1579,30 @@
     overflow-x: clip;
     overflow-y: visible;
     --thumb: 56px;
+    // --offset/--pad/--n come from stackLayout(): the row is laid out from its
+    // newest image backwards, so a fresh capture is never the one that falls off.
     --offset: 14px;
+    --pad: 0px;
     &.empty { display: flex; align-items: center; }
+  }
+  // How many older images had to leave the row to keep the newest ones in it.
+  .stack-more {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: rgb(var(--md-on-surface-variant));
+    background: rgba(var(--md-surface-variant), 0.7);
+    padding: 2px 6px;
+    border-radius: 99px;
+    pointer-events: none;
   }
   .stack-item {
     position: absolute;
     top: 0;
-    left: calc(var(--i) * var(--offset));
+    left: calc(var(--pad) + var(--i) * var(--offset));
     width: var(--thumb);
     height: var(--thumb);
     border-radius: 4px;
@@ -1405,11 +1633,14 @@
     }
   }
   // On hover of the stack, fan images farther apart so you can glimpse each one.
-  // Spread is capped by container width to avoid overflow.
-  .thumb-stack:hover .stack-item {
+  // Spread is capped by container width to avoid overflow. A running drag-select
+  // holds the fan open even after the pointer wanders off the stack — collapsing
+  // mid-gesture would pull the thumbs out from under the selection.
+  .thumb-stack:hover .stack-item,
+  .thumb-stack.dragging .stack-item {
     left: calc(
-      var(--i) *
-      min(var(--thumb), (100% - var(--thumb)) / max(var(--n) - 1, 1))
+      var(--pad) + var(--i) *
+      min(var(--thumb), (100% - var(--pad) - var(--thumb)) / max(var(--n) - 1, 1))
     );
   }
   .stack-item:hover,
@@ -1499,8 +1730,10 @@
     backdrop-filter: blur(6px);
     pointer-events: none;
     img {
-      max-width: 82%;
-      max-height: 82%;
+      // width/height stay unset so the image keeps its own proportions — the
+      // frames are stored at the camera's aspect ratio, not squashed to a square.
+      max-width: 94%;
+      max-height: 94%;
       object-fit: contain;
       border-radius: var(--md-radius-md);
       box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
@@ -1560,17 +1793,20 @@
     0%, 100% { transform: scale(1); opacity: 1; }
     50%      { transform: scale(0.85); opacity: 0.7; }
   }
-  .new-class-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 4px;
+  // The row below the last class is a class that does not exist yet: it carries
+  // the same controls, dimmed, and firms up as soon as it is named or recorded.
+  .prep-class.ghost {
+    padding: 6px 8px;
     border: 1px dashed rgba(var(--md-outline), 0.7);
     border-radius: var(--md-radius-md);
-    margin-top: 4px;
-    &:focus-within {
+    opacity: 0.55;
+    transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    &:hover,
+    &:focus-within,
+    &.armed {
+      opacity: 1;
       border-color: rgb(var(--md-primary));
-      background: rgba(var(--md-primary-container), 0.3);
+      background: rgba(var(--md-primary-container), 0.25);
     }
   }
   .new-class-input {
@@ -1578,25 +1814,20 @@
     min-width: 0;
     border: none;
     background: transparent;
-    padding: 6px 8px;
+    padding: 2px 4px;
     font: inherit;
+    font-size: 12px;
+    font-weight: 600;
     color: rgb(var(--md-on-surface));
     &:focus {
       outline: none;
       border: none;
     }
   }
-  :global(.add-btn) {
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
-    min-height: 32px;
-    padding: 0;
-    font-size: 18px;
-    font-weight: 500;
-    line-height: 1;
-    flex-shrink: 0;
-    box-shadow: none;
+  .ghost-note {
+    font-size: 11px;
+    font-style: italic;
+    color: rgb(var(--md-on-surface-variant));
   }
   .loading-overlay {
     position: absolute;
@@ -1614,6 +1845,10 @@
   @keyframes pulse {
     0%, 100% { box-shadow: 0 0 0 3px rgba(173, 245, 76, 0.25); }
     50%      { box-shadow: 0 0 0 6px rgba(173, 245, 76, 0.08); }
+  }
+  @keyframes pulsePrimary {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(var(--md-primary), 0.3); }
+    50%      { box-shadow: 0 0 0 6px rgba(var(--md-primary), 0.08); }
   }
   .video-wrap {
     flex: 1;

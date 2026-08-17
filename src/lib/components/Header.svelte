@@ -18,6 +18,13 @@
   import { exportCurrentProject } from '$lib/projects-io';
   import { showNotification } from '$lib/stores/notifications';
   import { classifierModel } from '$lib/stores';
+  import {
+    cameras,
+    cameraLabel,
+    refreshCameras,
+    selectedCameraId,
+    switchCamera
+  } from '$lib/stores/camera';
 
   let settingsOpen = $state(false);
   let editingName = $state(false);
@@ -32,6 +39,26 @@
   );
 
   const lang = $derived($currentLang);
+
+  // The camera picker used to sit in each view; it lives here now so there is one
+  // place to change the camera from. It only makes sense where a live feed is on
+  // screen, and only when there is something to choose between.
+  const onCameraView = $derived(
+    ['/training', '/tryout', '/apply'].some((p) => $page.url.pathname.startsWith(p))
+  );
+  const currentCameraId = $derived($selectedCameraId ?? $cameras[0]?.deviceId ?? '');
+  const showCameraPicker = $derived(onCameraView && $cameras.length > 1);
+
+  // Devices come and go, so the list is re-read every time the menu opens rather
+  // than once at startup.
+  $effect(() => {
+    if (settingsOpen) void refreshCameras();
+  });
+
+  async function pickCamera(deviceId: string) {
+    if (!deviceId || deviceId === currentCameraId) return;
+    await switchCamera(deviceId);
+  }
 
   function navTo(view: string) { goto(`/${view}`); }
 
@@ -151,6 +178,24 @@
           {#if $currentProject}
             <DropdownItem onclick={onExport}>{t('training.downloadProject', lang)}</DropdownItem>
           {/if}
+          {#if showCameraPicker}
+            {#if $currentProject}
+              <div class="menu-sep" role="separator"></div>
+            {/if}
+            <div class="menu-label" id="settings-camera-label">{t('settings.camera', lang)}</div>
+            <div class="camera-group" role="group" aria-labelledby="settings-camera-label">
+              {#each $cameras as cam, i (cam.deviceId)}
+                <DropdownItem
+                  selected={cam.deviceId === currentCameraId}
+                  onselected={() => pickCamera(cam.deviceId)}
+                  title={cameraLabel(cam, i)}
+                >
+                  {cameraLabel(cam, i)}
+                </DropdownItem>
+              {/each}
+            </div>
+            <div class="menu-sep" role="separator"></div>
+          {/if}
           <DropdownItem onclick={openLanguage}>{t('settings.language', lang)}</DropdownItem>
           <DropdownItem onclick={openAIInfo}>{t('settings.aiInfo', lang)}</DropdownItem>
         {/snippet}
@@ -256,6 +301,30 @@
     min-height: unset;
     box-shadow: none;
     &:hover { background-color: rgba(250, 250, 250, 0.6); color: black; }
+  }
+
+  // Grouping inside the settings menu. The menu itself is white with dark 14px
+  // items (see DropdownItem), so these follow the same px metrics.
+  .menu-label {
+    padding: 8px 16px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: hsl(210, 4%, 45%);
+  }
+  .menu-sep {
+    height: 1px;
+    margin: 4px 0;
+    background: hsl(156, 12%, 90%);
+  }
+  // Device labels can be long ("HD Pro Webcam C920 (046d:082d)"); clamp them so
+  // one verbose camera can't stretch the whole menu.
+  .camera-group :global(.dropdown-item) {
+    display: block;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   @media (max-width: 900px) {

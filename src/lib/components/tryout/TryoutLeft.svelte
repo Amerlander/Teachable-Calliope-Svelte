@@ -5,7 +5,6 @@
   import { classifierModel, mobilenetModel, classes } from '$lib/stores';
   import { setVideoRef } from '$lib/stores';
   import { selectedCameraId } from '$lib/stores/camera';
-  import CameraSelect from '$lib/components/CameraSelect.svelte';
   import { showNotification } from '$lib/stores/notifications';
   import { connect as btConnect, disconnect as btDisconnect, sendUART, setTxCallback, discoverDevice, discoverServicesAndCharacteristics, getDeviceName, onDisconnectedAddListener } from '$lib/bluetooth/calliope';
   import { devices as btDevices, logs as btLogs, connectedDeviceId as btConnectedId, removeDevice as btRemoveDevice, clearLogs as btClearLogs } from '$lib/stores/bluetooth';
@@ -280,8 +279,6 @@
     </div>
 
     <hr style="margin:12px 0;">
-
-    <CameraSelect />
 
     <div class="video-wrap">
       <video bind:this={webcamTryoutEl} autoplay playsinline>

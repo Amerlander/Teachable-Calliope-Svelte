@@ -17,7 +17,6 @@
     currentDetection,
     resetStreamState,
   } from '$lib/stores/streaming';
-  import CameraSelect from '$lib/components/CameraSelect.svelte';
 
   const TICK_MS = 100;
 
@@ -90,14 +89,11 @@
       tickTimer = null;
     }
     setLastPoseCanvas(null);
+    setVideoRef('webcamTryout', null);
   });
 </script>
 
 <div class="tryout-camera">
-  <div class="camera-tools">
-    <CameraSelect />
-  </div>
-
   <div class="video-wrap">
     <video bind:this={videoEl} autoplay playsinline muted>
       <track kind="captions" />
@@ -127,9 +123,6 @@
     gap: 10px;
     padding: 14px;
     width: 100%;
-  }
-  .camera-tools {
-    flex: 0 0 auto;
   }
   .video-wrap {
     position: relative;

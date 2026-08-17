@@ -103,6 +103,7 @@
     if (tickTimer) clearTimeout(tickTimer);
     setConnectionUiActive(false);
     setLastPoseCanvas(null);
+    setVideoRef('webcamTryout', null);
   });
 </script>
 

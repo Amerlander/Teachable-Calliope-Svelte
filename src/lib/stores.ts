@@ -17,7 +17,7 @@ export const activeClass = derived(currentProject, (p) => p?.activeClass ?? null
  */
 export const predictionClasses = derived(
   [activeModel, classes],
-  ([m, live]) => (m?.classesSnapshot?.length ? m.classesSnapshot : live)
+  ([m, live]) => (m?.classes?.length ? m.classes : live)
 );
 export const trainingHistory = derived(
   currentProject,
@@ -76,16 +76,26 @@ export const trainingReadiness = derived(
 export const mobilenetModel = writable<any>(null);
 export const classifierModel = writable<any>(null);
 
-export const videoRefs = writable<{
-  webcam?: HTMLVideoElement | null;
-  webcamTest?: HTMLVideoElement | null;
-  webcamTryout?: HTMLVideoElement | null;
-}>({});
+/**
+ * Every video element that shows the live camera feed. All of them are
+ * registered, including the blurred backdrops, so switching the camera from the
+ * header rebinds the new stream everywhere instead of leaving stopped tracks
+ * frozen in the views that happen to be hidden at that moment.
+ */
+export type VideoRefKey =
+  | 'webcam'
+  | 'webcamBg'
+  | 'webcamTest'
+  | 'webcamTestBg'
+  | 'webcamPrep'
+  | 'webcamPrepBg'
+  | 'webcamTryout';
 
-export function setVideoRef(
-  key: 'webcam' | 'webcamTest' | 'webcamTryout',
-  el: HTMLVideoElement | null
-) {
+export type VideoRefs = Partial<Record<VideoRefKey, HTMLVideoElement | null>>;
+
+export const videoRefs = writable<VideoRefs>({});
+
+export function setVideoRef(key: VideoRefKey, el: HTMLVideoElement | null) {
   videoRefs.update((v) => {
     v[key] = el;
     return v;
