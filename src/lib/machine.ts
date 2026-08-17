@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { dev } from '$app/environment';
+import { base } from '$app/paths';
 import {
   examples,
   classes,
@@ -16,6 +17,7 @@ import {
 import {
   recordTrainedModel,
   currentProject,
+  resolveFeatureExtractor,
   type Roi,
   type FeatureExtractor,
   type Optimizer,
@@ -81,86 +83,154 @@ export async function listCameras(): Promise<MediaDeviceInfo[]> {
 }
 
 // ---------- Feature extractor abstraction ----------
-// Some extractors come from @tensorflow-models/mobilenet (which has its own
-// .infer(x, embedding=true) path). Others are loaded as generic graph models
-// from TFHub and require their own preprocessing + input size.
-type ExtractorKind = 'mobilenet-pkg' | 'graph';
-export type ExtractorConfig = {
-  kind: ExtractorKind;
-  // Mobilenet-package params
-  version?: 1 | 2;
-  alpha?: 0.25 | 0.5 | 0.75 | 1.0;
-  // Graph-model params
-  url?: string;
-  inputSize?: number;
-  // Pixel preprocessing for graph extractors:
-  //  'tf' -> x/127.5 - 1 (signed, MobileNet/Inception style)
-  //  'imagenet' -> (x/255 - mean)/std  (Caffe/ResNet style; not used yet)
-  //  '01' -> x/255  (EfficientNet-Lite style)
-  preprocess?: 'tf' | '01' | 'imagenet';
+// Every model is served from our own origin out of `static/models/`. We deliberately
+// do NOT go through @tensorflow-models/mobilenet or tfhub.dev: tfhub.dev now 302s to
+// kaggle.com, and that redirect chain fails in the browser (403, no
+// Access-Control-Allow-Origin), so every extractor loaded that way was broken.
+// Self-hosting also keeps the app working in filtered school networks and offline.
+// See scripts/vendor-models.mjs for where the weights come from.
+const MODEL_ROOT = `${base}/models`;
+
+type ExtractorConfig = {
+  /**
+   * 'graph'  -> converted TF SavedModel; the embedding is read from a named node.
+   * 'layers' -> Keras model; we truncate at a layer and global-average-pool it.
+   */
+  kind: 'graph' | 'layers';
+  url: string;
+  /** Node ('graph') or layer ('layers') the embedding is taken from. */
+  outputName: string;
+  inputSize: number;
+  /**
+   * How raw 0..255 pixels must be scaled for this model.
+   *  '01' -> x/255        (the tfhub-converted MobileNets)
+   *  'tf' -> x/127.5 - 1  (keras.applications MobileNet)
+   */
+  preprocess: '01' | 'tf';
+  /** Embedding length, used only for diagnostics/labelling. */
+  featureCount: number;
 };
 
 const EXTRACTOR_CONFIGS: Record<FeatureExtractor, ExtractorConfig> = {
-  'mobilenet-v1': { kind: 'mobilenet-pkg', version: 1, alpha: 1.0 },
-  'mobilenet-v2': { kind: 'mobilenet-pkg', version: 2, alpha: 1.0 },
-  'mobilenet-v2-lite': { kind: 'mobilenet-pkg', version: 2, alpha: 0.5 },
-  'mobilenet-v3-small': {
+  'mobilenet-v1': {
     kind: 'graph',
-    url: 'https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1',
+    url: `${MODEL_ROOT}/mobilenet-v1/model.json`,
+    outputName: 'module_apply_default/MobilenetV1/Logits/global_pool',
     inputSize: 224,
-    preprocess: 'tf'
+    preprocess: '01',
+    featureCount: 1024
   },
-  'efficientnet-lite0': {
+  'mobilenet-v2': {
     kind: 'graph',
-    url: 'https://tfhub.dev/tensorflow/tfjs-model/efficientnet/lite0/feature-vector/2/default/1',
+    url: `${MODEL_ROOT}/mobilenet-v2/model.json`,
+    outputName: 'module_apply_default/MobilenetV2/Logits/AvgPool',
     inputSize: 224,
-    preprocess: '01'
+    preprocess: '01',
+    featureCount: 1280
+  },
+  'mobilenet-v1-lite': {
+    kind: 'layers',
+    url: `${MODEL_ROOT}/mobilenet-v1-lite/model.json`,
+    outputName: 'conv_pw_13_relu',
+    inputSize: 224,
+    preprocess: 'tf',
+    featureCount: 512
   }
 };
 
-type GraphExtractor = {
-  model: any;
-  inputSize: number;
-  preprocess: NonNullable<ExtractorConfig['preprocess']>;
+/**
+ * A loaded extractor. `infer` mirrors the @tensorflow-models/mobilenet signature so
+ * the rest of the app (readiness checks, diagnostics) keeps working unchanged.
+ */
+type LoadedExtractor = {
+  key: FeatureExtractor;
+  config: ExtractorConfig;
+  /** `pixels` must be RAW 0..255 values, shaped [h, w, 3] or [1, h, w, 3]. Returns [1, D]. */
+  infer(pixels: any, embedding?: boolean): any;
+  dispose(): void;
 };
 
-let activeExtractorKey: FeatureExtractor | null = null;
-let graphExtractor: GraphExtractor | null = null;
+let activeExtractor: LoadedExtractor | null = null;
+let extractorLoad: { key: FeatureExtractor; promise: Promise<LoadedExtractor> } | null = null;
+// The test/tryout loops call ensureExtractor on every tick, so a failing download
+// would otherwise be retried several times a second and flood the console.
+let extractorFailure: { key: FeatureExtractor; at: number; error: unknown } | null = null;
+const EXTRACTOR_RETRY_COOLDOWN_MS = 5000;
 
-export async function loadMobilenetModel(version: 1 | 2 = 1, alpha: 0.25 | 0.5 | 0.75 | 1.0 = 1.0) {
-  if (typeof window === 'undefined') return null;
-  await import('@tensorflow/tfjs');
-  const mobilenet = await import('@tensorflow-models/mobilenet');
-  const model = await mobilenet.load({ version, alpha });
-  mobilenetModel.set(model);
-  graphExtractor = null;
-  return model;
-}
-
-async function loadGraphExtractor(cfg: ExtractorConfig): Promise<GraphExtractor> {
+async function loadExtractor(key: FeatureExtractor): Promise<LoadedExtractor> {
   const tf = await import('@tensorflow/tfjs');
-  const model = await tf.loadGraphModel(cfg.url!, { fromTFHub: true });
+  const config = EXTRACTOR_CONFIGS[key];
+  const { inputSize, preprocess, outputName } = config;
+
+  const prepare = (pixels: any) => {
+    const float = tf.cast(pixels, 'float32');
+    const scaled = preprocess === '01' ? tf.div(float, 255) : tf.sub(tf.div(float, 127.5), 1);
+    const batched = tf.reshape(scaled, [-1, ...(scaled.shape.slice(-3) as number[])]);
+    return batched.shape[1] === inputSize && batched.shape[2] === inputSize
+      ? batched
+      : tf.image.resizeBilinear(batched, [inputSize, inputSize], true);
+  };
+
+  if (config.kind === 'graph') {
+    const model = await tf.loadGraphModel(config.url);
+    return {
+      key,
+      config,
+      // The embedding node yields [1, 1, 1, D]; drop the spatial dims.
+      infer: (pixels: any) =>
+        tf.tidy(() => tf.squeeze(model.execute(prepare(pixels), outputName) as any, [1, 2])),
+      dispose: () => model.dispose()
+    };
+  }
+
+  const full = await tf.loadLayersModel(config.url);
+  const truncated = tf.model({ inputs: full.inputs, outputs: full.getLayer(outputName).output });
   return {
-    model,
-    inputSize: cfg.inputSize ?? 224,
-    preprocess: cfg.preprocess ?? 'tf'
+    key,
+    config,
+    // Truncated Keras model yields [1, H, W, C]; pool the spatial dims away.
+    infer: (pixels: any) =>
+      tf.tidy(() => tf.mean(truncated.predict(prepare(pixels)) as any, [1, 2])),
+    // `truncated` reuses the very same Layer objects as `full`, so disposing both
+    // throws ("Layer 'conv1' is already disposed") and aborts halfway, leaking the
+    // rest of the weights. Disposing the full model releases every layer.
+    dispose: () => full.dispose()
   };
 }
 
-async function ensureExtractor(extractor: FeatureExtractor) {
-  if (activeExtractorKey === extractor) {
-    if (EXTRACTOR_CONFIGS[extractor].kind === 'mobilenet-pkg' && get(mobilenetModel)) return;
-    if (EXTRACTOR_CONFIGS[extractor].kind === 'graph' && graphExtractor) return;
+/** Loads `key` if it is not already the active extractor. Concurrent calls share one load. */
+async function ensureExtractor(key: FeatureExtractor): Promise<LoadedExtractor> {
+  if (activeExtractor?.key === key) return activeExtractor;
+  if (extractorLoad?.key === key) return extractorLoad.promise;
+  if (extractorFailure?.key === key && Date.now() - extractorFailure.at < EXTRACTOR_RETRY_COOLDOWN_MS) {
+    throw extractorFailure.error;
   }
-  const cfg = EXTRACTOR_CONFIGS[extractor];
-  if (cfg.kind === 'mobilenet-pkg') {
-    graphExtractor = null;
-    await loadMobilenetModel(cfg.version!, cfg.alpha ?? 1.0);
-  } else {
-    mobilenetModel.set(null);
-    graphExtractor = await loadGraphExtractor(cfg);
-  }
-  activeExtractorKey = extractor;
+
+  const promise = loadExtractor(key)
+    .then((loaded) => {
+      if (activeExtractor && activeExtractor !== loaded) {
+        try { activeExtractor.dispose(); } catch { /* already gone */ }
+      }
+      activeExtractor = loaded;
+      extractorFailure = null;
+      mobilenetModel.set(loaded);
+      return loaded;
+    })
+    .catch((error) => {
+      extractorFailure = { key, at: Date.now(), error };
+      throw error;
+    })
+    .finally(() => {
+      if (extractorLoad?.promise === promise) extractorLoad = null;
+    });
+
+  extractorLoad = { key, promise };
+  return promise;
+}
+
+export async function loadFeatureExtractor(key: FeatureExtractor = 'mobilenet-v1') {
+  if (typeof window === 'undefined') return null;
+  return ensureExtractor(key);
 }
 
 /**
@@ -169,42 +239,13 @@ async function ensureExtractor(extractor: FeatureExtractor) {
  */
 async function embedCanvasWith(extractor: FeatureExtractor, canvas: HTMLCanvasElement): Promise<any> {
   const tf = await import('@tensorflow/tfjs');
-  const cfg = EXTRACTOR_CONFIGS[extractor];
-  if (cfg.kind === 'mobilenet-pkg') {
-    const mn = get(mobilenetModel);
-    if (!mn) throw new Error('MobileNet not loaded');
-    const input = tf.browser.fromPixels(canvas).toFloat().div(127.5).sub(1).expandDims(0);
-    const emb = mn.infer(input, true);
-    input.dispose();
-    return emb.squeeze();
+  const loaded = await ensureExtractor(extractor);
+  const pixels = tf.browser.fromPixels(canvas);
+  try {
+    return tf.tidy(() => tf.squeeze(loaded.infer(pixels, true)));
+  } finally {
+    pixels.dispose();
   }
-  if (!graphExtractor) throw new Error('Graph extractor not loaded');
-  const size = graphExtractor.inputSize;
-  let input = tf.browser.fromPixels(canvas).toFloat();
-  if (canvas.width !== size || canvas.height !== size) {
-    const resized = tf.image.resizeBilinear(input, [size, size]);
-    input.dispose();
-    input = resized;
-  }
-  let pre: any;
-  if (graphExtractor.preprocess === 'tf') {
-    pre = input.div(127.5).sub(1);
-  } else if (graphExtractor.preprocess === '01') {
-    pre = input.div(255);
-  } else {
-    pre = input.div(255);
-  }
-  if (pre !== input) input.dispose();
-  const batched = pre.expandDims(0);
-  pre.dispose();
-  const out = graphExtractor.model.predict(batched);
-  batched.dispose();
-  // Graph model may return a 4D tensor [1, H, W, C]; flatten to a vector.
-  const squeezed = out.squeeze();
-  const flat = squeezed.shape.length > 1 ? squeezed.reshape([-1]) : squeezed;
-  if (flat !== squeezed) squeezed.dispose();
-  if (out !== squeezed) out.dispose?.();
-  return flat;
 }
 
 type DrawSource = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
@@ -306,9 +347,14 @@ export async function loadPoseDetector() {
   poseLoading = (async () => {
     await import('@tensorflow/tfjs');
     const posedetection = await import('@tensorflow-models/pose-detection');
+    // `modelUrl` is required, not an optimisation: the library's default points at
+    // tfhub.dev, which no longer answers browser fetches (see MODEL_ROOT above).
     const det = await posedetection.createDetector(
       posedetection.SupportedModels.MoveNet,
-      { modelType: posedetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+      {
+        modelType: posedetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+        modelUrl: `${MODEL_ROOT}/movenet-singlepose-lightning/model.json`
+      }
     );
     poseDetector = det;
     return det;
@@ -442,8 +488,8 @@ export async function capturePoseFrameFromVideo(video: HTMLVideoElement): Promis
 export async function initApp() {
   // initialize shared services
   try {
-    await loadMobilenetModel();
-  } catch (e) { console.warn('initApp load mobilenet failed', e); }
+    await loadFeatureExtractor();
+  } catch (e) { console.warn('initApp load feature extractor failed', e); }
 }
 
 export const init = initApp;
@@ -460,9 +506,10 @@ export function captureFrameFromVideo(video: HTMLVideoElement) {
 export async function prepareDatasetForTraining(
   roi?: Roi | null,
   aug?: AugmentationSettings | null,
-  extractor: FeatureExtractor = 'mobilenet-v1'
+  requestedExtractor: FeatureExtractor = 'mobilenet-v1'
 ) {
   const tfModule = await import('@tensorflow/tfjs');
+  const extractor = resolveFeatureExtractor(requestedExtractor);
   await ensureExtractor(extractor);
 
   const classesList = get(classes);
@@ -540,7 +587,7 @@ export async function trainModel(
   const dropout = Math.max(0, Math.min(0.9, opts.dropout ?? 0));
   const validationSplit = Math.max(0, Math.min(0.5, opts.validationSplit ?? 0));
   const earlyStopLoss = Math.max(0, opts.earlyStopLoss ?? 0);
-  const featureExtractor = opts.featureExtractor ?? 'mobilenet-v1';
+  const featureExtractor = resolveFeatureExtractor(opts.featureExtractor);
 
   const tfModule = await import('@tensorflow/tfjs');
   await ensureExtractor(featureExtractor);
@@ -818,7 +865,10 @@ export async function predictFromVideo(video: HTMLVideoElement) {
   // Use ROI + feature extractor stored on the currently loaded trained model.
   const proj = get(currentProject);
   const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
-  const extractor: FeatureExtractor = active?.featureExtractor ?? 'mobilenet-v1';
+  // Output units map onto the classes the model was trained with — the live
+  // class list may have grown or been renamed since.
+  const labels = active?.classesSnapshot?.length ? active.classesSnapshot : classesList;
+  const extractor = resolveFeatureExtractor(active?.featureExtractor);
   await ensureExtractor(extractor);
   const canvas = document.createElement('canvas');
   // In pose projects, use the rendered skeleton canvas; otherwise raw video.
@@ -842,7 +892,7 @@ export async function predictFromVideo(video: HTMLVideoElement) {
     }
   }
     return {
-      className: classesList[maxIndex] || `class_${maxIndex}`,
+      className: labels[maxIndex] || `class_${maxIndex}`,
       probability: maxProb,
       index: maxIndex,
       allProbs: Array.from(preds as Float32Array | number[]) as number[]
@@ -862,7 +912,13 @@ export async function getModelDiagnostics() {
   const mobilenet = get(mobilenetModel);
   const classifier = get(classifierModel);
   const cls = get(classes);
-  const diag: any = { mobilenetLoaded: !!mobilenet, classifierLoaded: !!classifier, classesCount: cls.length };
+  const diag: any = {
+    mobilenetLoaded: !!mobilenet,
+    extractor: mobilenet?.key ?? null,
+    expectedFeatures: mobilenet?.config?.featureCount ?? null,
+    classifierLoaded: !!classifier,
+    classesCount: cls.length
+  };
   if (mobilenet && dev) {
     // create a tiny dummy to check the embedding size
     let dummy: any = null;
@@ -927,7 +983,7 @@ export async function calculateConfusionMatrix() {
   const proj = get(currentProject);
   const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
   const roi = active?.roi ?? null;
-  const extractor: FeatureExtractor = active?.featureExtractor ?? 'mobilenet-v1';
+  const extractor = resolveFeatureExtractor(active?.featureExtractor);
   await ensureExtractor(extractor);
   const canvas = document.createElement('canvas');
 

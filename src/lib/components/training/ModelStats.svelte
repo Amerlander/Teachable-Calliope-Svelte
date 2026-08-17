@@ -1,6 +1,12 @@
 <script lang="ts">
   import { modelMetadata, trainingHistory, classes, examples } from '$lib/stores';
+  import type { TrainedModel } from '$lib/stores/projects';
   import InfoTooltip from '$lib/components/ui/InfoTooltip.svelte';
+
+  // With `model` given, every number comes from that training run's snapshot —
+  // the classes and images it was actually trained on, which is not the same as
+  // what the project holds now. Without it we fall back to the live project.
+  let { model = null }: { model?: TrainedModel | null } = $props();
 
   function formatNumber(n: number | undefined) {
     if (n == null) return '–';
@@ -19,17 +25,23 @@
     return `${val.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
   }
 
+  const history = $derived(model?.history ?? $trainingHistory);
+  const meta = $derived(model?.metadata ?? $modelMetadata);
+  const classCount = $derived(model ? (model.classesSnapshot?.length ?? 0) : $classes.length);
   const totalExamples = $derived(
-    Object.values($examples).reduce((acc, arr) => acc + (arr?.length || 0), 0)
+    model
+      ? Object.values(model.exampleCounts ?? {}).reduce((acc, n) => acc + n, 0)
+      : Object.values($examples).reduce((acc, arr) => acc + (arr?.length || 0), 0)
   );
   const finalAccuracy = $derived(
-    $trainingHistory.accuracy.length
-      ? ($trainingHistory.accuracy[$trainingHistory.accuracy.length - 1] * 100).toFixed(1) + ' %'
+    history.accuracy.length
+      ? (history.accuracy[history.accuracy.length - 1] * 100).toFixed(1) + ' %'
       : '–'
   );
-  const trainedOn = $derived(
-    $modelMetadata.date ? new Date($modelMetadata.date).toLocaleString('de-DE') : '–'
-  );
+  const trainedOn = $derived.by(() => {
+    if (model) return new Date(model.trainedAt).toLocaleString('de-DE');
+    return meta.date ? new Date(meta.date).toLocaleString('de-DE') : '–';
+  });
 </script>
 
 <div class="stats-grid">
@@ -52,7 +64,7 @@
         text="Anzahl der Kategorien, die dein Modell unterscheidet. Mehr Klassen = schwieriger zu trainieren. Mindestens 3 Klassen sind nötig."
       />
     </div>
-    <div class="value">{$classes.length}</div>
+    <div class="value">{classCount}</div>
   </div>
 
   <div class="stat">
@@ -74,7 +86,7 @@
         text="Wie oft das Modell während des Trainings durch alle Beispiele gelaufen ist. Mehr Epochen = mehr Lernzeit, aber bei zu vielen kann Überanpassung entstehen (Modell merkt sich Bilder statt Muster)."
       />
     </div>
-    <div class="value">{$trainingHistory.epochs.length || '–'}</div>
+    <div class="value">{history.epochs.length || '–'}</div>
   </div>
 
   <div class="stat">
@@ -85,7 +97,7 @@
         text="Anzahl der einstellbaren Werte (Gewichte + Bias) im neuronalen Netz. Mehr Parameter = theoretisch mehr Kapazität, aber auch größeres Modell und mehr Gefahr von Überanpassung."
       />
     </div>
-    <div class="value">{formatNumber($modelMetadata.params)}</div>
+    <div class="value">{formatNumber(meta.params)}</div>
   </div>
 
   <div class="stat">
@@ -96,7 +108,7 @@
         text="Speicherbedarf des Modells (ungefähr, basierend auf Parametern × 4 Bytes für float32). Wichtig, wenn du das Modell später auf ein Gerät mit wenig Speicher exportierst."
       />
     </div>
-    <div class="value">{formatBytes($modelMetadata.sizeBytes)}</div>
+    <div class="value">{formatBytes(meta.sizeBytes)}</div>
   </div>
 
   <div class="stat wide">

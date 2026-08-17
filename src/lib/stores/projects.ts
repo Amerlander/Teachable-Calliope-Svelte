@@ -23,12 +23,33 @@ export type ModelArtifacts = {
   weightData: ArrayBuffer;
 };
 
-export type FeatureExtractor =
-  | 'mobilenet-v1'
-  | 'mobilenet-v2'
-  | 'mobilenet-v2-lite'
-  | 'mobilenet-v3-small'
-  | 'efficientnet-lite0';
+export type FeatureExtractor = 'mobilenet-v1' | 'mobilenet-v2' | 'mobilenet-v1-lite';
+
+// Extractors that used to be offered but were served through tfhub.dev, which now
+// redirects to Kaggle and no longer answers browser fetches (CORS/403). Old projects
+// may still reference them, so map each onto a supported extractor. 'mobilenet-v2-lite'
+// maps to 'mobilenet-v2' because both produce a 1280-dim embedding, which keeps
+// already-trained classifier heads loadable.
+const LEGACY_FEATURE_EXTRACTORS: Record<string, FeatureExtractor> = {
+  'mobilenet-v2-lite': 'mobilenet-v2',
+  'mobilenet-v3-small': 'mobilenet-v1',
+  'efficientnet-lite0': 'mobilenet-v1'
+};
+
+const SUPPORTED_FEATURE_EXTRACTORS: FeatureExtractor[] = [
+  'mobilenet-v1',
+  'mobilenet-v2',
+  'mobilenet-v1-lite'
+];
+
+/** Normalise a persisted/unknown extractor id onto one we can actually load. */
+export function resolveFeatureExtractor(value: unknown): FeatureExtractor {
+  if (typeof value !== 'string') return 'mobilenet-v1';
+  if (SUPPORTED_FEATURE_EXTRACTORS.includes(value as FeatureExtractor)) {
+    return value as FeatureExtractor;
+  }
+  return LEGACY_FEATURE_EXTRACTORS[value] ?? 'mobilenet-v1';
+}
 
 export type Optimizer = 'adam' | 'sgd' | 'rmsprop';
 
@@ -189,6 +210,9 @@ function hydrate(p: Project): Project {
   if (!p.classThresholds) p.classThresholds = {};
   if (!p.makeCodePrograms) p.makeCodePrograms = [];
   if (p.currentProgramId === undefined) p.currentProgramId = null;
+  if (p.trainingOptions) {
+    p.trainingOptions.featureExtractor = resolveFeatureExtractor(p.trainingOptions.featureExtractor);
+  }
   return p;
 }
 
@@ -336,6 +360,18 @@ export const currentProject = writable<Project | null>(null);
 export const projectList = writable<ProjectSummary[]>([]);
 
 export const hasProject = derived(currentProject, (p) => p !== null);
+
+/**
+ * The training run the project currently points at, or null when nothing is
+ * selected (or the loaded classifier came from an imported ZIP, which has no
+ * history entry). Everything a selected model should describe — its classes,
+ * example counts, accuracy, ROI — lives on this snapshot, not on the project's
+ * live class list, which keeps changing while the user records new material.
+ */
+export const activeModel = derived(currentProject, (p): TrainedModel | null => {
+  if (!p?.currentModelId) return null;
+  return p.modelHistory?.find((m) => m.id === p.currentModelId) ?? null;
+});
 
 export async function refreshProjectList(): Promise<void> {
   const all = await idbGetAll<Project>(STORES.projects);
@@ -510,7 +546,11 @@ export async function importProjectFromJson(data: Project): Promise<Project> {
     classes: data.classes || [],
     examples: data.examples || {},
     activeClass: data.activeClass || null,
-    trainingOptions: { ...DEFAULT_TRAINING_OPTIONS, ...(data.trainingOptions || {}) },
+    trainingOptions: {
+      ...DEFAULT_TRAINING_OPTIONS,
+      ...(data.trainingOptions || {}),
+      featureExtractor: resolveFeatureExtractor(data.trainingOptions?.featureExtractor)
+    },
     trainingHistory: data.trainingHistory || { epochs: [], accuracy: [], loss: [] },
     modelMetadata: data.modelMetadata || {
       name: data.name,

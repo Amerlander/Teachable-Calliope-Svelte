@@ -6,7 +6,8 @@
     setTrainingOptions,
     classifierModel,
     modelMetadata,
-    setModelArtifacts
+    setModelArtifacts,
+    trainingReadiness
   } from '$lib/stores';
   import type { TrainingOptions } from '$lib/stores';
   import { updateProject, currentProject, renameTrainedModel } from '$lib/stores/projects';
@@ -24,7 +25,6 @@
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
   import InfoTooltip from '$lib/components/ui/InfoTooltip.svelte';
   import Button from '$lib/components/ui/Button.svelte';
-  import ModelStats from './ModelStats.svelte';
   import ModelCharts from './ModelCharts.svelte';
   import ModelHistory from './ModelHistory.svelte';
   import ModelDetailsModal from './ModelDetailsModal.svelte';
@@ -32,12 +32,18 @@
   let loadModelEl: HTMLInputElement = $state()!;
   let detailsOpen = $state(false);
 
-  const enoughClasses = $derived($classes.length >= 3);
+  // Same gate as the classes sidebar CTA that leads here — kept in one place so
+  // the button and the hint can't drift apart from the CTA's condition.
+  const readiness = $derived($trainingReadiness);
   const hasArtifacts = $derived(!!$classifierModel);
   const isPose = $derived($currentProject?.mode === 'pose');
 
   modelTabView.set(get(classifierModel) ? 'model' : 'new');
   let newModelName = $state('');
+
+  // Composing a new model: the name row, the options and the train button form
+  // one block, and nothing in the model list counts as selected.
+  const isNewView = $derived($modelTabView === 'new' && !$isTraining);
 
   // Training progress
   let trainEpoch = $state(0);
@@ -47,8 +53,9 @@
   );
 
   async function doTrain() {
-    if ($classes.length < 3) {
-      showNotification('Mindestens 3 Klassen erforderlich', { type: 'warning' });
+    const gate = get(trainingReadiness);
+    if (!gate.ready) {
+      showNotification(gate.hint ?? 'Zu wenig Trainingsdaten', { type: 'warning' });
       return;
     }
     const opts = get(trainingOptions);
@@ -203,31 +210,29 @@
       />
     </div>
 
-    <ModelHistory onselect={() => (modelTabView.set('model'))} />
+    <ModelHistory
+      highlightActive={$modelTabView === 'model'}
+      onselect={() => (modelTabView.set('model'))}
+    />
 
-    <!-- "Train new" row: input for the model name (mirrors new-class-row in Classes tab) -->
-    <div class="train-new-row" class:selected={$modelTabView === 'new'}>
+    <!-- "Neues Modell" row: names the run. While it is the selected view it
+         loses its bottom edge and fuses with the options card below, so name,
+         options and the train button read as one block. -->
+    <div class="new-model-head" class:selected={isNewView}>
       <input
-        class="train-new-input"
+        class="new-model-name"
         type="text"
         placeholder="Neues Modell (Name)"
         bind:value={newModelName}
         onfocus={() => (modelTabView.set('new'))}
-        onkeydown={(e) => e.key === 'Enter' && enoughClasses && !$isTraining && doTrain()}
+        onkeydown={(e) => e.key === 'Enter' && readiness.ready && !$isTraining && doTrain()}
       />
-      <Button
-        size="small"
-        disabled={!enoughClasses || $isTraining}
-        onclick={doTrain}
-        title={enoughClasses ? 'Neues Modell trainieren' : 'Mindestens 3 Klassen erforderlich'}
-        aria-label="Neues Modell trainieren"
-      >
-        +
-      </Button>
     </div>
   </div>
 
-  <hr />
+  {#if !isNewView}
+    <hr />
+  {/if}
 
   <div class="tab-body">
   <!-- Body: depends on view / training state -->
@@ -273,25 +278,22 @@
     </section>
   {:else if $modelTabView === 'model'}
     {#if hasArtifacts}
+      <!-- The numbers of the selected model live under the video now; the
+           sidebar keeps the curves and the full details dialog. -->
       <section class="card">
         <div class="card-head">
-          <h3>Überblick</h3>
+          <h3>Auswertung</h3>
           <Button variant="ghost" size="small" onclick={() => (detailsOpen = true)}>
             Details…
           </Button>
         </div>
-        <ModelStats />
-      </section>
-
-      <section class="card">
-        <h3>Auswertung</h3>
         <ModelCharts />
       </section>
     {:else}
       <div class="empty">Wähle ein Modell aus der Liste oder trainiere ein neues.</div>
     {/if}
   {:else}
-    <section class="card">
+    <section class="card new-model-card">
       <h3>Trainings-Optionen</h3>
       <div class="opt-grid">
         <label class="opt">
@@ -368,7 +370,7 @@
               <span class="opt-label">
                 Feature-Extraktor
                 <InfoTooltip
-                  text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. MobileNet v1 ist klein und schnell, v2 etwas genauer bei ähnlicher Größe."
+                  text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. v1 ist der bewährte Standard, v2 etwas genauer bei ähnlicher Größe, Lite am schnellsten auf schwacher Hardware."
                 />
               </span>
               <select
@@ -376,10 +378,8 @@
                 onchange={(e) => updateOpt('featureExtractor', (e.target as HTMLSelectElement).value as any)}
               >
                 <option value="mobilenet-v1">MobileNet v1 (α=1.0, ~16 MB, Standard)</option>
-                <option value="mobilenet-v2">MobileNet v2 (α=1.0, ~14 MB)</option>
-                <option value="mobilenet-v2-lite">MobileNet v2 Lite (α=0.5, ~5 MB)</option>
-                <option value="mobilenet-v3-small">MobileNet v3 Small (~6 MB)</option>
-                <option value="efficientnet-lite0">EfficientNet-Lite0 (~18 MB)</option>
+                <option value="mobilenet-v2">MobileNet v2 (α=1.0, ~14 MB, genauer)</option>
+                <option value="mobilenet-v1-lite">MobileNet v1 Lite (α=0.5, ~5 MB, schneller)</option>
               </select>
             </label>
           {/if}
@@ -586,12 +586,12 @@
       </details>
 
       <div class="train-row">
-        <Button class="train-btn" fullWidth disabled={!enoughClasses} onclick={doTrain}>
+        <Button class="train-btn" fullWidth disabled={!readiness.ready} onclick={doTrain}>
           Trainieren
         </Button>
       </div>
-      {#if !enoughClasses}
-        <div class="hint">Mindestens 3 Klassen erforderlich ({$classes.length}/3)</div>
+      {#if readiness.hint}
+        <div class="hint">{readiness.hint}</div>
       {/if}
     </section>
   {/if}
@@ -601,20 +601,20 @@
 <ModelDetailsModal bind:isOpen={detailsOpen} />
 
 <style lang="scss">
+  // The whole tab scrolls as one, so the name row and the options card below it
+  // can never drift apart while scrolling.
   .model-tab {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    overflow-y: auto;
+    padding-right: 4px;
   }
   .tab-body {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding-right: 4px;
   }
   .row-between {
     display: flex;
@@ -639,30 +639,37 @@
     border-top: 1px solid rgba(var(--md-outline-variant), 0.5);
     margin: 12px 0;
   }
-  .train-new-row {
+  .new-model-head {
     display: flex;
     align-items: center;
-    gap: 6px;
     padding: 4px;
     margin-top: 6px;
     border: 1px dashed rgba(var(--md-outline), 0.7);
     border-radius: var(--md-radius-md);
     background: transparent;
-    transition: all 0.15s;
-    &:focus-within,
+    transition: background 0.15s, border-color 0.15s;
+    &:hover {
+      border-color: rgb(var(--md-primary));
+    }
+    // Selected: drop the bottom edge so the options card below continues the
+    // same box instead of looking like a separate card.
     &.selected {
       border-style: solid;
       border-color: rgb(var(--md-primary));
       background: rgba(var(--md-primary-container), 0.3);
+      border-bottom: none;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
     }
   }
-  .train-new-input {
+  .new-model-name {
     flex: 1;
     min-width: 0;
     border: none;
     background: transparent;
     padding: 6px 8px;
     font: inherit;
+    font-weight: 600;
     color: rgb(var(--md-on-surface));
     &:focus {
       outline: none;
@@ -670,17 +677,20 @@
       padding: 6px 8px;
     }
   }
-  .train-new-row :global(button) {
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
-    min-height: 32px;
-    padding: 0;
-    font-size: 18px;
-    font-weight: 500;
-    line-height: 1;
-    flex-shrink: 0;
-    box-shadow: none;
+  // Lower half of the same block: same surface, no top edge, square top corners.
+  .card.new-model-card {
+    border: 1px solid rgb(var(--md-primary));
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    background: rgba(var(--md-primary-container), 0.3);
+    h3 {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: rgb(var(--md-on-surface-variant));
+    }
   }
   .training-card h3 {
     color: rgb(var(--md-primary));

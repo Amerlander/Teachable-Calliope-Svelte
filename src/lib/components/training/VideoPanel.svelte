@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
+  import { SvelteSet } from 'svelte/reactivity';
   import {
     classes,
     classifierModel,
     examples,
+    predictionClasses,
     setVideoRef,
     activeClass,
     setActiveClass,
@@ -12,6 +14,7 @@
     pushExample,
     clearClass,
     removeClass,
+    removeExamples,
     renameClass,
     videoRefs
   } from '$lib/stores';
@@ -44,7 +47,8 @@
     type Roi
   } from '$lib/stores/app';
   import CameraSelect from '$lib/components/CameraSelect.svelte';
-  import { currentProject, setClassThreshold } from '$lib/stores/projects';
+  import ModelStats from '$lib/components/training/ModelStats.svelte';
+  import { activeModel, currentProject, setClassThreshold } from '$lib/stores/projects';
   import { streamClassProbabilities, streamPoseKeypoints, smoothingWindow, pickWinnerIndex } from '$lib/stores/streaming';
 
   const lang = $derived($currentLang);
@@ -74,9 +78,11 @@
   // Winner is chosen by threshold-normalized score across all classes (see
   // pickWinnerIndex) — a class with lots of headroom above its threshold beats
   // a class with higher raw probability that is sitting below its threshold.
+  // Labels come from the loaded model's own class list, not from whatever the
+  // project holds right now — those two diverge as soon as a class is added.
   const topLabel = $derived.by(() => {
     if (!prediction) return null;
-    const labels = $classes;
+    const labels = $predictionClasses;
     const idx = pickWinnerIndex(labels, prediction.all, thresholds);
     return idx < 0 ? null : (labels[idx] ?? null);
   });
@@ -201,7 +207,7 @@
         }
         lastTickAt = now;
         prediction = { label: res.className, confidence: res.probability, all: res.allProbs ?? [] };
-        streamClassProbabilities($classes, res.allProbs ?? []);
+        streamClassProbabilities($predictionClasses, res.allProbs ?? []);
       } catch {
         /* ignore */
       }
@@ -458,12 +464,107 @@
     }
   }
 
+  // ---------- Example thumbnails: hover preview, click-delete, drag-select ----------
+  // Hovering a thumb blows it up over the prep video; a plain click deletes that
+  // one image; dragging across the stack selects a range for bulk deletion.
+  // While a selection is active a click toggles membership instead of deleting,
+  // so the two gestures never fight over the same pointer event.
+  let previewSrc = $state<string | null>(null);
+  let selectionClass = $state<string | null>(null);
+  const selectedIdx = new SvelteSet<number>();
+  let thumbDrag: { cls: string; startIdx: number; moved: boolean } | null = null;
+
+  function clearSelection() {
+    selectedIdx.clear();
+    selectionClass = null;
+  }
+
+  function selectRange(a: number, b: number) {
+    selectedIdx.clear();
+    for (let i = Math.min(a, b); i <= Math.max(a, b); i++) selectedIdx.add(i);
+  }
+
+  function deleteSelected() {
+    const cls = selectionClass;
+    if (!cls || !selectedIdx.size) return;
+    removeExamples(cls, [...selectedIdx]);
+    clearSelection();
+    previewSrc = null;
+  }
+
+  function deleteThumb(cls: string, i: number) {
+    removeExamples(cls, [i]);
+    previewSrc = null;
+  }
+
+  function onThumbPointerDown(cls: string, i: number, e: PointerEvent) {
+    if (e.button !== 0) return;
+    // Stop the browser's native image drag so pointerenter keeps firing on the
+    // thumbs we drag across.
+    e.preventDefault();
+    // Touch implicitly captures the pointer to the element it started on, which
+    // would swallow the pointerenter events the drag-select relies on.
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
+
+    const hadSelection = selectionClass === cls && selectedIdx.size > 0;
+    if (selectionClass !== cls) clearSelection();
+    thumbDrag = { cls, startIdx: i, moved: false };
+
+    const finish = (ev: PointerEvent) => {
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      const drag = thumbDrag;
+      thumbDrag = null;
+      if (!drag || drag.moved || ev.type === 'pointercancel') return;
+      if (hadSelection) {
+        if (selectedIdx.has(i)) selectedIdx.delete(i);
+        else selectedIdx.add(i);
+        if (!selectedIdx.size) selectionClass = null;
+      } else {
+        deleteThumb(cls, i);
+      }
+    };
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  }
+
+  function onThumbPointerEnter(cls: string, i: number, data: string) {
+    previewSrc = data;
+    if (!thumbDrag || thumbDrag.cls !== cls) return;
+    thumbDrag.moved = true;
+    selectionClass = cls;
+    selectRange(thumbDrag.startIdx, i);
+  }
+
+  function onThumbKey(cls: string, i: number, e: KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      deleteThumb(cls, i);
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      if (selectionClass !== cls) clearSelection();
+      selectionClass = cls;
+      if (selectedIdx.has(i)) selectedIdx.delete(i);
+      else selectedIdx.add(i);
+      if (!selectedIdx.size) selectionClass = null;
+    }
+  }
+
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && selectedIdx.size) clearSelection();
+  }
+
   function confirmClear(cls: string) {
-    if (confirm(`"${cls}" leeren?`)) clearClass(cls);
+    if (!confirm(`"${cls}" leeren?`)) return;
+    clearClass(cls);
+    if (selectionClass === cls) clearSelection();
   }
 
   function confirmDelete(cls: string) {
-    if (confirm(`"${cls}" löschen?`)) removeClass(cls);
+    if (!confirm(`"${cls}" löschen?`)) return;
+    removeClass(cls);
+    if (selectionClass === cls) clearSelection();
   }
 
   function onThresholdKey(cls: string, thr: number, e: KeyboardEvent) {
@@ -477,6 +578,8 @@
     setClassThreshold(cls, next);
   }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <div class="right-panel">
   <!-- Top bar: mode indicator + camera select (above the video) -->
@@ -519,110 +622,167 @@
     {/if}
   </div>
 
-  <!-- Test view -->
-  <div class="video-wrap" class:hidden={mode !== 'test'} class:pose-mode={isPose}>
-    <video class="bg" bind:this={webcamTestBgEl} autoplay playsinline muted aria-hidden="true">
-      <track kind="captions" />
-    </video>
-    <video bind:this={webcamTestEl} autoplay playsinline muted>
-      <track kind="captions" />
-    </video>
-    {#if isPose}
-      <canvas class="pose-overlay" bind:this={poseCanvasTest} width="512" height="512"></canvas>
-    {/if}
+  <!-- Test view: video on top, facts about the selected model below — the same
+       slot that holds classes & images while a new model is being prepared. -->
+  <div class="test-view" class:hidden={mode !== 'test'}>
+    <div class="video-wrap test-video" class:pose-mode={isPose}>
+      <video class="bg" bind:this={webcamTestBgEl} autoplay playsinline muted aria-hidden="true">
+        <track kind="captions" />
+      </video>
+      <video bind:this={webcamTestEl} autoplay playsinline muted>
+        <track kind="captions" />
+      </video>
+      {#if isPose}
+        <canvas class="pose-overlay" bind:this={poseCanvasTest} width="512" height="512"></canvas>
+      {/if}
 
-    {#if !cameraReady}
-      <div class="loading-overlay">
-        <span class="spinner"></span>
-        <span>Kamera wird geladen…</span>
+      {#if !cameraReady}
+        <div class="loading-overlay">
+          <span class="spinner"></span>
+          <span>Kamera wird geladen…</span>
+        </div>
+      {/if}
+
+      {#if prediction}
+        {@const topIdx = topLabel ? $predictionClasses.indexOf(topLabel) : -1}
+        {@const topConf = topIdx >= 0 ? (prediction.all[topIdx] ?? 0) : prediction.confidence}
+        <div class="prediction-display" class:below-threshold={!topLabel}>
+          <div class="pred-head">
+            <strong>{topLabel ?? '–'}</strong>
+            <span class="pct">{Math.round(topConf * 100)}%</span>
+          </div>
+          <div class="bar-bg">
+            <div class="bar-fill" style="width:{topConf * 100}%"></div>
+          </div>
+          {#if !topLabel}
+            <span class="below-hint">unter Schwellwert</span>
+          {/if}
+        </div>
+
+        <!-- Verbose: all class scores + FPS + per-class threshold -->
+        <div class="details">
+          <div class="details-head">
+            <span>Alle Klassen</span>
+            <span class="fps">{fps ? `${fps} Hz` : '…'}</span>
+          </div>
+          <ul class="score-list">
+            {#each $predictionClasses as cls, i (cls)}
+              {@const p = prediction.all[i] ?? 0}
+              {@const thr = thresholds[cls] ?? 0}
+              {@const triggered = cls === topLabel && p >= thr}
+              <li class:top={triggered}>
+                <div class="row1">
+                  <span class="name">{cls}</span>
+                  <span class="sub-pct">
+                    <span class="pct-val">{Math.round(p * 100)}%</span>
+                    <span class="thr-val">· {Math.round(thr * 100)}%</span>
+                  </span>
+                </div>
+                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                <div
+                  class="sub-bar"
+                  role="slider"
+                  tabindex="0"
+                  aria-label="Schwellwert für {cls}"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow={Math.round(thr * 100)}
+                  onpointerdown={(e) => startThresholdDrag(cls, e)}
+                  onkeydown={(e) => onThresholdKey(cls, thr, e)}
+                >
+                  <span class="sub-fill" style="width:{p * 100}%"></span>
+                  <span class="threshold-marker" style="left:{thr * 100}%" title="Schwellwert {Math.round(thr * 100)}%"></span>
+                </div>
+              </li>
+            {/each}
+          </ul>
+          <div class="smoothing">
+            <label for="smoothing-slider" class="smoothing-label">
+              Glättung (Fenster): <strong>{$smoothingWindow}</strong>
+            </label>
+            <input
+              id="smoothing-slider"
+              type="range"
+              min="1"
+              max="20"
+              step="1"
+              bind:value={$smoothingWindow}
+            />
+            <span class="smoothing-hint">Median über die letzten N Vorhersagen</span>
+          </div>
+        </div>
+      {/if}
+
+      {#if mode === 'test' && !$classifierModel}
+        <div class="overlay">
+          <div class="status warning">{t('training.testStatus', lang)}</div>
+        </div>
+      {/if}
+
+      {#if currentModelRoi && mode === 'test'}
+        <div class="roi-container readonly" style="aspect-ratio: {videoAspect};">
+          <div
+            class="roi-rect readonly"
+            style="left:{currentModelRoi.x * 100}%; top:{currentModelRoi.y * 100}%; width:{currentModelRoi.w * 100}%; height:{currentModelRoi.h * 100}%;"
+            title="Aktiver Modell-ROI"
+          ></div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="model-info">
+      <div class="model-info-head">
+        <span>Modell-Info</span>
+        <span class="hint">
+          {#if $activeModel}
+            {$activeModel.label || new Date($activeModel.trainedAt).toLocaleString('de-DE')}
+          {:else if $classifierModel}
+            importiertes Modell
+          {:else}
+            kein Modell geladen
+          {/if}
+        </span>
       </div>
-    {/if}
 
-    {#if prediction}
-      {@const topIdx = topLabel ? $classes.indexOf(topLabel) : -1}
-      {@const topConf = topIdx >= 0 ? (prediction.all[topIdx] ?? 0) : prediction.confidence}
-      <div class="prediction-display" class:below-threshold={!topLabel}>
-        <div class="pred-head">
-          <strong>{topLabel ?? '–'}</strong>
-          <span class="pct">{Math.round(topConf * 100)}%</span>
-        </div>
-        <div class="bar-bg">
-          <div class="bar-fill" style="width:{topConf * 100}%"></div>
-        </div>
-        {#if !topLabel}
-          <span class="below-hint">unter Schwellwert</span>
-        {/if}
-      </div>
+      {#if $classifierModel}
+        <ModelStats model={$activeModel} />
 
-      <!-- Verbose: all class scores + FPS + per-class threshold -->
-      <div class="details">
-        <div class="details-head">
-          <span>Alle Klassen</span>
-          <span class="fps">{fps ? `${fps} Hz` : '…'}</span>
-        </div>
-        <ul class="score-list">
-          {#each $classes as cls, i (cls)}
-            {@const p = prediction.all[i] ?? 0}
-            {@const thr = thresholds[cls] ?? 0}
-            {@const triggered = cls === topLabel && p >= thr}
-            <li class:top={triggered}>
-              <div class="row1">
-                <span class="name">{cls}</span>
-                <span class="sub-pct">
-                  <span class="pct-val">{Math.round(p * 100)}%</span>
-                  <span class="thr-val">· {Math.round(thr * 100)}%</span>
-                </span>
-              </div>
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-              <div
-                class="sub-bar"
-                role="slider"
-                tabindex="0"
-                aria-label="Schwellwert für {cls}"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow={Math.round(thr * 100)}
-                onpointerdown={(e) => startThresholdDrag(cls, e)}
-                onkeydown={(e) => onThresholdKey(cls, thr, e)}
-              >
-                <span class="sub-fill" style="width:{p * 100}%"></span>
-                <span class="threshold-marker" style="left:{thr * 100}%" title="Schwellwert {Math.round(thr * 100)}%"></span>
-              </div>
-            </li>
+        <div class="mi-classes">
+          <div class="mi-classes-head">
+            <span>Klassen des Modells</span>
+            <span class="hint">Stand des Trainings</span>
+          </div>
+          {#each $predictionClasses as cls (cls)}
+            {@const count = $activeModel
+              ? ($activeModel.exampleCounts?.[cls] ?? 0)
+              : ($examples[cls]?.length ?? 0)}
+            <div class="mi-class">
+              <span class="mi-class-name">{cls}</span>
+              <span class="mi-class-count">{count} Bilder</span>
+            </div>
           {/each}
-        </ul>
-        <div class="smoothing">
-          <label for="smoothing-slider" class="smoothing-label">
-            Glättung (Fenster): <strong>{$smoothingWindow}</strong>
-          </label>
-          <input
-            id="smoothing-slider"
-            type="range"
-            min="1"
-            max="20"
-            step="1"
-            bind:value={$smoothingWindow}
-          />
-          <span class="smoothing-hint">Median über die letzten N Vorhersagen</span>
         </div>
-      </div>
-    {/if}
 
-    {#if mode === 'test' && !$classifierModel}
-      <div class="overlay">
-        <div class="status warning">{t('training.testStatus', lang)}</div>
-      </div>
-    {/if}
-
-    {#if currentModelRoi && mode === 'test'}
-      <div class="roi-container readonly" style="aspect-ratio: {videoAspect};">
-        <div
-          class="roi-rect readonly"
-          style="left:{currentModelRoi.x * 100}%; top:{currentModelRoi.y * 100}%; width:{currentModelRoi.w * 100}%; height:{currentModelRoi.h * 100}%;"
-          title="Aktiver Modell-ROI"
-        ></div>
-      </div>
-    {/if}
+        {#if $activeModel}
+          <div class="mi-chips">
+            <span class="mi-chip">
+              {$activeModel.roi
+                ? `ROI ${Math.round($activeModel.roi.w * 100)}×${Math.round($activeModel.roi.h * 100)}%`
+                : 'Ganzes Bild'}
+            </span>
+            <span class="mi-chip">{$activeModel.featureExtractor ?? 'mobilenet-v1'}</span>
+            {#if $activeModel.options}
+              <span class="mi-chip">{$activeModel.options.epochs} Epochen</span>
+              <span class="mi-chip">Lernrate {$activeModel.options.learningRate}</span>
+            {/if}
+          </div>
+        {/if}
+      {:else}
+        <div class="mi-empty">
+          Wähle links ein Modell aus oder trainiere ein neues, um es hier zu testen.
+        </div>
+      {/if}
+    </div>
   </div>
 
   <!-- Prep view: smaller ROI-editor video + scrollable class thumbs list -->
@@ -642,6 +802,13 @@
         <div class="loading-overlay">
           <span class="spinner"></span>
           <span>Kamera wird geladen…</span>
+        </div>
+      {/if}
+
+      <!-- Hover preview: the thumb under the cursor, blown up over the video. -->
+      {#if previewSrc}
+        <div class="thumb-preview" aria-hidden="true">
+          <img src={previewSrc} alt="" />
         </div>
       {/if}
 
@@ -733,16 +900,43 @@
             </Dropdown>
           </div>
 
+          {#if selectionClass === cls && selectedIdx.size}
+            <div class="sel-bar">
+              <span class="sel-count">{selectedIdx.size} ausgewählt</span>
+              <button type="button" class="sel-btn danger" onclick={deleteSelected}>Löschen</button>
+              <button type="button" class="sel-btn" onclick={clearSelection}>Abbrechen</button>
+            </div>
+          {/if}
+
           <div class="prep-thumbs-row">
-            <div class="thumb-stack" class:empty={!imgs.length}>
+            <div
+              class="thumb-stack"
+              class:empty={!imgs.length}
+              class:selecting={selectionClass === cls && selectedIdx.size > 0}
+              role="group"
+              aria-label="Bilder von {cls}"
+              onpointerleave={() => (previewSrc = null)}
+            >
               {#if imgs.length}
                 {#each imgs as ex, i (cls + '_' + i)}
-                  <img
-                    class="stack-img"
-                    src={ex.data}
-                    alt=""
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div
+                    class="stack-item"
+                    class:selected={selectionClass === cls && selectedIdx.has(i)}
                     style="--i: {i}; --n: {imgs.length};"
-                  />
+                    role="button"
+                    tabindex="0"
+                    aria-label="Bild {i + 1} löschen"
+                    title="Klick löscht · ziehen wählt mehrere aus"
+                    onpointerdown={(e) => onThumbPointerDown(cls, i, e)}
+                    onpointerenter={() => onThumbPointerEnter(cls, i, ex.data)}
+                    onkeydown={(e) => onThumbKey(cls, i, e)}
+                  >
+                    <img src={ex.data} alt="" draggable="false" />
+                    <span class="thumb-badge" aria-hidden="true">
+                      {selectionClass === cls && selectedIdx.has(i) ? '✓' : '✕'}
+                    </span>
+                  </div>
                 {/each}
               {:else}
                 <div class="prep-class-empty">Keine Bilder</div>
@@ -754,10 +948,17 @@
                   type="button"
                   class="record-btn"
                   class:recording={capturingClass === cls || advancedRunningClass === cls}
-                  aria-label="Bild aufnehmen"
-                  title="Halten zum Aufnehmen"
+                  class:cancel={advancedRunningClass === cls}
+                  aria-label={advancedRunningClass === cls ? 'Serienaufnahme abbrechen' : 'Bild aufnehmen'}
+                  title={advancedRunningClass === cls ? 'Klicken zum Abbrechen' : 'Halten zum Aufnehmen'}
                   disabled={!!advancedRunningClass && advancedRunningClass !== cls}
-                  onpointerdown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); startRecord(cls); }}
+                  onpointerdown={(e) => {
+                    // While a series is running for this class the button is a
+                    // cancel button — don't start a manual capture on top of it.
+                    if (advancedRunningClass === cls) { cancelAdvanced(); return; }
+                    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                    startRecord(cls);
+                  }}
                   onpointerup={stopRecord}
                   onpointercancel={stopRecord}
                 >
@@ -771,7 +972,7 @@
                   {/if}
                 </button>
               {/snippet}
-              Halten zum Aufnehmen
+              {advancedRunningClass === cls ? 'Klicken zum Abbrechen' : 'Halten zum Aufnehmen'}
             </Dropdown>
             <Dropdown minWidth="260px" closeOnClick={false}>
               {#snippet trigger()}
@@ -874,6 +1075,112 @@
       background: #f5a54c;
       box-shadow: 0 0 0 3px rgba(245, 165, 76, 0.25);
     }
+  }
+
+  // ----- Test view -----
+  // Same two-part shape as the prep view: video on top, the panel below holds
+  // what the current context is about — there the classes you record, here the
+  // model you are testing.
+  .test-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    &.hidden { display: none; }
+  }
+  .test-video {
+    flex: 1 1 auto;
+    min-height: 180px;
+  }
+  .model-info {
+    // Takes what it needs, gives space back to the video when it gets tight.
+    flex: 0 1 auto;
+    max-height: 45%;
+    overflow-y: auto;
+    background: rgba(var(--md-surface-variant), 0.3);
+    border-radius: var(--md-radius-lg);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .model-info-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgb(var(--md-on-surface));
+    .hint {
+      font-size: 11px;
+      font-weight: 400;
+      color: rgb(var(--md-on-surface-variant));
+    }
+  }
+  .mi-classes {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .mi-classes-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgb(var(--md-on-surface-variant));
+    margin-bottom: 2px;
+    .hint {
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 400;
+    }
+  }
+  .mi-class {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: var(--md-radius-sm);
+    background: rgba(var(--md-surface-variant), 0.4);
+    .mi-class-name {
+      font-weight: 600;
+      color: rgb(var(--md-on-surface));
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mi-class-count {
+      flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+      color: rgb(var(--md-on-surface-variant));
+    }
+  }
+  .mi-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .mi-chip {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: rgba(var(--md-surface-variant), 0.6);
+    color: rgb(var(--md-on-surface-variant));
+    font-variant-numeric: tabular-nums;
+  }
+  .mi-empty {
+    font-size: 12px;
+    font-style: italic;
+    color: rgb(var(--md-on-surface-variant));
+    padding: 6px 2px;
   }
 
   // ----- Prep view -----
@@ -1064,13 +1371,12 @@
     --offset: 14px;
     &.empty { display: flex; align-items: center; }
   }
-  .stack-img {
+  .stack-item {
     position: absolute;
     top: 0;
     left: calc(var(--i) * var(--offset));
     width: var(--thumb);
     height: var(--thumb);
-    object-fit: cover;
     border-radius: 4px;
     background: #000;
     border: 2px solid rgb(var(--md-surface));
@@ -1078,21 +1384,128 @@
     z-index: calc(var(--i) + 1);
     transition: left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
                 transform 0.2s ease,
-                box-shadow 0.2s ease;
+                box-shadow 0.2s ease,
+                border-color 0.15s ease;
     cursor: pointer;
+    box-sizing: border-box;
+    overflow: visible;
+    outline: none;
+    touch-action: none;
+    // Drag-select must not start a text/image selection.
+    user-select: none;
+    -webkit-user-select: none;
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 2px;
+      display: block;
+      pointer-events: none;
+      transition: filter 0.15s ease;
+    }
   }
   // On hover of the stack, fan images farther apart so you can glimpse each one.
   // Spread is capped by container width to avoid overflow.
-  .thumb-stack:hover .stack-img {
+  .thumb-stack:hover .stack-item {
     left: calc(
       var(--i) *
       min(var(--thumb), (100% - var(--thumb)) / max(var(--n) - 1, 1))
     );
   }
-  .stack-img:hover {
+  .stack-item:hover,
+  .stack-item:focus-visible {
     transform: translateY(-8px) scale(1.1);
     z-index: 999;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  }
+  // Click deletes: hovering tints the thumb red and reveals the ✕ badge.
+  .thumb-stack:not(.selecting) .stack-item:hover,
+  .thumb-stack:not(.selecting) .stack-item:focus-visible {
+    border-color: #e53935;
+    img { filter: brightness(0.55) saturate(0.6) sepia(0.35) hue-rotate(-30deg); }
+    .thumb-badge { opacity: 1; transform: scale(1); }
+  }
+  .stack-item.selected {
+    border-color: rgb(var(--md-primary));
+    box-shadow: 0 0 0 2px rgba(var(--md-primary), 0.45);
+    img { filter: brightness(1.05); }
+    .thumb-badge {
+      opacity: 1;
+      transform: scale(1);
+      background: rgb(var(--md-primary));
+      color: rgb(var(--md-on-primary));
+    }
+  }
+  .thumb-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #e53935;
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transform: scale(0.6);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+  .sel-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: rgb(var(--md-on-surface-variant));
+    .sel-count {
+      font-weight: 600;
+      color: rgb(var(--md-on-surface));
+    }
+  }
+  .sel-btn {
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid rgb(var(--md-outline-variant));
+    background: transparent;
+    color: rgb(var(--md-on-surface-variant));
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    min-height: unset;
+    box-shadow: none;
+    &:hover { background: rgba(var(--md-on-surface), 0.08); }
+    &.danger {
+      border-color: #ef4444;
+      color: #ef4444;
+      font-weight: 600;
+      &:hover { background: rgba(239, 68, 68, 0.12); }
+    }
+  }
+  // Blown-up thumb over the prep video while a thumbnail is hovered.
+  .thumb-preview {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(6px);
+    pointer-events: none;
+    img {
+      max-width: 82%;
+      max-height: 82%;
+      object-fit: contain;
+      border-radius: var(--md-radius-md);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+      border: 2px solid rgba(255, 255, 255, 0.35);
+    }
   }
   .record-btn {
     position: relative;
@@ -1129,6 +1542,18 @@
         height: 14px;
         animation: recordPulse 0.9s ease-in-out infinite;
       }
+    }
+    // Series running: the button becomes a stop/cancel button.
+    &.cancel {
+      border-color: #f5a54c;
+      background: rgba(245, 165, 76, 0.2);
+      .record-dot {
+        border-radius: 3px;
+        width: 16px;
+        height: 16px;
+        animation: none;
+      }
+      &:hover { border-color: #e53935; background: rgba(229, 57, 53, 0.2); }
     }
   }
   @keyframes recordPulse {

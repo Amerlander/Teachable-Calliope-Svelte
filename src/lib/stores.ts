@@ -1,5 +1,5 @@
 import { derived, writable, get } from 'svelte/store';
-import { currentProject, scheduleSave, updateProject } from './stores/projects';
+import { activeModel, currentProject, scheduleSave, updateProject } from './stores/projects';
 import type { ModelMetadata, TrainingHistory, TrainingOptions } from './stores/projects';
 
 export type { ModelMetadata, TrainingHistory, TrainingOptions };
@@ -9,6 +9,16 @@ export type { ModelMetadata, TrainingHistory, TrainingOptions };
 export const classes = derived(currentProject, (p) => p?.classes ?? []);
 export const examples = derived(currentProject, (p) => p?.examples ?? {});
 export const activeClass = derived(currentProject, (p) => p?.activeClass ?? null);
+/**
+ * Labels that belong to the classifier currently in memory: the class list the
+ * selected model was trained on, not the classes the user has since added or
+ * renamed. Falls back to the live list when no history entry backs the model
+ * (imported ZIP, or nothing trained yet).
+ */
+export const predictionClasses = derived(
+  [activeModel, classes],
+  ([m, live]) => (m?.classesSnapshot?.length ? m.classesSnapshot : live)
+);
 export const trainingHistory = derived(
   currentProject,
   (p): TrainingHistory => p?.trainingHistory ?? { epochs: [], accuracy: [], loss: [] }
@@ -22,6 +32,44 @@ export const trainingOptions = derived(
   currentProject,
   (p): TrainingOptions =>
     p?.trainingOptions ?? { epochs: 30, batchSize: 16, learningRate: 0.001, hiddenUnits: 64, augmentation: false }
+);
+
+// --- Training readiness ---
+// Training only makes sense once every class can actually carry an output: the
+// classifier gets one unit per class, so a class left empty becomes a dead
+// output that can never win a prediction. Both thresholds and the hint text
+// live here so the sidebar CTA and the train button can never disagree about
+// what "ready" means.
+export const MIN_CLASSES_FOR_TRAINING = 3;
+export const MIN_EXAMPLES_PER_CLASS = 10;
+
+export type TrainingReadiness = {
+  ready: boolean;
+  /** Classes that already hold MIN_EXAMPLES_PER_CLASS examples. */
+  readyClasses: number;
+  /** Classes that exist but still have too few examples. */
+  shortClasses: number;
+  /** What is still missing, or null once ready. */
+  hint: string | null;
+};
+
+export const trainingReadiness = derived(
+  [classes, examples],
+  ([cls, ex]): TrainingReadiness => {
+    const short = cls.filter((c) => (ex[c]?.length ?? 0) < MIN_EXAMPLES_PER_CLASS).length;
+    const readyClasses = cls.length - short;
+    const ready = cls.length >= MIN_CLASSES_FOR_TRAINING && short === 0;
+    let hint: string | null = null;
+    if (!ready) {
+      hint =
+        cls.length < MIN_CLASSES_FOR_TRAINING
+          ? `Mindestens ${MIN_CLASSES_FOR_TRAINING} Klassen mit je ${MIN_EXAMPLES_PER_CLASS} Bildern nötig (${readyClasses}/${MIN_CLASSES_FOR_TRAINING})`
+          : short === 1
+            ? `Noch eine Klasse braucht mindestens ${MIN_EXAMPLES_PER_CLASS} Bilder`
+            : `Noch ${short} Klassen brauchen mindestens ${MIN_EXAMPLES_PER_CLASS} Bilder`;
+    }
+    return { ready, readyClasses, shortClasses: short, hint };
+  }
 );
 
 // --- Runtime-only state (not persisted in project snapshot) ---
@@ -66,6 +114,21 @@ export function pushExample(name: string, data: string): void {
   updateProject((p) => {
     if (!p.examples[name]) p.examples[name] = [];
     p.examples[name].push({ data });
+  });
+}
+
+/**
+ * Drop examples of `name` by their index in the class' example list. Indices
+ * refer to the list as it is right now — the caller must not batch calls, since
+ * every removal re-indexes what follows.
+ */
+export function removeExamples(name: string, indices: number[]): void {
+  if (!name || !indices.length) return;
+  const drop = new Set(indices);
+  updateProject((p) => {
+    const list = p.examples[name];
+    if (!list) return;
+    p.examples[name] = list.filter((_, i) => !drop.has(i));
   });
 }
 

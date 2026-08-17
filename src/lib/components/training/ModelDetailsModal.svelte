@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from '$lib/components/ui/Modal.svelte';
   import { modelMetadata, trainingHistory, trainingOptions, classes, examples } from '$lib/stores';
-  import { currentProject } from '$lib/stores/projects';
+  import { activeModel, currentProject } from '$lib/stores/projects';
 
   let { isOpen = $bindable(false) }: { isOpen?: boolean } = $props();
 
@@ -30,6 +30,15 @@
     return `${v.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
   }
 
+  const EXTRACTOR_LABELS: Record<string, string> = {
+    'mobilenet-v1': 'MobileNet v1 (α=1.0)',
+    'mobilenet-v2': 'MobileNet v2 (α=1.0)',
+    'mobilenet-v1-lite': 'MobileNet v1 Lite (α=0.5)'
+  };
+  const extractorLabel = $derived(
+    EXTRACTOR_LABELS[$trainingOptions.featureExtractor] ?? 'MobileNet v1 (α=1.0)'
+  );
+
   const finalAcc = $derived(
     $trainingHistory.accuracy.length
       ? $trainingHistory.accuracy[$trainingHistory.accuracy.length - 1]
@@ -40,12 +49,17 @@
       ? $trainingHistory.loss[$trainingHistory.loss.length - 1]
       : undefined
   );
-  const totalExamples = $derived(
-    Object.values($examples).reduce((acc, arr) => acc + (arr?.length || 0), 0)
-  );
+  // Class figures describe the selected training run, not the project's current
+  // class list — the two drift apart as soon as classes are added or renamed.
   const perClassCounts = $derived(
-    $classes.map((c) => ({ name: c, count: $examples[c]?.length ?? 0 }))
+    $activeModel
+      ? ($activeModel.classesSnapshot ?? []).map((c) => ({
+          name: c,
+          count: $activeModel.exampleCounts?.[c] ?? 0
+        }))
+      : $classes.map((c) => ({ name: c, count: $examples[c]?.length ?? 0 }))
   );
+  const totalExamples = $derived(perClassCounts.reduce((acc, row) => acc + row.count, 0));
 </script>
 
 <Modal title="Modell-Details" {isOpen} size="large" onclose={close}>
@@ -64,7 +78,7 @@
             <dt>Loss (final)</dt>
             <dd>{finalLoss?.toFixed(4) ?? '–'}</dd>
           </div>
-          <div><dt>Klassen</dt><dd>{$classes.length}</dd></div>
+          <div><dt>Klassen</dt><dd>{perClassCounts.length}</dd></div>
           <div><dt>Beispiele gesamt</dt><dd>{totalExamples}</dd></div>
           <div>
             <dt>Trainiert am</dt>
@@ -124,7 +138,7 @@
           <div><dt>Schichten</dt><dd>{num($modelMetadata.layers)}</dd></div>
           <div><dt>Parameter</dt><dd>{num($modelMetadata.params)}</dd></div>
           <div><dt>Modellgröße (~)</dt><dd>{bytes($modelMetadata.sizeBytes)}</dd></div>
-          <div><dt>Feature-Extraktor</dt><dd>MobileNet v1 (eingefroren)</dd></div>
+          <div><dt>Feature-Extraktor</dt><dd>{extractorLabel} (eingefroren)</dd></div>
         </dl>
         <p class="hint">
           Dieses Projekt nutzt Transfer-Learning: MobileNet extrahiert aus jedem Bild einen

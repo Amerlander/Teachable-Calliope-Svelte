@@ -10,10 +10,17 @@
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
 
-  let { onselect }: { onselect?: (id: string) => void } = $props();
+  // `highlightActive` is off while the sidebar is composing a new model: nothing
+  // in the list is the subject of the view then, so nothing should look selected.
+  let {
+    onselect,
+    highlightActive = true
+  }: { onselect?: (id: string) => void; highlightActive?: boolean } = $props();
 
   const history = $derived($currentProject?.modelHistory ?? []);
-  const currentId = $derived($currentProject?.currentModelId ?? null);
+  const currentId = $derived(
+    highlightActive ? ($currentProject?.currentModelId ?? null) : null
+  );
 
   const sorted = $derived([...history].sort((a, b) => b.trainedAt - a.trainedAt));
 
