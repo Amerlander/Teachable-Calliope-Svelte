@@ -35,8 +35,6 @@
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
   import {
-    currentLang,
-    t,
     isTesting,
     isTraining,
     workspaceTab,
@@ -72,7 +70,6 @@
   } from '$lib/calibration';
   import { autoCalibrateActiveModel } from '$lib/models';
 
-  const lang = $derived($currentLang);
   const isPose = $derived($currentProject?.mode === 'pose');
 
   let webcamEl: HTMLVideoElement = $state()!;
@@ -363,16 +360,13 @@
     }
   }
 
-  // ---------- Mapping editor (per class, on the raw-value track) ----------
-  // Which class has its mapping open. Only one at a time — the raw track is only
-  // meaningful next to the handles that set it.
-  let mappingOpen = $state<string | null>(null);
+  // ---------- Mapping editor (raw-value track under every class) ----------
+  // One switch for the whole list rather than a control per row: the windows are
+  // usually set in one pass, and the raw values only need to be on screen while
+  // that is happening.
+  let mappingEdit = $state(false);
   let autoCalibrating = $state(false);
   let autoCalibrateNote = $state<string | null>(null);
-
-  function toggleMapping(cls: string) {
-    mappingOpen = mappingOpen === cls ? null : cls;
-  }
 
   /** Move one end of a class's window, keeping the two at least a span apart. */
   function moveHandle(cls: string, end: 'lo' | 'hi', value: number) {
@@ -793,116 +787,11 @@
           {/if}
         </div>
 
-        <!-- All class scores on their mapped scale, plus the mapping editor. The
-             threshold is the same 60% for every class, so it is one line across
-             the bars rather than a marker per class. -->
-        <div class="details">
-          <div class="details-head">
-            <span>Alle Klassen</span>
-            <span class="fps">{fps ? `${fps} Hz` : '…'}</span>
-          </div>
-          <ul class="score-list">
-            <!-- The frame's own label list, so a score can't end up next to the
-                 wrong class if the project's list moves on mid-test. -->
-            {#each prediction.labels as cls, i (cls)}
-              {@const p = prediction.all[i] ?? 0}
-              {@const raw = prediction.raw[i] ?? 0}
-              {@const range = rangeFor(ranges, cls)}
-              {@const editing = mappingOpen === cls}
-              <li class:top={cls === topLabel}>
-                <div class="row1">
-                  <span class="name">{cls}</span>
-                  <span class="sub-pct">
-                    <span class="pct-val">{Math.round(p * 100)}%</span>
-                    <button
-                      class="map-toggle"
-                      class:active={editing}
-                      title="Bereich für {cls} festlegen"
-                      aria-expanded={editing}
-                      onclick={() => toggleMapping(cls)}
-                    >
-                      Bereich
-                    </button>
-                  </span>
-                </div>
-                <div class="sub-bar" aria-hidden="true">
-                  <span class="sub-fill" style="width:{p * 100}%"></span>
-                  <span class="threshold-marker" style="left:{CLASS_THRESHOLD * 100}%"></span>
-                </div>
-
-                {#if editing}
-                  <!-- Second track, in raw model values: this is the only place
-                       the model's own number is shown. -->
-                  <div class="mapping">
-                    <div class="raw-track">
-                      <span
-                        class="raw-window"
-                        style="left:{range.lo * 100}%;width:{(range.hi - range.lo) * 100}%"
-                      ></span>
-                      <span class="raw-marker" style="left:{raw * 100}%"></span>
-                      <button
-                        class="raw-handle"
-                        style="left:{range.lo * 100}%"
-                        role="slider"
-                        aria-label="0 % entspricht rohem Wert, {cls}"
-                        aria-valuemin="0"
-                        aria-valuemax="100"
-                        aria-valuenow={Math.round(range.lo * 100)}
-                        onpointerdown={(e) => startHandleDrag(cls, 'lo', e)}
-                        onkeydown={(e) => onHandleKey(cls, 'lo', e)}
-                      ><span class="handle-cap">0%</span></button>
-                      <button
-                        class="raw-handle"
-                        style="left:{range.hi * 100}%"
-                        role="slider"
-                        aria-label="100 % entspricht rohem Wert, {cls}"
-                        aria-valuemin="0"
-                        aria-valuemax="100"
-                        aria-valuenow={Math.round(range.hi * 100)}
-                        onpointerdown={(e) => startHandleDrag(cls, 'hi', e)}
-                        onkeydown={(e) => onHandleKey(cls, 'hi', e)}
-                      ><span class="handle-cap">100%</span></button>
-                    </div>
-                    <div class="mapping-legend">
-                      <span class="raw-now">roh {Math.round(raw * 100)}%</span>
-                      <span class="raw-trigger">
-                        erkannt ab roh {Math.round(rawTriggerPoint(range) * 100)}%
-                      </span>
-                    </div>
-                  </div>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-          <div class="mapping-actions">
-            <button onclick={runAutoCalibrate} disabled={autoCalibrating}>
-              {autoCalibrating ? 'Messe…' : 'Bereiche automatisch'}
-            </button>
-            <button onclick={() => resetModelClassRanges($activeModel?.id)}>Zurücksetzen</button>
-          </div>
-          {#if autoCalibrateNote}
-            <div class="mapping-note">{autoCalibrateNote}</div>
-          {/if}
-          <div class="smoothing">
-            <label for="smoothing-slider" class="smoothing-label">
-              Glättung (Fenster): <strong>{$smoothingWindow}</strong>
-            </label>
-            <input
-              id="smoothing-slider"
-              type="range"
-              min="1"
-              max="20"
-              step="1"
-              bind:value={$smoothingWindow}
-            />
-            <span class="smoothing-hint">Median über die letzten N Vorhersagen</span>
-          </div>
-        </div>
       {/if}
 
       {#if mode === 'test' && !$classifierModel && !$isTraining}
         <div class="overlay">
-          <div class="status warning">{t('training.testStatus', lang)}</div>
+          <div class="status warning">Bereit zum Testen</div>
         </div>
       {/if}
 
@@ -943,20 +832,133 @@
         {#if $classifierModel}
           <!-- Left: what the model can tell apart. Right: how well it does it. -->
           <div class="mi-main">
+            <!-- The model's classes and, while a test runs, what each one
+                 currently scores. One list instead of a second one floating over
+                 the video: the score belongs to the class it describes. -->
             <div class="mi-classes">
               <div class="mi-classes-head">
                 <span>Klassen des Modells</span>
-                <span class="hint">{$predictionClasses.length} Klassen</span>
+                <span class="hint">
+                  {$predictionClasses.length} Klassen{prediction && fps ? ` · ${fps} Hz` : ''}
+                </span>
+                <button class="mi-link" onclick={() => (mappingEdit = !mappingEdit)}>
+                  {mappingEdit ? 'Fertig' : 'Bereiche'}
+                </button>
               </div>
               {#each $predictionClasses as cls (cls)}
                 {@const count = $activeModel
                   ? ($activeModel.exampleCounts?.[cls] ?? 0)
                   : ($examples[cls]?.length ?? 0)}
-                <div class="mi-class">
-                  <span class="mi-class-name">{cls}</span>
-                  <span class="mi-class-count">{count} Bilder</span>
+                <!-- Look the score up by label: the frame carries its own class
+                     list, which can lag this one by a frame after a model swap. -->
+                {@const idx = prediction ? prediction.labels.indexOf(cls) : -1}
+                {@const score = idx >= 0 ? (prediction?.all[idx] ?? null) : null}
+                {@const raw = idx >= 0 ? (prediction?.raw[idx] ?? 0) : 0}
+                {@const range = rangeFor(ranges, cls)}
+                <div class="mi-class" class:detected={cls === topLabel}>
+                  <div class="mi-class-row">
+                    <span class="mi-class-name">{cls}</span>
+                    <span class="mi-class-count">{count} Bilder</span>
+                    {#if score !== null}
+                      <span class="mi-class-pct">{Math.round(score * 100)}%</span>
+                    {/if}
+                  </div>
+                  {#if score !== null}
+                    <div class="mi-bar" aria-hidden="true">
+                      <span class="mi-bar-fill" style="width:{score * 100}%"></span>
+                      <span class="mi-bar-thr" style="left:{CLASS_THRESHOLD * 100}%"></span>
+                    </div>
+                  {/if}
+
+                  {#if mappingEdit}
+                    <!-- Second track, in raw model values: the only place the
+                         model's own number is shown. -->
+                    <div class="mi-map">
+                      <div class="raw-track">
+                        <span
+                          class="raw-window"
+                          style="left:{range.lo * 100}%;width:{(range.hi - range.lo) * 100}%"
+                        ></span>
+                        <!-- The fixed threshold projected back onto the raw
+                             scale: where inside the window a class starts to
+                             count. Moves with the handles. -->
+                        <span
+                          class="raw-trigger"
+                          style="left:{rawTriggerPoint(range) * 100}%"
+                          title="Erkannt ab roh {Math.round(rawTriggerPoint(range) * 100)}%"
+                        ></span>
+                        {#if idx >= 0}
+                          <span class="raw-marker" style="left:{raw * 100}%"></span>
+                        {/if}
+                        <button
+                          class="raw-handle"
+                          style="left:{range.lo * 100}%"
+                          role="slider"
+                          aria-label="Roher Wert für 0 %, {cls}"
+                          aria-valuemin="0"
+                          aria-valuemax="100"
+                          aria-valuenow={Math.round(range.lo * 100)}
+                          onpointerdown={(e) => startHandleDrag(cls, 'lo', e)}
+                          onkeydown={(e) => onHandleKey(cls, 'lo', e)}
+                        ></button>
+                        <button
+                          class="raw-handle"
+                          style="left:{range.hi * 100}%"
+                          role="slider"
+                          aria-label="Roher Wert für 100 %, {cls}"
+                          aria-valuemin="0"
+                          aria-valuemax="100"
+                          aria-valuenow={Math.round(range.hi * 100)}
+                          onpointerdown={(e) => startHandleDrag(cls, 'hi', e)}
+                          onkeydown={(e) => onHandleKey(cls, 'hi', e)}
+                        ></button>
+                      </div>
+                      <div class="mi-map-legend">
+                        <span>0 % ab roh {Math.round(range.lo * 100)}%</span>
+                        {#if idx >= 0}
+                          <span class="mi-map-now">roh {Math.round(raw * 100)}%</span>
+                        {/if}
+                        <span>100 % ab roh {Math.round(range.hi * 100)}%</span>
+                      </div>
+                    </div>
+                  {/if}
                 </div>
               {/each}
+
+              {#if mappingEdit}
+                <div class="mi-map-actions">
+                  <span class="mi-map-hint">
+                    Die Griffe legen fest, welcher Wert des Modells als 0 % und
+                    welcher als 100 % angezeigt wird. Erkannt wird ab
+                    {Math.round(CLASS_THRESHOLD * 100)}%.
+                  </span>
+                  <div class="mi-map-buttons">
+                    <button onclick={runAutoCalibrate} disabled={autoCalibrating}>
+                      {autoCalibrating ? 'Messe…' : 'Aus Beispielen bestimmen'}
+                    </button>
+                    <button onclick={() => resetModelClassRanges($activeModel?.id)}>
+                      Auf 0–100 % zurücksetzen
+                    </button>
+                  </div>
+                  {#if autoCalibrateNote}
+                    <span class="mi-map-note">{autoCalibrateNote}</span>
+                  {/if}
+                </div>
+              {/if}
+
+              {#if prediction}
+                <label for="smoothing-slider" class="mi-smoothing">
+                  <span>Glättung <strong>{$smoothingWindow}</strong></span>
+                  <input
+                    id="smoothing-slider"
+                    type="range"
+                    min="1"
+                    max="20"
+                    step="1"
+                    bind:value={$smoothingWindow}
+                  />
+                </label>
+              {/if}
             </div>
 
             <div class="mi-eval">
@@ -1383,8 +1385,10 @@
     align-items: flex-start;
   }
   .mi-classes {
-    flex: 1 1 200px;
-    min-width: 180px;
+    // Wide enough that the raw-value track stays draggable when the mapping is
+    // open, which is the narrowest this column may usefully get.
+    flex: 1 1 240px;
+    min-width: 220px;
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -1406,7 +1410,6 @@
   .mi-classes-head {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
     gap: 8px;
     font-size: 11px;
     font-weight: 600;
@@ -1418,17 +1421,36 @@
       text-transform: none;
       letter-spacing: 0;
       font-weight: 400;
+      font-variant-numeric: tabular-nums;
     }
+  }
+  // A text button, not a framed one: it only reveals the second track and should
+  // not compete with the class names next to it.
+  .mi-link {
+    margin-left: auto;
+    border: none;
+    background: none;
+    padding: 0;
+    font: inherit;
+    text-transform: none;
+    letter-spacing: 0;
+    color: rgb(var(--md-primary));
+    cursor: pointer;
+    &:hover { text-decoration: underline; }
   }
   .mi-class {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
+    flex-direction: column;
+    gap: 3px;
     font-size: 12px;
-    padding: 4px 8px;
+    padding: 4px 8px 5px;
     border-radius: var(--md-radius-sm);
     background: rgba(var(--md-surface-variant), 0.4);
+    .mi-class-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
     .mi-class-name {
       font-weight: 600;
       color: rgb(var(--md-on-surface));
@@ -1440,6 +1462,146 @@
       flex-shrink: 0;
       font-variant-numeric: tabular-nums;
       color: rgb(var(--md-on-surface-variant));
+    }
+    .mi-class-pct {
+      margin-left: auto;
+      flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      color: rgb(var(--md-on-surface));
+    }
+    // The mapped score. The threshold is the same for every class, so the mark
+    // sits in the same place on every bar and reads as one line down the list.
+    .mi-bar {
+      position: relative;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(var(--md-outline-variant), 0.8);
+    }
+    .mi-bar-fill {
+      display: block;
+      height: 100%;
+      border-radius: 2px;
+      background: rgb(var(--md-outline));
+      transition: width 0.15s;
+    }
+    .mi-bar-thr {
+      position: absolute;
+      top: -2px;
+      bottom: -2px;
+      width: 1px;
+      background: rgb(var(--md-on-surface-variant));
+    }
+    &.detected {
+      .mi-class-name { color: rgb(var(--md-primary)); }
+      .mi-class-pct { color: rgb(var(--md-primary)); }
+      .mi-bar-fill { background: rgb(var(--md-primary)); }
+    }
+    // The raw-value track. Its scale is the model's own output rather than the
+    // mapped one above it, so it stays visually apart: inset, thinner, and only
+    // present while the windows are being set.
+    .mi-map {
+      margin: 5px 2px 1px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .raw-track {
+      position: relative;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(var(--md-outline-variant), 0.5);
+      touch-action: none;
+    }
+    .raw-window {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      border-radius: 2px;
+      background: rgba(var(--md-primary), 0.3);
+      pointer-events: none;
+    }
+    .raw-marker {
+      position: absolute;
+      top: -3px;
+      bottom: -3px;
+      width: 1px;
+      background: rgb(var(--md-on-surface));
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+    .raw-trigger {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: rgb(var(--md-primary));
+      transform: translateX(-50%);
+    }
+    .raw-handle {
+      position: absolute;
+      top: -5px;
+      width: 8px;
+      height: 14px;
+      margin-left: -4px;
+      padding: 0;
+      border: 1px solid rgb(var(--md-outline));
+      border-radius: 2px;
+      background: rgb(var(--md-surface));
+      cursor: ew-resize;
+      touch-action: none;
+      outline: none;
+      &:focus-visible { box-shadow: 0 0 0 2px rgb(var(--md-primary)); }
+    }
+    .mi-map-legend {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      margin-top: 6px;
+      font-size: 9px;
+      font-variant-numeric: tabular-nums;
+      color: rgb(var(--md-on-surface-variant));
+      .mi-map-now { color: rgb(var(--md-on-surface)); }
+    }
+  }
+  .mi-map-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 10px;
+    color: rgb(var(--md-on-surface-variant));
+    .mi-map-buttons {
+      display: flex;
+      gap: 6px;
+    }
+    button {
+      flex: 1;
+      font-size: 10px;
+      padding: 3px 6px;
+      border: 1px solid rgb(var(--md-outline-variant));
+      border-radius: var(--md-radius-sm);
+      background: transparent;
+      color: rgb(var(--md-on-surface-variant));
+      cursor: pointer;
+      &:hover:not(:disabled) { color: rgb(var(--md-on-surface)); }
+      &:disabled { opacity: 0.5; cursor: default; }
+    }
+  }
+  .mi-smoothing {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 10px;
+    color: rgb(var(--md-on-surface-variant));
+    strong {
+      color: rgb(var(--md-on-surface));
+      font-variant-numeric: tabular-nums;
+    }
+    input[type='range'] {
+      flex: 1;
+      accent-color: rgb(var(--md-primary));
     }
   }
   .mi-empty {
@@ -1572,16 +1734,18 @@
     font-style: italic;
     padding: 6px 2px;
   }
+  // The name sits close to the images it belongs to — the air between classes
+  // (.prep-classes' own gap) is what separates one stack from the next.
   .prep-class {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 1px;
   }
   .prep-class-head {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
+    font-size: 13.5px;
     .prep-class-name {
       flex: 1;
       min-width: 0;
@@ -1894,16 +2058,13 @@
     z-index: 4;
     backdrop-filter: blur(4px);
   }
-  // No frame of its own: the video is the top of the pane, so it runs edge to
-  // edge and straight into the corners — the pane's own radius is what rounds it
-  // up there. Only its lower edge carries a radius of its own, the pane's, so
-  // the black block sits on the band below it with the same soft edge.
+  // No frame of its own: the video runs edge to edge and straight into the
+  // corners, and the only rounding it shows is the one the pane clips it with.
   .video-wrap {
     flex: 1;
     position: relative;
     overflow: hidden;
     background: #000;
-    border-radius: 0 0 var(--pane-radius, var(--md-radius-lg)) var(--pane-radius, var(--md-radius-lg));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1999,221 +2160,6 @@
       background: rgb(var(--md-primary));
       border-radius: 4px;
       transition: width 0.2s;
-    }
-  }
-  .details {
-    position: absolute;
-    right: 16px;
-    top: 16px;
-    background: rgba(var(--md-surface), 0.95);
-    color: rgb(var(--md-on-surface));
-    padding: 10px 14px;
-    border-radius: var(--md-radius-md);
-    z-index: 3;
-    box-shadow: var(--md-elevation-2);
-    backdrop-filter: blur(10px);
-    min-width: 220px;
-    max-height: 60%;
-    overflow: auto;
-    .details-head {
-      display: flex;
-      justify-content: space-between;
-      font-size: 12px;
-      color: rgb(var(--md-on-surface-variant));
-      margin-bottom: 8px;
-      font-weight: 600;
-      letter-spacing: 0.3px;
-      text-transform: uppercase;
-      .fps {
-        font-variant-numeric: tabular-nums;
-        color: #adf54c;
-      }
-    }
-    .score-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      li {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-        font-size: 12px;
-        .name { font-weight: 500; }
-        .row1 {
-          display: flex;
-          justify-content: space-between;
-          align-items: baseline;
-        }
-        .sub-bar {
-          position: relative;
-          height: 12px;
-          background: rgb(var(--md-surface-variant));
-          border-radius: 6px;
-          overflow: visible;
-        }
-        .sub-fill {
-          display: block;
-          height: 100%;
-          background: rgb(var(--md-outline));
-          border-radius: 6px;
-          transition: width 0.15s;
-          pointer-events: none;
-        }
-        .threshold-marker {
-          position: absolute;
-          top: -3px;
-          bottom: -3px;
-          width: 4px;
-          background: rgb(var(--md-on-surface));
-          border-radius: 2px;
-          pointer-events: none;
-          transform: translateX(-50%);
-          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
-        }
-        .sub-pct {
-          font-variant-numeric: tabular-nums;
-          font-size: 11px;
-          color: rgb(var(--md-on-surface-variant));
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          .pct-val { color: rgb(var(--md-on-surface)); font-weight: 600; }
-        }
-        .map-toggle {
-          border: 1px solid rgb(var(--md-outline-variant));
-          background: transparent;
-          color: rgb(var(--md-on-surface-variant));
-          font-size: 9px;
-          text-transform: uppercase;
-          letter-spacing: 0.4px;
-          padding: 1px 5px;
-          border-radius: 999px;
-          cursor: pointer;
-          &:hover { color: rgb(var(--md-on-surface)); }
-          &.active {
-            border-color: rgb(var(--md-primary));
-            color: rgb(var(--md-primary));
-          }
-        }
-        // The raw-value track. Its scale is the model's own output, not the
-        // mapped one above it, so it stays visually separate: thinner, inset,
-        // and only visible while the mapping is being set.
-        .mapping {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-          margin: 4px 0 2px;
-          padding-left: 2px;
-        }
-        .raw-track {
-          position: relative;
-          height: 6px;
-          background: rgb(var(--md-surface-variant));
-          border-radius: 3px;
-          touch-action: none;
-        }
-        .raw-window {
-          position: absolute;
-          top: 0;
-          bottom: 0;
-          background: rgba(var(--md-primary), 0.35);
-          border-radius: 3px;
-          pointer-events: none;
-        }
-        .raw-marker {
-          position: absolute;
-          top: -3px;
-          bottom: -3px;
-          width: 2px;
-          background: rgb(var(--md-on-surface));
-          transform: translateX(-50%);
-          pointer-events: none;
-        }
-        .raw-handle {
-          position: absolute;
-          top: -5px;
-          width: 10px;
-          height: 16px;
-          margin-left: -5px;
-          padding: 0;
-          border: 1px solid rgb(var(--md-outline));
-          border-radius: 3px;
-          background: rgb(var(--md-surface));
-          cursor: ew-resize;
-          touch-action: none;
-          outline: none;
-          &:focus-visible { box-shadow: 0 0 0 2px rgb(var(--md-primary)); }
-          .handle-cap {
-            position: absolute;
-            top: 16px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 8px;
-            color: rgb(var(--md-on-surface-variant));
-            pointer-events: none;
-          }
-        }
-        .mapping-legend {
-          display: flex;
-          justify-content: space-between;
-          margin-top: 10px;
-          font-size: 9px;
-          font-variant-numeric: tabular-nums;
-          color: rgb(var(--md-on-surface-variant));
-          .raw-now { color: rgb(var(--md-on-surface)); }
-        }
-        &.top {
-          .name { color: rgb(var(--md-primary)); font-weight: 700; }
-          .sub-fill { background: rgb(var(--md-primary)); }
-        }
-      }
-    }
-    .mapping-actions {
-      display: flex;
-      gap: 6px;
-      margin-top: 10px;
-      button {
-        flex: 1;
-        font-size: 10px;
-        padding: 3px 6px;
-        border: 1px solid rgb(var(--md-outline-variant));
-        border-radius: var(--md-radius-sm, 6px);
-        background: transparent;
-        color: rgb(var(--md-on-surface-variant));
-        cursor: pointer;
-        &:hover:not(:disabled) { color: rgb(var(--md-on-surface)); }
-        &:disabled { opacity: 0.5; cursor: default; }
-      }
-    }
-    .mapping-note {
-      margin-top: 6px;
-      font-size: 10px;
-      color: rgb(var(--md-on-surface-variant));
-    }
-    .smoothing {
-      margin-top: 12px;
-      padding-top: 10px;
-      border-top: 1px solid rgb(var(--md-outline-variant));
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .smoothing-label {
-      font-size: 12px;
-      color: rgb(var(--md-on-surface-variant));
-      strong { color: rgb(var(--md-on-surface)); font-variant-numeric: tabular-nums; }
-    }
-    .smoothing input[type="range"] {
-      width: 100%;
-      accent-color: rgb(var(--md-primary));
-    }
-    .smoothing-hint {
-      font-size: 10px;
-      color: rgb(var(--md-on-surface-variant));
-      opacity: 0.8;
     }
   }
   .adv-popover {
