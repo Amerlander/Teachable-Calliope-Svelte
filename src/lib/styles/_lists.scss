@@ -1,0 +1,259 @@
+// Row chrome for the app's two entry lists: the models in Trainieren and the
+// programs in Programmieren. Both answer the same question — "which of the
+// things you made do you want to work with?" — so they are built from the same
+// parts: a card per entry, a clickable body with title / meta / class line, a ⋯
+// menu on the right, and a dashed "new" row under the last entry. The two lists
+// had drifted into different paddings, radii and greys while doing that; the
+// mixins keep the look in one place instead.
+//
+// Structure every list shares:
+//   ul.entry-list > li.entry-row > .row-top > (.main[role=button] + ⋯ menu)
+// A list with an extra line per entry (the program's model picker) adds it as a
+// further child of .entry-row, below .row-top.
+
+@mixin entry-list($max-height: none) {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  @if $max-height != none {
+    max-height: $max-height;
+    overflow-y: auto;
+  }
+}
+
+@mixin entry-row {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--md-radius-md);
+  background: rgba(var(--md-surface-variant), 0.3);
+  border: 2px solid transparent;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+
+  &:hover {
+    background: rgb(var(--md-surface-variant));
+    box-shadow: var(--md-elevation-1);
+  }
+  &.active {
+    border-color: rgb(var(--md-primary));
+    background: rgba(var(--md-primary-container));
+  }
+}
+
+@mixin entry-row-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 2px 4px 2px 0;
+}
+
+// The clickable body of a row: selecting the entry is the row's primary action.
+@mixin entry-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: rgb(var(--md-on-surface));
+  box-shadow: none;
+  min-height: unset;
+  font: inherit;
+}
+
+@mixin entry-title {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+@mixin entry-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+@mixin entry-title-edit {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1.5px solid rgb(var(--md-primary));
+  border-radius: var(--md-radius-sm);
+  background: rgb(var(--md-surface));
+  font: inherit;
+  font-weight: 600;
+  color: rgb(var(--md-on-surface));
+}
+
+// Rename affordance next to the title. Stays out of the way until the row is
+// hovered or selected — see `entry-reveal-on-row` for the reveal itself.
+@mixin entry-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgb(var(--md-on-surface-variant));
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: background 0.15s, opacity 0.15s, color 0.15s;
+  &:focus-visible {
+    opacity: 1;
+    outline: 2px solid rgb(var(--md-primary));
+    outline-offset: 1px;
+  }
+  &:hover {
+    background: rgba(var(--md-on-surface), 0.08);
+    color: rgb(var(--md-on-surface));
+  }
+}
+
+@mixin entry-chip {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: rgb(var(--md-primary));
+  color: rgb(var(--md-on-primary));
+  flex-shrink: 0;
+  &.muted {
+    background: rgba(var(--md-on-surface), 0.12);
+    color: rgb(var(--md-on-surface-variant));
+  }
+  &.warn {
+    background: rgb(var(--md-error-container));
+    color: rgb(var(--md-error));
+  }
+}
+
+@mixin entry-meta {
+  font-size: 12px;
+  color: rgb(var(--md-on-surface-variant));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+// Pill at the end of the meta line — the model's region, the program's block set.
+@mixin entry-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: rgb(var(--md-tertiary-container, var(--md-surface-variant)));
+  color: rgb(var(--md-on-tertiary-container, var(--md-on-surface)));
+  font-variant-numeric: tabular-nums;
+}
+
+// The entry's class list, so one entry can be told apart from its siblings
+// without opening it.
+@mixin entry-classes {
+  font-size: 11px;
+  color: rgb(var(--md-on-surface-variant));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin entry-menu-btn {
+  width: 28px;
+  height: 28px;
+  min-height: unset;
+  margin-top: 6px;
+  padding: 0;
+  box-shadow: none;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(var(--md-on-surface-variant));
+  cursor: pointer;
+  font-size: 16px;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+  &:hover {
+    background: rgba(var(--md-on-surface), 0.08);
+    color: rgb(var(--md-on-surface));
+  }
+}
+
+// "Add another one" under the last entry, where the newest entry is — both lists
+// grow downwards, so that is where the next one appears.
+@mixin entry-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(var(--md-on-surface-variant));
+  border: 1px dashed rgba(var(--md-outline), 0.7);
+  border-radius: var(--md-radius-md);
+  background: transparent;
+  box-shadow: none;
+  min-height: unset;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+
+  // `--md-primary-container` already carries its own alpha, so it can only be
+  // used as `rgba(var(...))` with no extra argument — tinting takes --md-primary.
+  &:hover:not(:disabled) {
+    border-color: rgb(var(--md-primary));
+    color: rgb(var(--md-on-surface));
+    background: rgba(var(--md-primary), 0.06);
+  }
+  &:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+}
+
+@mixin entry-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: rgb(var(--md-on-surface-variant));
+  font-style: italic;
+}
+
+// Head above a list: the same label weight as the sections in the sidebars.
+@mixin entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+
+  .section-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgb(var(--md-on-surface-variant));
+  }
+}

@@ -12,9 +12,13 @@
   import { createProgramForModel, openProgram, switchProgramModel } from '$lib/programs';
   import { modelLabel } from '$lib/models';
   import { showNotification } from '$lib/stores/notifications';
+  import Dropdown from '$lib/components/ui/Dropdown.svelte';
+  import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
   import ModelPicker from '$lib/components/ModelPicker.svelte';
   import NoModelNotice from '$lib/components/NoModelNotice.svelte';
 
+  // Saved in the order they were created, so the newest program is the last row —
+  // the same direction the model list runs in, with the "new" row below both.
   const programs = $derived($currentProject?.makeCodePrograms ?? []);
   const activeId = $derived($currentProject?.currentProgramId ?? null);
 
@@ -33,7 +37,7 @@
    * nothing to program against, which is what the notice above the list is for.
    */
   function handleNew() {
-    const model = $activeModel ?? $availableModels[0] ?? null;
+    const model = $activeModel ?? $availableModels.at(-1) ?? null;
     if (!model) {
       showNotification('Trainiere oder importiere zuerst ein Modell', { type: 'warning' });
       return;
@@ -52,8 +56,7 @@
     showNotification(`Programm nutzt jetzt „${modelLabel(model)}“`, { type: 'success' });
   }
 
-  async function handleDelete(p: MakeCodeProgram, e: Event) {
-    e.stopPropagation();
+  async function handleDelete(p: MakeCodeProgram) {
     if (!confirm(`"${p.name}" löschen?`)) return;
     deleteMakeCodeProgram(p.id);
     // If we just deleted the active program, open whatever is newly active —
@@ -63,8 +66,8 @@
     if (next) await openProgram(next);
   }
 
-  function startRename(p: MakeCodeProgram, e: Event) {
-    e.stopPropagation();
+  function startRename(p: MakeCodeProgram, e?: Event) {
+    e?.stopPropagation();
     renamingId = p.id;
     renameDraft = p.name;
   }
@@ -80,25 +83,20 @@
     renamingId = null;
   }
 
+  function onRenameKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') commitRename();
+    else if (e.key === 'Escape') cancelRename();
+    e.stopPropagation();
+  }
+
   function formatDate(ts: number): string {
-    return new Date(ts).toLocaleString(undefined, {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return new Date(ts).toLocaleString('de-DE');
   }
 </script>
 
 <div class="program-list">
   <div class="head">
-    <h4>Programme</h4>
-    <button
-      class="add-btn"
-      onclick={handleNew}
-      title="Neues Programm"
-      disabled={$availableModels.length === 0}
-    >+</button>
+    <span class="section-label">Programme</span>
   </div>
 
   <!-- Nothing can be programmed without a model, so the way to get one is
@@ -107,38 +105,87 @@
     <NoModelNotice
       message="Ein Programm wird immer für ein Modell erstellt. Trainiere eines mit deinen Bildern oder importiere ein fertiges."
     />
-  {:else if programs.length === 0}
-    <div class="empty">Noch kein Programm gespeichert.</div>
   {:else}
-    <ul>
-      {#each programs as p (p.id)}
-        {@const model = $availableModels.find((m) => m.id === p.modelId) ?? null}
-        {@const options = modelsForProgram(p, $availableModels)}
-        <li class:active={p.id === activeId}>
-          {#if renamingId === p.id}
-            <div class="main-row">
-              <input
-                type="text"
-                bind:value={renameDraft}
-                onblur={commitRename}
-                onkeydown={(e) => {
-                  if (e.key === 'Enter') commitRename();
-                  else if (e.key === 'Escape') cancelRename();
-                }}
-              />
+    {#if programs.length === 0}
+      <div class="empty">Noch kein Programm gespeichert.</div>
+    {:else}
+      <ul class="entry-list">
+        {#each programs as p (p.id)}
+          {@const model = $availableModels.find((m) => m.id === p.modelId) ?? null}
+          {@const options = modelsForProgram(p, $availableModels)}
+          <li class="entry-row" class:active={p.id === activeId}>
+            <div class="row-top">
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div
+                class="main"
+                role="button"
+                tabindex="0"
+                onclick={() => handleSelect(p)}
+                onkeydown={(e) => e.key === 'Enter' && handleSelect(p)}
+              >
+                <div class="title">
+                  {#if renamingId === p.id}
+                    <!-- svelte-ignore a11y_autofocus -->
+                    <input
+                      class="title-edit"
+                      bind:value={renameDraft}
+                      onkeydown={onRenameKey}
+                      onblur={commitRename}
+                      onclick={(e) => e.stopPropagation()}
+                      autofocus
+                    />
+                  {:else}
+                    <span class="title-text">{p.name}</span>
+                    <button
+                      type="button"
+                      class="edit-btn"
+                      onclick={(e) => startRename(p, e)}
+                      title="Umbenennen"
+                      aria-label="Umbenennen"
+                    >
+                      <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                        <path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                      </svg>
+                    </button>
+                  {/if}
+                  {#if p.id === activeId}
+                    <span class="chip">aktiv</span>
+                  {/if}
+                </div>
+                <!-- Same three lines as a model row: what it is called, its
+                     numbers, then its classes. -->
+                <div class="meta">
+                  <span>{formatDate(p.updatedAt)}</span>
+                  <span>·</span>
+                  <span>{p.classes.length} Klassen</span>
+                  {#if p.classes.length && !model}
+                    <span class="chip warn" title="Das Modell dieses Programms wurde gelöscht.">
+                      Modell fehlt
+                    </span>
+                  {/if}
+                </div>
+                <div class="classes" title={p.classes.join(', ') || undefined}>
+                  {#if p.classes.length}
+                    {p.classes.join(' · ')}
+                  {:else}
+                    <!-- Built in the editor before any model existed, so it has
+                         no class blocks and nothing to bind a model to. -->
+                    ohne Klassen-Blöcke
+                  {/if}
+                </div>
+              </div>
+              <Dropdown placement="bottom-end">
+                {#snippet trigger()}
+                  <button type="button" class="menu" aria-label="Aktionen" title="Mehr">⋯</button>
+                {/snippet}
+                {#snippet children()}
+                  <DropdownItem onclick={() => handleSelect(p)}>Dieses Programm öffnen</DropdownItem>
+                  <DropdownItem onclick={() => startRename(p)}>Umbenennen</DropdownItem>
+                  <DropdownItem onclick={() => handleDelete(p)}>Löschen</DropdownItem>
+                {/snippet}
+              </Dropdown>
             </div>
-            <div class="meta">{formatDate(p.updatedAt)}</div>
-          {:else}
-            <button type="button" class="program-row" onclick={() => handleSelect(p)}>
-              <span class="name">{p.name}</span>
-              <span class="meta">
-                {formatDate(p.updatedAt)} · {p.classes.length} Klassen
-              </span>
-            </button>
-            <div class="actions">
-              <button class="icon-btn" title="Umbenennen" onclick={(e) => startRename(p, e)}>✎</button>
-              <button class="icon-btn danger" title="Löschen" onclick={(e) => handleDelete(p, e)}>✕</button>
-            </div>
+
             <!-- Which model this program runs on. Swappable within its own class
                  list: a later run on the same classes fits, a model with
                  different classes needs its own program. -->
@@ -151,186 +198,63 @@
                   onselect={(id) => handlePickModel(p, id)}
                   placeholder={options.length ? 'Modell wählen' : 'Kein passendes Modell'}
                   compact
+                  block
                 />
-                {#if !model}
-                  <span class="model-warn" title="Das Modell dieses Programms wurde gelöscht.">
-                    fehlt
-                  </span>
-                {/if}
               </div>
-              <div class="classes" title={p.classes.join(', ')}>{p.classes.join(' · ')}</div>
-            {:else}
-              <!-- Built in the editor before any model existed, so it has no
-                   class blocks and nothing to bind a model to. -->
-              <div class="classes">ohne Klassen-Blöcke</div>
             {/if}
-          {/if}
-        </li>
-      {/each}
-    </ul>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
+    <button class="add-row" onclick={handleNew} title="Neues Programm">
+      <span aria-hidden="true">+</span> Neues Programm
+    </button>
   {/if}
 </div>
 
 <style lang="scss">
-  .program-list {
-    padding: 12px 14px 6px;
-    background: #fafafa;
-    border-bottom: 1px solid #eee;
-  }
-  .head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
-    h4 {
-      margin: 0;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #666;
-      font-weight: 600;
-    }
-  }
-  .add-btn {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    border: 1px solid #d1d5db;
-    background: #fff;
-    cursor: pointer;
-    font-size: 16px;
-    line-height: 1;
-    color: #444;
-    &:hover:not(:disabled) { background: #f3f4f6; }
-    &:disabled { opacity: 0.4; cursor: default; }
-  }
-  .empty {
-    font-size: 12px;
-    color: #999;
-    font-style: italic;
-    padding: 6px 0;
-  }
-  ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  li {
-    position: relative;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: #fff;
-    transition: background 0.12s, border-color 0.12s;
-    padding-bottom: 8px;
+  @use '../../styles/lists' as *;
 
-    &:hover { background: #f3f4f6; }
-    &.active {
-      background: #eef7ff;
-      border-color: #93c5fd;
-    }
+  .program-list {
+    padding: 12px 14px 10px;
+    background: rgb(var(--md-background));
+    border-bottom: 1px solid rgba(var(--md-outline-variant), 0.6);
   }
-  .program-row {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    width: 100%;
-    padding: 8px 44px 4px 10px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-    color: inherit;
-    font: inherit;
+  .head { @include entry-head; }
+  .entry-list { @include entry-list; }
+  .entry-row { @include entry-row; }
+  .row-top { @include entry-row-top; }
+  .main { @include entry-main; }
+  .title { @include entry-title; }
+  .title-text { @include entry-title-text; }
+  .title-edit { @include entry-title-edit; }
+  .edit-btn { @include entry-edit-btn; }
+  .chip { @include entry-chip; }
+  .meta { @include entry-meta; }
+  .classes { @include entry-classes; }
+  .menu { @include entry-menu-btn; }
+  .add-row { @include entry-add-row; }
+  .empty { @include entry-empty; }
+
+  .entry-row:hover .edit-btn,
+  .entry-row.active .edit-btn {
+    opacity: 0.7;
+    &:hover { opacity: 1; }
   }
-  .name {
-    font-weight: 500;
-    font-size: 13px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
+
+  // Bottom line of a program card: the model it runs on, laid out like a labelled
+  // field so the picker is recognisable as one.
   .model-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 0 10px;
+    gap: 8px;
+    padding: 0 12px 10px;
     min-width: 0;
   }
   .model-caption {
     font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #888;
+    color: rgb(var(--md-on-surface-variant));
     flex-shrink: 0;
-  }
-  .model-warn {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fde68a;
-  }
-  .classes {
-    padding: 4px 10px 0;
-    font-size: 11px;
-    color: #888;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .main-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 10px;
-  }
-  input {
-    flex: 1;
-    padding: 4px 6px;
-    border: 1px solid #93c5fd;
-    border-radius: 4px;
-    font-size: 13px;
-  }
-  .actions {
-    position: absolute;
-    right: 6px;
-    top: 6px;
-    display: flex;
-    gap: 2px;
-    opacity: 0;
-    transition: opacity 0.12s;
-  }
-  li:hover .actions, li.active .actions {
-    opacity: 1;
-  }
-  .icon-btn {
-    width: 22px;
-    height: 22px;
-    border: none;
-    background: transparent;
-    border-radius: 4px;
-    font-size: 12px;
-    cursor: pointer;
-    color: #666;
-    &:hover { background: rgba(0, 0, 0, 0.08); color: #222; }
-    &.danger:hover { background: #fee2e2; color: #991b1b; }
-  }
-  .meta {
-    font-size: 11px;
-    color: #888;
-    margin-top: 2px;
-    margin-left: 2px;
   }
 </style>

@@ -423,7 +423,7 @@ export function modelsForProgram(
   const all = models ?? get(currentProject)?.modelHistory ?? [];
   return all
     .filter((m) => m.mode === program.mode && classListsMatch(m.classes ?? [], program.classes))
-    .sort((a, b) => b.trainedAt - a.trainedAt);
+    .sort((a, b) => a.trainedAt - b.trainedAt);
 }
 
 /** Point a program at another model. Rejected when the classes don't line up. */
@@ -508,12 +508,13 @@ export const projectList = writable<ProjectSummary[]>([]);
 export const hasProject = derived(currentProject, (p) => p !== null);
 
 /**
- * Every model the project can offer, newest first — trained runs and imported
- * ZIPs alike. This is the one list the model pickers in Programmieren and
- * Anwenden read from.
+ * Every model the project can offer — trained runs and imported ZIPs alike — in
+ * the order they came in, so the newest is the last entry. The lists render it
+ * as-is and therefore grow downwards, like the class list and the programs do;
+ * anything after "the newest model" takes `.at(-1)`.
  */
 export const availableModels = derived(currentProject, (p): TrainedModel[] =>
-  [...(p?.modelHistory ?? [])].sort((a, b) => b.trainedAt - a.trainedAt)
+  [...(p?.modelHistory ?? [])].sort((a, b) => a.trainedAt - b.trainedAt)
 );
 
 

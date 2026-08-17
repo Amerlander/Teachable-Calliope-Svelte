@@ -23,11 +23,23 @@
     highlightActive ? ($currentProject?.currentModelId ?? null) : null
   );
 
-  // One list of models for the whole app — trained runs and imported ZIPs.
-  const sorted = $derived($availableModels);
+  // One list of models for the whole app — trained runs and imported ZIPs, in the
+  // store's order: oldest first, so a new run appears at the bottom.
+  const models = $derived($availableModels);
 
   let editingId = $state<string | null>(null);
   let draft = $state('');
+
+  // The list scrolls once it is long enough, and the entry that matters most —
+  // the run that just finished — is now the last one. So follow the end of the
+  // list whenever it grows; renaming or deleting leaves the scroll alone.
+  let listEl: HTMLUListElement | undefined = $state();
+  let seenCount = 0;
+  $effect(() => {
+    const count = models.length;
+    if (listEl && count > seenCount) listEl.scrollTop = listEl.scrollHeight;
+    seenCount = count;
+  });
 
   function startEdit(id: string, currentLabel: string | undefined, e?: Event) {
     e?.stopPropagation();
@@ -90,82 +102,84 @@
   }
 </script>
 
-{#if sorted.length}
-  <ul class="history-list">
-    {#each sorted as run (run.id)}
+{#if models.length}
+  <ul class="entry-list" bind:this={listEl}>
+    {#each models as run (run.id)}
       {@const acc = accuracyOf(run.history.epochs, run.history.accuracy)}
-      <li class="history-row" class:active={run.id === currentId}>
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="main"
-          role="button"
-          tabindex="0"
-          onclick={() => onLoad(run.id)}
-          onkeydown={(e) => e.key === 'Enter' && onLoad(run.id)}
-        >
-          <div class="title">
-            {#if editingId === run.id}
-              <!-- svelte-ignore a11y_autofocus -->
-              <input
-                class="title-edit"
-                bind:value={draft}
-                onkeydown={onInputKey}
-                onblur={commitEdit}
-                onclick={(e) => e.stopPropagation()}
-                autofocus
-              />
-            {:else}
-              <span class="title-text">{run.label || formatDate(run.trainedAt)}</span>
-              <button
-                type="button"
-                class="edit-btn"
-                onclick={(e) => startEdit(run.id, run.label, e)}
-                title="Umbenennen"
-                aria-label="Umbenennen"
-              >
-                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-                  <path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-                </svg>
-              </button>
-            {/if}
-            {#if run.id === currentId}
-              <span class="chip">aktiv</span>
-            {/if}
-            {#if run.source === 'imported'}
-              <span class="chip muted">importiert</span>
-            {/if}
+      <li class="entry-row" class:active={run.id === currentId}>
+        <div class="row-top">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="main"
+            role="button"
+            tabindex="0"
+            onclick={() => onLoad(run.id)}
+            onkeydown={(e) => e.key === 'Enter' && onLoad(run.id)}
+          >
+            <div class="title">
+              {#if editingId === run.id}
+                <!-- svelte-ignore a11y_autofocus -->
+                <input
+                  class="title-edit"
+                  bind:value={draft}
+                  onkeydown={onInputKey}
+                  onblur={commitEdit}
+                  onclick={(e) => e.stopPropagation()}
+                  autofocus
+                />
+              {:else}
+                <span class="title-text">{run.label || formatDate(run.trainedAt)}</span>
+                <button
+                  type="button"
+                  class="edit-btn"
+                  onclick={(e) => startEdit(run.id, run.label, e)}
+                  title="Umbenennen"
+                  aria-label="Umbenennen"
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                    <path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                  </svg>
+                </button>
+              {/if}
+              {#if run.id === currentId}
+                <span class="chip">aktiv</span>
+              {/if}
+              {#if run.source === 'imported'}
+                <span class="chip muted">importiert</span>
+              {/if}
+            </div>
+            <!-- What this model is: its own classes and the region it looks at,
+                 both read straight off the model. -->
+            <div class="meta">
+              {#if run.source === 'imported'}
+                <span>{run.classes.length} Klassen</span>
+              {:else}
+                <span class="acc">{acc != null ? (acc * 100).toFixed(1) + ' %' : '–'}</span>
+                <span>·</span>
+                <span>{run.history.epochs.length} Ep.</span>
+                <span>·</span>
+                <span>{run.classes.length} Klassen</span>
+                <span>·</span>
+                <span>{Object.values(run.exampleCounts).reduce((a, b) => a + b, 0)} Bilder</span>
+              {/if}
+              <span class="roi-badge" title={run.roi ? `Trainiert im Bildbereich ${roiSizeLabel(run.roi)}` : 'Trainiert mit dem ganzen Bild'}>
+                {run.roi ? `Bereich ${roiSizeLabel(run.roi)}` : 'Ganzes Bild'}
+              </span>
+            </div>
+            <div class="classes" title={run.classes.join(', ')}>{run.classes.join(' · ')}</div>
           </div>
-          <!-- What this model is: its own classes and the region it looks at,
-               both read straight off the model. -->
-          <div class="meta">
-            {#if run.source === 'imported'}
-              <span>{run.classes.length} Klassen</span>
-            {:else}
-              <span class="acc">{acc != null ? (acc * 100).toFixed(1) + ' %' : '–'}</span>
-              <span>·</span>
-              <span>{run.history.epochs.length} Ep.</span>
-              <span>·</span>
-              <span>{run.classes.length} Klassen</span>
-              <span>·</span>
-              <span>{Object.values(run.exampleCounts).reduce((a, b) => a + b, 0)} Bilder</span>
-            {/if}
-            <span class="roi-badge" title={run.roi ? `Trainiert im Bildbereich ${roiSizeLabel(run.roi)}` : 'Trainiert mit dem ganzen Bild'}>
-              {run.roi ? `Bereich ${roiSizeLabel(run.roi)}` : 'Ganzes Bild'}
-            </span>
-          </div>
-          <div class="classes">{run.classes.join(' · ')}</div>
+          <Dropdown placement="bottom-end">
+            {#snippet trigger()}
+              <button type="button" class="menu" aria-label="Aktionen" title="Mehr">⋯</button>
+            {/snippet}
+            {#snippet children()}
+              <DropdownItem onclick={() => onLoad(run.id)}>Dieses Modell laden</DropdownItem>
+              <DropdownItem onclick={() => startEdit(run.id, run.label)}>Umbenennen</DropdownItem>
+              <DropdownItem onclick={() => onExport(run.id)}>Exportieren</DropdownItem>
+              <DropdownItem onclick={() => onDelete(run.id)}>Löschen</DropdownItem>
+            {/snippet}
+          </Dropdown>
         </div>
-        <Dropdown placement="bottom-end">
-          {#snippet trigger()}
-            <button type="button" class="menu" aria-label="Aktionen" title="Mehr">⋯</button>
-          {/snippet}
-          {#snippet children()}
-            <DropdownItem onclick={() => onLoad(run.id)}>Dieses Modell laden</DropdownItem>
-            <DropdownItem onclick={() => startEdit(run.id, run.label)}>Umbenennen</DropdownItem>
-            <DropdownItem onclick={() => onExport(run.id)}>Exportieren</DropdownItem>
-            <DropdownItem onclick={() => onDelete(run.id)}>Löschen</DropdownItem>
-          {/snippet}
-        </Dropdown>
       </li>
     {/each}
   </ul>
@@ -174,179 +188,34 @@
 {/if}
 
 <style lang="scss">
-  .history-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    max-height: 260px;
-    overflow-y: auto;
-  }
-  .history-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 4px 2px 0;
-    border-radius: var(--md-radius-md);
-    background: rgba(var(--md-surface-variant), 0.3);
-    border: 2px solid transparent;
-    cursor: pointer;
-    transition: all 0.2s;
-    &:hover {
-      background: rgb(var(--md-surface-variant));
-      box-shadow: var(--md-elevation-1);
-    }
-    &.active {
-      border-color: rgb(var(--md-primary));
-      background: rgba(var(--md-primary-container));
-    }
-  }
-  .main {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 10px 12px;
-    background: transparent;
-    border: none;
-    text-align: left;
-    cursor: pointer;
-    color: rgb(var(--md-on-surface));
-    box-shadow: none;
-    min-height: unset;
-    font: inherit;
-  }
-  .title {
-    font-size: 13px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-  }
-  .title-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-  }
-  .title-edit {
-    flex: 1;
-    min-width: 0;
-    padding: 2px 6px;
-    border: 1.5px solid rgb(var(--md-primary));
-    border-radius: var(--md-radius-sm);
-    background: rgb(var(--md-surface));
-    font: inherit;
-    font-weight: 600;
-    color: rgb(var(--md-on-surface));
-  }
-  .edit-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: rgb(var(--md-on-surface-variant));
-    border-radius: 999px;
-    cursor: pointer;
-    opacity: 0;
-    transition: background 0.15s, opacity 0.15s, color 0.15s;
-    &:focus-visible {
-      opacity: 1;
-      outline: 2px solid rgb(var(--md-primary));
-      outline-offset: 1px;
-    }
-    &:hover {
-      background: rgba(var(--md-on-surface), 0.08);
-      color: rgb(var(--md-on-surface));
-    }
-  }
-  .history-row:hover .edit-btn,
-  .history-row.active .edit-btn {
+  // Shared with the program list in Programmieren — see src/lib/styles/_lists.scss.
+  @use '../../styles/lists' as *;
+
+  .entry-list { @include entry-list(260px); }
+  .entry-row { @include entry-row; }
+  .row-top { @include entry-row-top; }
+  .main { @include entry-main; }
+  .title { @include entry-title; }
+  .title-text { @include entry-title-text; }
+  .title-edit { @include entry-title-edit; }
+  .edit-btn { @include entry-edit-btn; }
+  .chip { @include entry-chip; }
+  .classes { @include entry-classes; }
+  .menu { @include entry-menu-btn; }
+  .empty { @include entry-empty; }
+
+  .entry-row:hover .edit-btn,
+  .entry-row.active .edit-btn {
     opacity: 0.7;
     &:hover { opacity: 1; }
   }
-  .chip {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    padding: 1px 6px;
-    border-radius: 99px;
-    background: rgb(var(--md-primary));
-    color: rgb(var(--md-on-primary));
-    flex-shrink: 0;
-    &.muted {
-      background: rgba(var(--md-on-surface), 0.12);
-      color: rgb(var(--md-on-surface-variant));
-    }
-  }
-  // The model's own class list, so a model can be told apart from its siblings
-  // without opening it.
-  .classes {
-    font-size: 11px;
-    color: rgb(var(--md-on-surface-variant));
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+
   .meta {
-    font-size: 12px;
-    color: rgb(var(--md-on-surface-variant));
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
+    @include entry-meta;
     .acc {
       color: rgb(var(--md-primary));
       font-weight: 600;
     }
-    .roi-badge {
-      margin-left: auto;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.3px;
-      padding: 1px 6px;
-      border-radius: 99px;
-      background: rgb(var(--md-tertiary-container, var(--md-surface-variant)));
-      color: rgb(var(--md-on-tertiary-container, var(--md-on-surface)));
-      font-variant-numeric: tabular-nums;
-    }
-  }
-  .menu {
-    width: 28px;
-    height: 28px;
-    min-height: unset;
-    padding: 0;
-    box-shadow: none;
-    border: none;
-    border-radius: 999px;
-    background: transparent;
-    color: rgb(var(--md-on-surface-variant));
-    cursor: pointer;
-    font-size: 16px;
-    font-family: inherit;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: background 0.15s, color 0.15s;
-    &:hover {
-      background: rgba(var(--md-on-surface), 0.08);
-      color: rgb(var(--md-on-surface));
-    }
-  }
-  .empty {
-    padding: 12px;
-    text-align: center;
-    font-size: 13px;
-    color: rgb(var(--md-on-surface-variant));
-    font-style: italic;
+    .roi-badge { @include entry-badge; }
   }
 </style>

@@ -30,7 +30,7 @@
     setConnectionUiActive,
     setTransferProgram,
   } from '@calliope-edu/mini-connection-widget';
-  import { currentLang, t } from '$lib/stores/app';
+  import { currentLang } from '$lib/stores/app';
   import { currentProject, getCurrentMakeCodeProgram } from '$lib/stores/projects';
   import { activeModel, availableModels } from '$lib/stores/projects';
   import { createProgramForModel, loadProgramModel } from '$lib/programs';
@@ -41,37 +41,40 @@
   import ProgramList from '$lib/components/tryout/ProgramList.svelte';
 
   let iframeEl: HTMLIFrameElement | undefined = $state();
+  // Read once: the MakeCode iframe cannot change its language without a reload,
+  // so the URL is pinned to whatever locale was active when the page mounted.
   const src = createMakeCodeIframeUrl(get(currentLang));
 
-  const lang = $derived($currentLang);
-
-  // The shared toolbar and share modal carry German defaults; route them through
-  // the app's own dictionary so they follow the language switcher.
+  // The shared toolbar and share modal carry their own German defaults; passing
+  // the strings from here puts them in this app's catalog so they follow the
+  // language switcher instead of the widget's.
   const makeCodeLabels = $derived<Partial<MakeCodeLabels>>({
-    programmingMode: t('makecode.programmingMode', lang),
-    modeBlocks: t('makecode.modeBlocks', lang),
-    share: t('makecode.share', lang),
-    shareProgram: t('makecode.shareProgram', lang),
-    sharingInProgress: t('makecode.sharingInProgress', lang),
-    extensions: t('makecode.extensions', lang),
-    extensionsCount: (count: number) =>
-      `${count} ${count === 1 ? t('makecode.extension', lang) : t('makecode.extensions', lang)}`,
-    noExtensionsAdded: t('makecode.noExtensionsAdded', lang),
-    openOnGithub: t('makecode.openOnGithub', lang),
-    removeExtension: t('makecode.removeExtension', lang),
-    calliopeMiniVersion: t('makecode.calliopeMiniVersion', lang),
-    shareModalTitle: t('makecode.shareModalTitle', lang),
-    shareCreatingLink: t('makecode.shareCreatingLink', lang),
-    shareIntroBefore: t('makecode.shareIntroBefore', lang),
-    shareIntroAfter: t('makecode.shareIntroAfter', lang),
-    shareThisProgram: t('makecode.shareThisProgram', lang),
-    shareLinkAria: t('makecode.shareLinkAria', lang),
-    shareCopyLink: t('makecode.shareCopyLink', lang),
-    shareLinkCopied: t('makecode.shareLinkCopied', lang),
-    shareCopyFailed: t('makecode.shareCopyFailed', lang),
-    shareQrAlt: t('makecode.shareQrAlt', lang),
-    shareClose: t('makecode.shareClose', lang),
-    shareOpen: t('makecode.shareOpen', lang),
+    programmingMode: 'Programmiermodus',
+    modeBlocks: 'Blöcke',
+    share: 'Teilen',
+    shareProgram: 'Programm teilen',
+    sharingInProgress: 'Wird geteilt…',
+    extensions: 'Erweiterungen',
+    extensionsCount: (count: number) => `${count} ${count === 1 ? 'Erweiterung' : 'Erweiterungen'}`,
+    noExtensionsAdded: 'Keine Erweiterungen hinzugefügt',
+    openOnGithub: 'Auf GitHub öffnen',
+    removeExtension: 'Erweiterung entfernen',
+    calliopeMiniVersion: 'Calliope mini Version',
+    shareModalTitle: 'Programm teilen',
+    shareCreatingLink: 'Link wird erstellt…',
+    shareIntroBefore: 'Jeder mit diesem Link kann ',
+    // The sentence is split around a link, so these two fragments start
+    // lowercase — which the default heuristic reads as "not user-facing" and
+    // skips. Forced in, otherwise they stay German in every other locale.
+    shareIntroAfter: /* @wc-include */ ' öffnen und kopieren.',
+    shareThisProgram: /* @wc-include */ 'dieses Programm',
+    shareLinkAria: 'Link zum Programm',
+    shareCopyLink: 'Link kopieren',
+    shareLinkCopied: 'Link kopiert',
+    shareCopyFailed: 'Kopieren fehlgeschlagen',
+    shareQrAlt: 'QR-Code zum Programm',
+    shareClose: 'Schließen',
+    shareOpen: 'Öffnen',
   });
 
   function pickEditorLang(mode: MakeCodeMode) {
@@ -98,7 +101,7 @@
       );
     } catch (err) {
       console.warn('[tryout] shareProject failed', err);
-      shareError = t('makecode.shareFailed', lang);
+      shareError = 'Der Link konnte nicht erstellt werden. Versuche es später erneut.';
     } finally {
       shareLoading = false;
     }
@@ -127,7 +130,7 @@
         if (!m) void ensureActiveModelLoaded();
       });
     } else {
-      const model = get(activeModel) ?? get(availableModels)[0] ?? null;
+      const model = get(activeModel) ?? get(availableModels).at(-1) ?? null;
       if (model) {
         createProgramForModel(model);
         void ensureActiveModelLoaded();
