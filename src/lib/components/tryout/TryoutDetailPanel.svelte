@@ -3,12 +3,12 @@
   import { currentDetection } from '$lib/stores/streaming';
   import { currentLang, t } from '$lib/stores/app';
   import { currentProject } from '$lib/stores/projects';
+  import { CLASS_THRESHOLD } from '$lib/calibration';
 
   const lang = $derived($currentLang);
   const det = $derived($currentDetection);
   const log = $derived($calliopeLog);
   const mode = $derived($currentProject?.mode ?? 'image');
-  const thresholds = $derived($currentProject?.classThresholds ?? {});
 
   function formatTime(ts: number): string {
     return new Date(ts).toLocaleTimeString(undefined, { hour12: false });
@@ -21,22 +21,25 @@
     <h4>{t('detail.currentDetection', lang)}</h4>
     {#if det}
       <ul class="score-list">
+        <!-- Scores are the mapped ones the detection carries; the threshold is
+             the same for every class, so it is one line in the same place. -->
         {#each det.labels as cls, i (cls)}
           {@const p = det.all[i] ?? 0}
-          {@const thr = thresholds[cls] ?? 0.6}
-          {@const top = i === det.id - 1}
-          {@const triggered = top && p >= thr}
+          {@const triggered = det.detected && i === det.id - 1}
           <li class:top={triggered}>
             <div class="row1">
               <span class="name">{cls}</span>
               <span class="sub-pct">
                 <span class="pct-val">{Math.round(p * 100)}%</span>
-                <span class="thr-val">· {Math.round(thr * 100)}%</span>
               </span>
             </div>
             <div class="sub-bar" aria-hidden="true">
               <span class="sub-fill" class:triggered style="width:{p * 100}%"></span>
-              <span class="threshold-marker" style="left:{thr * 100}%" title="Schwellwert {Math.round(thr * 100)}%"></span>
+              <span
+                class="threshold-marker"
+                style="left:{CLASS_THRESHOLD * 100}%"
+                title="Erkannt ab {Math.round(CLASS_THRESHOLD * 100)}%"
+              ></span>
             </div>
           </li>
         {/each}
@@ -139,7 +142,6 @@
     }
     .name { color: #222; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sub-pct { font-variant-numeric: tabular-nums; color: #555; }
-    .thr-val { color: #888; margin-left: 2px; }
     .sub-bar {
       position: relative;
       height: 6px;

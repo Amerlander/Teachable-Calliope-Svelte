@@ -39,7 +39,6 @@
     t,
     isTesting,
     isTraining,
-    trainStatus,
     workspaceTab,
     modelTabView,
     draftRoi,
@@ -52,8 +51,26 @@
   import ModelCharts from '$lib/components/training/ModelCharts.svelte';
   import ModelDetailsModal from '$lib/components/training/ModelDetailsModal.svelte';
   import TrainingProgress from '$lib/components/training/TrainingProgress.svelte';
-  import { activeModel, currentProject, setClassThreshold } from '$lib/stores/projects';
-  import { streamClassProbabilities, streamPoseKeypoints, smoothingWindow, pickWinnerIndex } from '$lib/stores/streaming';
+  import {
+    activeModel,
+    currentProject,
+    resetModelClassRanges,
+    setModelClassRange
+  } from '$lib/stores/projects';
+  import {
+    streamClassProbabilities,
+    streamPoseKeypoints,
+    smoothingWindow,
+    type CurrentDetection
+  } from '$lib/stores/streaming';
+  import {
+    CLASS_THRESHOLD,
+    MIN_RANGE_SPAN,
+    rangeFor,
+    rawTriggerPoint,
+    type ClassRange
+  } from '$lib/calibration';
+  import { autoCalibrateActiveModel } from '$lib/models';
 
   const lang = $derived($currentLang);
   const isPose = $derived($currentProject?.mode === 'pose');
@@ -71,23 +88,18 @@
   let cameraReady = $state(false);
   let poseRaf: number | null = null;
 
-  const thresholds = $derived($currentProject?.classThresholds ?? {});
+  // The mapping windows belong to the model being tested, so they follow the
+  // model selection rather than the project's live state.
+  const ranges = $derived($activeModel?.classRanges ?? {});
   // The selected model's own region — shown while testing so it is visible what
   // the model is looking at, and never editable there.
   const currentModelRoi = $derived($activeModel?.roi ?? null);
   let videoAspect = $state(4 / 3);
-  // Winner is chosen by threshold-normalized score across all classes (see
-  // pickWinnerIndex) — a class with lots of headroom above its threshold beats
-  // a class with higher raw probability that is sitting below its threshold.
-  // Labels come from the loaded model's own class list, not from whatever the
-  // project holds right now — those two diverge as soon as a class is added.
-  const topLabel = $derived.by(() => {
-    if (!prediction) return null;
-    const labels = $predictionClasses;
-    const idx = pickWinnerIndex(labels, prediction.all, thresholds);
-    return idx < 0 ? null : (labels[idx] ?? null);
-  });
-  let prediction = $state<{ label: string; confidence: number; all: number[] } | null>(null);
+  // Every score below is the mapped one, decided in streamClassProbabilities:
+  // it maps each class through its window, applies the fixed threshold and picks
+  // the winner. Nothing here recomputes that.
+  const topLabel = $derived(prediction?.detected ? prediction.label : null);
+  let prediction = $state<CurrentDetection | null>(null);
   let predInterval: ReturnType<typeof setInterval> | null = null;
   let lastTickAt = 0;
   let fps = $state(0);
@@ -100,27 +112,6 @@
         ? 'prep'
         : 'test'
   );
-
-  // A running training takes over both the indicator and the panel under the
-  // video — that run is what is happening, not a live test.
-  const indicator = $derived.by(() => {
-    if ($isTraining) return { kind: 'training', label: 'Training', hint: $trainStatus };
-    if (mode === 'test')
-      return {
-        kind: 'test',
-        label: 'Test',
-        hint: !$classifierModel ? 'Kein Modell – bitte erst trainieren' : 'Live-Vorhersage aktiv'
-      };
-    if (mode === 'prep')
-      return {
-        kind: 'prep',
-        label: 'Vorbereitung',
-        hint: $draftRoi
-          ? 'Bereich wird mit dem nächsten Modell gespeichert'
-          : 'Ganzes Bild – du kannst einen Bereich festlegen'
-      };
-    return { kind: 'train', label: 'Aufnahme', hint: 'Bild wird zur aktiven Klasse aufgenommen' };
-  });
 
   let detailsOpen = $state(false);
 
@@ -208,13 +199,16 @@
   // Auto-start/stop the test loop whenever mode or classifier availability changes.
   // While a training runs, the previously loaded classifier must stay idle — it
   // is about to be replaced and predicting against it competes for the GPU.
+  // Auto-calibration scores every recorded example through the same classifier,
+  // so the live loop steps aside for it instead of queueing predictions behind
+  // each measurement.
   $effect(() => {
     const m = mode;
     const hasModel = !!$classifierModel;
-    if (m === 'test' && hasModel && !$isTraining) {
+    if (m === 'test' && hasModel && !$isTraining && !autoCalibrating) {
       startTest();
     } else {
-      stopTest();
+      stopTest({ keepLastFrame: autoCalibrating });
     }
   });
 
@@ -236,18 +230,19 @@
           fps = dt > 0 ? Math.round((1000 / dt) * 10) / 10 : 0;
         }
         lastTickAt = now;
-        prediction = { label: res.className, confidence: res.probability, all: res.allProbs ?? [] };
-        streamClassProbabilities($predictionClasses, res.allProbs ?? []);
+        prediction = streamClassProbabilities($predictionClasses, res.allProbs ?? []);
       } catch {
         /* ignore */
       }
     }, 150);
   }
 
-  function stopTest() {
+  // `keepLastFrame` is for the pause during auto-calibration: the panel that
+  // holds the button has to stay on screen while the measurement runs.
+  function stopTest(opts?: { keepLastFrame?: boolean }) {
     isTesting.set(false);
     if (predInterval) { clearInterval(predInterval); predInterval = null; }
-    prediction = null;
+    if (!opts?.keepLastFrame) prediction = null;
     fps = 0;
     lastTickAt = 0;
   }
@@ -368,27 +363,77 @@
     }
   }
 
-  // ---------- Threshold drag (directly on the sub-bar) ----------
-  function setThresholdFromEvent(cls: string, el: HTMLElement, clientX: number) {
-    const r = el.getBoundingClientRect();
-    const v = clamp((clientX - r.left) / r.width);
-    setClassThreshold(cls, v);
+  // ---------- Mapping editor (per class, on the raw-value track) ----------
+  // Which class has its mapping open. Only one at a time — the raw track is only
+  // meaningful next to the handles that set it.
+  let mappingOpen = $state<string | null>(null);
+  let autoCalibrating = $state(false);
+  let autoCalibrateNote = $state<string | null>(null);
+
+  function toggleMapping(cls: string) {
+    mappingOpen = mappingOpen === cls ? null : cls;
   }
 
-  function startThresholdDrag(cls: string, e: PointerEvent) {
-    const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
-    setThresholdFromEvent(cls, el, e.clientX);
-    const onMove = (ev: PointerEvent) => setThresholdFromEvent(cls, el, ev.clientX);
-    const onUp = (ev: PointerEvent) => {
-      el.releasePointerCapture?.(ev.pointerId);
-      el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
-      el.removeEventListener('pointercancel', onUp);
+  /** Move one end of a class's window, keeping the two at least a span apart. */
+  function moveHandle(cls: string, end: 'lo' | 'hi', value: number) {
+    const current = rangeFor(ranges, cls);
+    const next: ClassRange =
+      end === 'lo'
+        ? { lo: Math.min(clamp(value), current.hi - MIN_RANGE_SPAN), hi: current.hi }
+        : { lo: current.lo, hi: Math.max(clamp(value), current.lo + MIN_RANGE_SPAN) };
+    setModelClassRange($activeModel?.id, cls, next);
+  }
+
+  function startHandleDrag(cls: string, end: 'lo' | 'hi', e: PointerEvent) {
+    e.stopPropagation();
+    const handle = e.currentTarget as HTMLElement;
+    const track = handle.parentElement;
+    if (!track) return;
+    handle.setPointerCapture(e.pointerId);
+    const valueAt = (clientX: number) => {
+      const r = track.getBoundingClientRect();
+      return (clientX - r.left) / r.width;
     };
-    el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
-    el.addEventListener('pointercancel', onUp);
+    const onMove = (ev: PointerEvent) => moveHandle(cls, end, valueAt(ev.clientX));
+    const onUp = (ev: PointerEvent) => {
+      handle.releasePointerCapture?.(ev.pointerId);
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  }
+
+  function onHandleKey(cls: string, end: 'lo' | 'hi', e: KeyboardEvent) {
+    const current = rangeFor(ranges, cls);
+    const v = end === 'lo' ? current.lo : current.hi;
+    let next = v;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = v - 0.05;
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = v + 0.05;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = 1;
+    else return;
+    e.preventDefault();
+    moveHandle(cls, end, next);
+  }
+
+  /** Derive every window from how the model scores the recorded examples. */
+  async function runAutoCalibrate() {
+    if (autoCalibrating) return;
+    autoCalibrating = true;
+    autoCalibrateNote = null;
+    try {
+      const written = await autoCalibrateActiveModel();
+      autoCalibrateNote = written
+        ? null
+        : 'Keine Beispiele im Projekt — Bereiche bitte von Hand setzen.';
+    } catch {
+      autoCalibrateNote = 'Automatik fehlgeschlagen.';
+    } finally {
+      autoCalibrating = false;
+    }
   }
 
   // ---------- Interactive class list (replaces sidebar Klassen tab) ----------
@@ -688,35 +733,11 @@
     if (selectionClass === cls) clearSelection();
   }
 
-  function onThresholdKey(cls: string, thr: number, e: KeyboardEvent) {
-    let next = thr;
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = clamp(thr - 0.05);
-    else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = clamp(thr + 0.05);
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = 1;
-    else return;
-    e.preventDefault();
-    setClassThreshold(cls, next);
-  }
 </script>
 
 <svelte:window onkeydown={onWindowKeydown} />
 
 <div class="right-panel">
-  <!-- Top bar: mode indicator (above the video) -->
-  <div class="top-bar">
-    <div
-      class="mode-indicator"
-      class:test={indicator.kind === 'test'}
-      class:prep={indicator.kind === 'prep'}
-      class:training={indicator.kind === 'training'}
-    >
-      <span class="dot"></span>
-      <span class="label">{indicator.label}</span>
-      <span class="hint">{indicator.hint}</span>
-    </div>
-  </div>
-
   <!-- Train view -->
   <div class="video-wrap" class:hidden={mode !== 'train'} class:pose-mode={isPose}>
     <video class="bg" bind:this={webcamBgEl} autoplay playsinline muted aria-hidden="true">
@@ -759,58 +780,109 @@
       {/if}
 
       {#if prediction}
-        {@const topIdx = topLabel ? $predictionClasses.indexOf(topLabel) : -1}
-        {@const topConf = topIdx >= 0 ? (prediction.all[topIdx] ?? 0) : prediction.confidence}
         <div class="prediction-display" class:below-threshold={!topLabel}>
           <div class="pred-head">
             <strong>{topLabel ?? '–'}</strong>
-            <span class="pct">{Math.round(topConf * 100)}%</span>
+            <span class="pct">{Math.round(prediction.confidence * 100)}%</span>
           </div>
           <div class="bar-bg">
-            <div class="bar-fill" style="width:{topConf * 100}%"></div>
+            <div class="bar-fill" style="width:{prediction.confidence * 100}%"></div>
           </div>
           {#if !topLabel}
-            <span class="below-hint">unter Schwellwert</span>
+            <span class="below-hint">unter {Math.round(CLASS_THRESHOLD * 100)}%</span>
           {/if}
         </div>
 
-        <!-- Verbose: all class scores + FPS + per-class threshold -->
+        <!-- All class scores on their mapped scale, plus the mapping editor. The
+             threshold is the same 60% for every class, so it is one line across
+             the bars rather than a marker per class. -->
         <div class="details">
           <div class="details-head">
             <span>Alle Klassen</span>
             <span class="fps">{fps ? `${fps} Hz` : '…'}</span>
           </div>
           <ul class="score-list">
-            {#each $predictionClasses as cls, i (cls)}
+            <!-- The frame's own label list, so a score can't end up next to the
+                 wrong class if the project's list moves on mid-test. -->
+            {#each prediction.labels as cls, i (cls)}
               {@const p = prediction.all[i] ?? 0}
-              {@const thr = thresholds[cls] ?? 0}
-              {@const triggered = cls === topLabel && p >= thr}
-              <li class:top={triggered}>
+              {@const raw = prediction.raw[i] ?? 0}
+              {@const range = rangeFor(ranges, cls)}
+              {@const editing = mappingOpen === cls}
+              <li class:top={cls === topLabel}>
                 <div class="row1">
                   <span class="name">{cls}</span>
                   <span class="sub-pct">
                     <span class="pct-val">{Math.round(p * 100)}%</span>
-                    <span class="thr-val">· {Math.round(thr * 100)}%</span>
+                    <button
+                      class="map-toggle"
+                      class:active={editing}
+                      title="Bereich für {cls} festlegen"
+                      aria-expanded={editing}
+                      onclick={() => toggleMapping(cls)}
+                    >
+                      Bereich
+                    </button>
                   </span>
                 </div>
-                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-                <div
-                  class="sub-bar"
-                  role="slider"
-                  tabindex="0"
-                  aria-label="Schwellwert für {cls}"
-                  aria-valuemin="0"
-                  aria-valuemax="100"
-                  aria-valuenow={Math.round(thr * 100)}
-                  onpointerdown={(e) => startThresholdDrag(cls, e)}
-                  onkeydown={(e) => onThresholdKey(cls, thr, e)}
-                >
+                <div class="sub-bar" aria-hidden="true">
                   <span class="sub-fill" style="width:{p * 100}%"></span>
-                  <span class="threshold-marker" style="left:{thr * 100}%" title="Schwellwert {Math.round(thr * 100)}%"></span>
+                  <span class="threshold-marker" style="left:{CLASS_THRESHOLD * 100}%"></span>
                 </div>
+
+                {#if editing}
+                  <!-- Second track, in raw model values: this is the only place
+                       the model's own number is shown. -->
+                  <div class="mapping">
+                    <div class="raw-track">
+                      <span
+                        class="raw-window"
+                        style="left:{range.lo * 100}%;width:{(range.hi - range.lo) * 100}%"
+                      ></span>
+                      <span class="raw-marker" style="left:{raw * 100}%"></span>
+                      <button
+                        class="raw-handle"
+                        style="left:{range.lo * 100}%"
+                        role="slider"
+                        aria-label="0 % entspricht rohem Wert, {cls}"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow={Math.round(range.lo * 100)}
+                        onpointerdown={(e) => startHandleDrag(cls, 'lo', e)}
+                        onkeydown={(e) => onHandleKey(cls, 'lo', e)}
+                      ><span class="handle-cap">0%</span></button>
+                      <button
+                        class="raw-handle"
+                        style="left:{range.hi * 100}%"
+                        role="slider"
+                        aria-label="100 % entspricht rohem Wert, {cls}"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow={Math.round(range.hi * 100)}
+                        onpointerdown={(e) => startHandleDrag(cls, 'hi', e)}
+                        onkeydown={(e) => onHandleKey(cls, 'hi', e)}
+                      ><span class="handle-cap">100%</span></button>
+                    </div>
+                    <div class="mapping-legend">
+                      <span class="raw-now">roh {Math.round(raw * 100)}%</span>
+                      <span class="raw-trigger">
+                        erkannt ab roh {Math.round(rawTriggerPoint(range) * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                {/if}
               </li>
             {/each}
           </ul>
+          <div class="mapping-actions">
+            <button onclick={runAutoCalibrate} disabled={autoCalibrating}>
+              {autoCalibrating ? 'Messe…' : 'Bereiche automatisch'}
+            </button>
+            <button onclick={() => resetModelClassRanges($activeModel?.id)}>Zurücksetzen</button>
+          </div>
+          {#if autoCalibrateNote}
+            <div class="mapping-note">{autoCalibrateNote}</div>
+          {/if}
           <div class="smoothing">
             <label for="smoothing-slider" class="smoothing-label">
               Glättung (Fenster): <strong>{$smoothingWindow}</strong>
@@ -1238,55 +1310,13 @@
 <ModelDetailsModal bind:isOpen={detailsOpen} />
 
 <style lang="scss">
+  // Nothing in the column has a frame anymore, so it also has no gaps: the video
+  // starts at the pane's top edge and the band below it meets it flush.
   .right-panel {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 8px;
     min-height: 0;
-  }
-  .top-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .mode-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 12px;
-    border-radius: var(--md-radius-md);
-    background: rgba(var(--md-surface-variant), 0.5);
-    font-size: 13px;
-    color: rgb(var(--md-on-surface-variant));
-    .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: rgb(var(--md-primary));
-      box-shadow: 0 0 0 3px rgba(var(--md-primary), 0.2);
-    }
-    .label {
-      font-weight: 600;
-      color: rgb(var(--md-on-surface));
-      letter-spacing: 0.3px;
-    }
-    .hint {
-      color: rgb(var(--md-on-surface-variant));
-      font-size: 12px;
-    }
-    &.test .dot {
-      background: #adf54c;
-      box-shadow: 0 0 0 3px rgba(173, 245, 76, 0.25);
-      animation: pulse 1.4s ease-in-out infinite;
-    }
-    &.prep .dot {
-      background: #f5a54c;
-      box-shadow: 0 0 0 3px rgba(245, 165, 76, 0.25);
-    }
-    &.training .dot {
-      background: rgb(var(--md-primary));
-      animation: pulsePrimary 1.2s ease-in-out infinite;
-    }
   }
 
   // ----- Test view -----
@@ -1297,7 +1327,6 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 10px;
     min-height: 0;
     &.hidden { display: none; }
   }
@@ -1312,8 +1341,9 @@
     flex: 0 1 auto;
     max-height: 62%;
     overflow-y: auto;
+    // A full-width band below the video rather than a card — the pane's content
+    // has no frames of its own.
     background: rgba(var(--md-surface-variant), 0.3);
-    border-radius: var(--md-radius-lg);
     padding: 12px;
     display: flex;
     flex-direction: column;
@@ -1424,7 +1454,6 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 10px;
     min-height: 0;
     &.hidden { display: none; }
   }
@@ -1515,8 +1544,8 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    // Same full-width band as .model-info in the test view.
     background: rgba(var(--md-surface-variant), 0.3);
-    border-radius: var(--md-radius-lg);
     padding: 12px;
     display: flex;
     flex-direction: column;
@@ -1865,24 +1894,19 @@
     z-index: 4;
     backdrop-filter: blur(4px);
   }
-  @keyframes pulse {
-    0%, 100% { box-shadow: 0 0 0 3px rgba(173, 245, 76, 0.25); }
-    50%      { box-shadow: 0 0 0 6px rgba(173, 245, 76, 0.08); }
-  }
-  @keyframes pulsePrimary {
-    0%, 100% { box-shadow: 0 0 0 3px rgba(var(--md-primary), 0.3); }
-    50%      { box-shadow: 0 0 0 6px rgba(var(--md-primary), 0.08); }
-  }
+  // No frame of its own: the video is the top of the pane, so it runs edge to
+  // edge and straight into the corners — the pane's own radius is what rounds it
+  // up there. Only its lower edge carries a radius of its own, the pane's, so
+  // the black block sits on the band below it with the same soft edge.
   .video-wrap {
     flex: 1;
     position: relative;
-    border-radius: var(--md-radius-lg);
     overflow: hidden;
     background: #000;
+    border-radius: 0 0 var(--pane-radius, var(--md-radius-lg)) var(--pane-radius, var(--md-radius-lg));
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: var(--md-elevation-2);
     min-height: 0;
     &.hidden { display: none; }
     video {
@@ -2029,13 +2053,6 @@
           background: rgb(var(--md-surface-variant));
           border-radius: 6px;
           overflow: visible;
-          cursor: pointer;
-          touch-action: none;
-          user-select: none;
-          outline: none;
-          &:focus-visible {
-            box-shadow: 0 0 0 2px rgb(var(--md-primary));
-          }
         }
         .sub-fill {
           display: block;
@@ -2061,15 +2078,120 @@
           font-size: 11px;
           color: rgb(var(--md-on-surface-variant));
           display: inline-flex;
-          gap: 4px;
+          align-items: center;
+          gap: 6px;
           .pct-val { color: rgb(var(--md-on-surface)); font-weight: 600; }
-          .thr-val { opacity: 0.7; }
+        }
+        .map-toggle {
+          border: 1px solid rgb(var(--md-outline-variant));
+          background: transparent;
+          color: rgb(var(--md-on-surface-variant));
+          font-size: 9px;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          padding: 1px 5px;
+          border-radius: 999px;
+          cursor: pointer;
+          &:hover { color: rgb(var(--md-on-surface)); }
+          &.active {
+            border-color: rgb(var(--md-primary));
+            color: rgb(var(--md-primary));
+          }
+        }
+        // The raw-value track. Its scale is the model's own output, not the
+        // mapped one above it, so it stays visually separate: thinner, inset,
+        // and only visible while the mapping is being set.
+        .mapping {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          margin: 4px 0 2px;
+          padding-left: 2px;
+        }
+        .raw-track {
+          position: relative;
+          height: 6px;
+          background: rgb(var(--md-surface-variant));
+          border-radius: 3px;
+          touch-action: none;
+        }
+        .raw-window {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          background: rgba(var(--md-primary), 0.35);
+          border-radius: 3px;
+          pointer-events: none;
+        }
+        .raw-marker {
+          position: absolute;
+          top: -3px;
+          bottom: -3px;
+          width: 2px;
+          background: rgb(var(--md-on-surface));
+          transform: translateX(-50%);
+          pointer-events: none;
+        }
+        .raw-handle {
+          position: absolute;
+          top: -5px;
+          width: 10px;
+          height: 16px;
+          margin-left: -5px;
+          padding: 0;
+          border: 1px solid rgb(var(--md-outline));
+          border-radius: 3px;
+          background: rgb(var(--md-surface));
+          cursor: ew-resize;
+          touch-action: none;
+          outline: none;
+          &:focus-visible { box-shadow: 0 0 0 2px rgb(var(--md-primary)); }
+          .handle-cap {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 8px;
+            color: rgb(var(--md-on-surface-variant));
+            pointer-events: none;
+          }
+        }
+        .mapping-legend {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 10px;
+          font-size: 9px;
+          font-variant-numeric: tabular-nums;
+          color: rgb(var(--md-on-surface-variant));
+          .raw-now { color: rgb(var(--md-on-surface)); }
         }
         &.top {
           .name { color: rgb(var(--md-primary)); font-weight: 700; }
           .sub-fill { background: rgb(var(--md-primary)); }
         }
       }
+    }
+    .mapping-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+      button {
+        flex: 1;
+        font-size: 10px;
+        padding: 3px 6px;
+        border: 1px solid rgb(var(--md-outline-variant));
+        border-radius: var(--md-radius-sm, 6px);
+        background: transparent;
+        color: rgb(var(--md-on-surface-variant));
+        cursor: pointer;
+        &:hover:not(:disabled) { color: rgb(var(--md-on-surface)); }
+        &:disabled { opacity: 0.5; cursor: default; }
+      }
+    }
+    .mapping-note {
+      margin-top: 6px;
+      font-size: 10px;
+      color: rgb(var(--md-on-surface-variant));
     }
     .smoothing {
       margin-top: 12px;

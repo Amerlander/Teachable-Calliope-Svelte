@@ -33,7 +33,6 @@
   const mode = $derived($currentProject?.mode ?? 'image');
   const modelReady = $derived(!!$classifierModel && !!$mobilenetModel);
   const det = $derived($currentDetection);
-  const confidentThreshold = 0.7;
 
   async function tick() {
     if (disposed || tickInFlight) return;
@@ -115,7 +114,7 @@
     {/if}
 
     {#if det}
-      <div class="prediction-overlay" class:confident={det.confidence >= confidentThreshold}>
+      <div class="prediction-overlay" class:confident={det.detected}>
         <div class="pred-label">{det.label}</div>
         <div class="pred-bar">
           <div class="pred-bar-fill" style="width: {(det.confidence * 100).toFixed(0)}%"></div>

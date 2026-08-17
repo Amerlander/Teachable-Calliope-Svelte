@@ -29,6 +29,7 @@ import {
   type AugmentationSettings
 } from './stores/projects';
 import type { ModelMetadata } from './stores';
+import { normalizeRange, type ClassRange } from './calibration';
 
 // We will dynamically import TensorFlow and other libs on the client side
 
@@ -807,6 +808,8 @@ type ModelZipMetadata = ModelMetadata & {
   roi?: Roi;
   featureExtractor?: FeatureExtractor;
   mode?: ProjectMode;
+  /** Per-class calibration windows — see TrainedModel.classRanges. */
+  classRanges?: Record<string, ClassRange>;
 };
 
 const MODEL_ZIP_FORMAT = 2;
@@ -828,7 +831,12 @@ export async function exportModelToZip(model: TrainedModel): Promise<void> {
     trainedAt: model.trainedAt,
     mode: model.mode,
     featureExtractor: resolveFeatureExtractor(model.featureExtractor ?? model.options?.featureExtractor),
-    ...(model.roi ? { roi: model.roi } : {})
+    ...(model.roi ? { roi: model.roi } : {}),
+    // The calibration describes this model's own output scale, so it travels with
+    // it — an exported model reads the same in another project as it does here.
+    ...(model.classRanges && Object.keys(model.classRanges).length
+      ? { classRanges: model.classRanges }
+      : {})
   };
   zip.file('metadata.json', JSON.stringify(meta, null, 2));
   zip.file(
@@ -857,6 +865,7 @@ export type ModelZipContents = {
   roi?: Roi;
   featureExtractor?: FeatureExtractor;
   mode?: ProjectMode;
+  classRanges?: Record<string, ClassRange>;
   /** The loaded classifier, ready to hand to `classifierModel`. */
   model: any;
 };
@@ -915,8 +924,24 @@ export async function readModelZip(file: File): Promise<ModelZipContents> {
     roi: meta.roi,
     featureExtractor: meta.featureExtractor,
     mode: meta.mode,
+    // Only windows for classes the model actually outputs; anything else in the
+    // ZIP's metadata would sit in the map unused.
+    classRanges: sanitizeClassRanges(meta.classRanges, classes),
     model
   };
+}
+
+/** Keep the windows that belong to `classes`, normalized. */
+function sanitizeClassRanges(
+  raw: Record<string, ClassRange> | undefined,
+  classes: string[]
+): Record<string, ClassRange> | undefined {
+  if (!raw) return undefined;
+  const out: Record<string, ClassRange> = {};
+  for (const cls of classes) {
+    if (raw[cls]) out[cls] = normalizeRange(raw[cls]);
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** Number of output units of a loaded classifier, or null when unreadable. */
@@ -943,7 +968,8 @@ export async function importModelFromZip(file: File): Promise<string | null> {
     label: contents.label || contents.metadata.name || file.name.replace(/\.zip$/i, ''),
     roi: contents.roi,
     featureExtractor: contents.featureExtractor,
-    mode: contents.mode
+    mode: contents.mode,
+    classRanges: contents.classRanges
   });
   classifierModel.set(contents.model);
   return id;
@@ -1065,29 +1091,38 @@ export function computeModelMetadataFromModel(model: any) {
   return { params, layers, sizeBytes };
 }
 
-export async function calculateConfusionMatrix() {
+/**
+ * Run the selected model over every recorded example and return one output
+ * vector per example, tagged with the class it belongs to.
+ *
+ * The classes are the model's own: its output units line up with that list, and
+ * scoring the project's live classes against it would attribute predictions to
+ * the wrong class as soon as one was added or renamed. Everything inference
+ * needs — region, extractor — likewise comes off the model.
+ *
+ * This is the raw material for both the confusion matrix and per-class
+ * calibration, which only differ in what they count afterwards.
+ */
+export async function scoreStoredExamples(): Promise<{
+  classes: string[];
+  rows: { trueIndex: number; probs: number[] }[];
+}> {
   const classifier = get(classifierModel);
   const ex = get(examples);
   if (!classifier) throw new Error('Model not ready');
 
   const proj = get(currentProject);
   const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
-  // Rows and columns are the model's own classes: its output units line up with
-  // that list, and scoring the project's live classes against it would put
-  // predictions in the wrong column as soon as a class was added or renamed.
   const classesList = active?.classes?.length ? active.classes : get(classes);
-  const n = classesList.length;
-  const matrix: number[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
 
   const roi = active?.roi ?? null;
   const extractor = resolveFeatureExtractor(active?.featureExtractor);
   await ensureExtractor(extractor);
   const canvas = document.createElement('canvas');
 
+  const rows: { trueIndex: number; probs: number[] }[] = [];
   for (let i = 0; i < classesList.length; i++) {
-    const className = classesList[i];
-    const classExamples = ex[className] || [];
-    for (const example of classExamples) {
+    for (const example of ex[classesList[i]] || []) {
       const img = new Image();
       img.src = example.data;
       await new Promise<void>(r => (img.onload = () => r()));
@@ -1096,16 +1131,26 @@ export async function calculateConfusionMatrix() {
       const batched = emb.expandDims(0);
       const predictionTensor: any = await classifier.predict(batched) as any;
       const preds = await predictionTensor.data();
-      let maxIndex = 0;
-      let maxProb = 0;
-      for (let k = 0; k < preds.length; k++) {
-        if (preds[k] > maxProb) { maxProb = preds[k]; maxIndex = k; }
-      }
-      matrix[i][maxIndex]++;
+      rows.push({ trueIndex: i, probs: Array.from(preds as Float32Array, Number) });
       try { emb.dispose(); } catch (e) {}
       try { batched.dispose(); } catch (e) {}
       try { if (predictionTensor && predictionTensor.dispose) predictionTensor.dispose(); } catch (e) {}
     }
+  }
+  return { classes: classesList, rows };
+}
+
+export async function calculateConfusionMatrix() {
+  const { classes: classesList, rows } = await scoreStoredExamples();
+  const n = classesList.length;
+  const matrix: number[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
+  for (const row of rows) {
+    let maxIndex = 0;
+    let maxProb = 0;
+    for (let k = 0; k < row.probs.length; k++) {
+      if (row.probs[k] > maxProb) { maxProb = row.probs[k]; maxIndex = k; }
+    }
+    matrix[row.trueIndex][maxIndex]++;
   }
   return { matrix, classes: classesList };
 }

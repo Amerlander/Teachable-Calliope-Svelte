@@ -1,5 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import { idbPut, idbGet, idbGetAll, idbDelete, STORES } from '$lib/db';
+import { normalizeRange, type ClassRange } from '$lib/calibration';
 
 export type TrainingHistory = {
   epochs: number[];
@@ -126,6 +127,14 @@ export type TrainedModel = {
   mode: ProjectMode;
   /** Trained here, or brought in from a model ZIP. */
   source: 'trained' | 'imported';
+  /**
+   * Per-class output calibration, keyed by class label: which raw probability
+   * reads as 0 % and which as 100 %. It belongs to the model because it
+   * describes that model's output distribution — retraining shifts the
+   * distribution, so carrying a window over would misrepresent the new model.
+   * Absent or missing entries mean the neutral window (mapped = raw).
+   */
+  classRanges?: Record<string, ClassRange>;
 };
 
 /**
@@ -174,7 +183,6 @@ export type Project = {
   modelArtifacts: ModelArtifacts | null;
   modelHistory: TrainedModel[];
   currentModelId: string | null;
-  classThresholds?: Record<string, number>;
   makeCodePrograms?: MakeCodeProgram[];
   currentProgramId?: string | null;
 };
@@ -217,8 +225,7 @@ export function createBlankProject(name?: string, mode: ProjectMode = 'image'): 
     modelMetadata: { name: 'Teachable Machine Model', date: new Date().toISOString(), version: '1.0', classes: [] },
     modelArtifacts: null,
     modelHistory: [],
-    currentModelId: null,
-    classThresholds: {}
+    currentModelId: null
   };
 }
 
@@ -226,8 +233,13 @@ export function createBlankProject(name?: string, mode: ProjectMode = 'image'): 
 function hydrate(p: Project): Project {
   if (!p.modelHistory) p.modelHistory = [];
   if (p.currentModelId === undefined) p.currentModelId = null;
-  if (!p.classThresholds) p.classThresholds = {};
   if (!p.makeCodePrograms) p.makeCodePrograms = [];
+  // Projects used to hold one threshold per class for the whole project. Class
+  // scores are now mapped per model (see TrainedModel.classRanges) and the
+  // threshold itself is a constant, so the old values have nothing to migrate
+  // onto: they were project-wide, the windows are per model, and every model
+  // starts out neutral.
+  delete (p as Project & { classThresholds?: unknown }).classThresholds;
   if (p.currentProgramId === undefined) p.currentProgramId = null;
   if (p.trainingOptions) {
     p.trainingOptions.featureExtractor = resolveFeatureExtractor(p.trainingOptions.featureExtractor);
@@ -247,9 +259,9 @@ function hydrate(p: Project): Project {
   });
   // Programs used to carry a `{ classes, thresholds, mode }` snapshot compared
   // against the project to flag them "outdated". They now name their model
-  // instead: the class list stays (it is what the embedded extension knows),
-  // the thresholds snapshot is dropped — thresholds are only defaults on the
-  // board and changing them never invalidates a program.
+  // instead: the class list stays (it is what the embedded extension knows), the
+  // thresholds snapshot is dropped — the class scale lives on the model and is
+  // applied in the app, so nothing about it can invalidate a program.
   p.makeCodePrograms = p.makeCodePrograms.map((prog) => {
     const legacy = prog as MakeCodeProgram & {
       classesSnapshot?: string[];
@@ -436,9 +448,45 @@ export function getModelById(id: string | null | undefined): TrainedModel | null
   return (p?.modelHistory ?? []).find((m) => m.id === id) ?? null;
 }
 
-export function setClassThreshold(cls: string, threshold: number): void {
+/**
+ * Set one class's mapping window on a model. Windows live on the model, so this
+ * names the model explicitly — a caller that means "the one being tested" passes
+ * `get(activeModel)?.id`.
+ */
+export function setModelClassRange(
+  modelId: string | null | undefined,
+  cls: string,
+  range: ClassRange
+): void {
+  if (!modelId) return;
+  const next = normalizeRange(range);
   updateProject((p) => {
-    p.classThresholds = { ...(p.classThresholds || {}), [cls]: threshold };
+    p.modelHistory = p.modelHistory.map((m) =>
+      m.id === modelId ? { ...m, classRanges: { ...(m.classRanges ?? {}), [cls]: next } } : m
+    );
+  });
+}
+
+/** Replace every window on a model at once — what auto-calibration writes. */
+export function setModelClassRanges(
+  modelId: string | null | undefined,
+  ranges: Record<string, ClassRange>
+): void {
+  if (!modelId) return;
+  const next: Record<string, ClassRange> = {};
+  for (const [cls, r] of Object.entries(ranges)) next[cls] = normalizeRange(r);
+  updateProject((p) => {
+    p.modelHistory = p.modelHistory.map((m) => (m.id === modelId ? { ...m, classRanges: next } : m));
+  });
+}
+
+/** Back to mapped = raw for every class of a model. */
+export function resetModelClassRanges(modelId: string | null | undefined): void {
+  if (!modelId) return;
+  updateProject((p) => {
+    p.modelHistory = p.modelHistory.map((m) =>
+      m.id === modelId ? { ...m, classRanges: {} } : m
+    );
   });
 }
 
@@ -626,6 +674,7 @@ export function recordImportedModel(init: {
   roi?: Roi;
   featureExtractor?: FeatureExtractor;
   mode?: ProjectMode;
+  classRanges?: Record<string, ClassRange>;
 }): string | null {
   const exampleCounts: Record<string, number> = {};
   for (const c of init.classes) exampleCounts[c] = 0;
@@ -642,6 +691,7 @@ export function recordImportedModel(init: {
     mode: init.mode ?? get(currentProject)?.mode ?? 'image',
     source: 'imported',
     ...(init.roi ? { roi: init.roi } : {}),
+    ...(init.classRanges ? { classRanges: init.classRanges } : {}),
     featureExtractor: resolveFeatureExtractor(init.featureExtractor)
   });
 }

@@ -22,14 +22,17 @@ import {
   type TrainedModel
 } from '$lib/stores/projects';
 
-/** Freshly generated program files for `model`, with the project's thresholds baked in. */
+/**
+ * Freshly generated program files for `model`. Nothing about the class scale is
+ * baked in: the app maps and thresholds the scores and sends the detected class,
+ * so a program keeps working when the mapping is retuned or its model swapped.
+ */
 function filesForModel(model: TrainedModel) {
   const project = get(currentProject);
   return generateProject({
     name: project?.name || 'Teachable Project',
     mode: model.mode,
-    classes: [...model.classes],
-    thresholds: project?.classThresholds ?? {}
+    classes: [...model.classes]
   });
 }
 

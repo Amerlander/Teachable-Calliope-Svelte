@@ -7,12 +7,15 @@
  */
 
 import { get } from 'svelte/store';
-import { importModelFromZip, loadClassifierFromArtifacts } from '$lib/machine';
+import { importModelFromZip, loadClassifierFromArtifacts, scoreStoredExamples } from '$lib/machine';
 import { classifierModel } from '$lib/stores';
+import { rangesFromScores, type ClassRange } from '$lib/calibration';
 import {
+  activeModel,
   currentProject,
   getModelById,
   setCurrentModel,
+  setModelClassRanges,
   type TrainedModel
 } from '$lib/stores/projects';
 
@@ -55,6 +58,22 @@ export async function importModelFile(file: File): Promise<TrainedModel | null> 
   if (!id) return null;
   loadedModelId = id;
   return getModelById(id);
+}
+
+/**
+ * Set the selected model's per-class mapping from how it scores the recorded
+ * examples, and store it on the model. Returns the windows it wrote, or null
+ * when there is nothing to measure — an imported model brings no examples along,
+ * so its mapping stays whatever came with it.
+ */
+export async function autoCalibrateActiveModel(): Promise<Record<string, ClassRange> | null> {
+  const model = get(activeModel);
+  if (!model) return null;
+  const { classes, rows } = await scoreStoredExamples();
+  if (!rows.length) return null;
+  const ranges = rangesFromScores(classes, rows);
+  setModelClassRanges(model.id, ranges);
+  return ranges;
 }
 
 /** What to call a model in lists and on cards. */

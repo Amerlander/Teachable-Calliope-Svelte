@@ -27,7 +27,6 @@
   import { calliopeState, setConnectionUiActive } from '@calliope-edu/mini-connection-widget';
 
   const TICK_MS = 100;
-  const CLASS_THRESHOLD = 0.7;
 
   let videoEl: HTMLVideoElement | null = $state(null);
   let skeletonCanvas: HTMLCanvasElement | null = $state(null);
@@ -161,7 +160,7 @@
 
     <!-- HUD: current detection -->
     {#if det}
-      <div class="hud hud-detection" class:confident={det.confidence >= CLASS_THRESHOLD}>
+      <div class="hud hud-detection" class:confident={det.detected}>
         <div class="label">{det.label}</div>
         <div class="bar">
           <div class="bar-fill" style="width: {(det.confidence * 100).toFixed(0)}%"></div>
