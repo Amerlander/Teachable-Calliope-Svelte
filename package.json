@@ -84,6 +84,11 @@
 		"svelte-splitpanes": "^8.0.12",
 		"svelte-tiny-virtual-list": "^3.0.1"
 	},
+	"overrides": {
+		"svelte-tiny-virtual-list": {
+			"svelte": "$svelte"
+		}
+	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"esbuild"
