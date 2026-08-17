@@ -88,15 +88,20 @@
 {/if}
 
 <style>
+  /* Sizes are in px, not rem: this app sets the root font-size to 14px, so the
+     campus stylesheet's rem values would render every menu 12.5% smaller here.
+     The px values below are the campus metrics at its 16px root. */
   .dropdown-item {
     display: flex;
     align-items: center;
     width: 100%;
-    padding: 0.5rem 1rem;
+    padding: 8px 16px;
     border: none;
     background: transparent;
     color: hsl(210, 4%, 11%); /* #1B1C1D dark text on white background */
-    font-size: 0.875rem;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: nowrap;
     text-align: left;
     cursor: pointer;
     transition: background-color 0.15s ease-in-out;
@@ -122,22 +127,22 @@
   /* Global styles for icons in dropdown items */
   .dropdown-item :global(svg) {
     flex-shrink: 0;
-    margin-right: 0.5rem;
-    width: 1rem;
-    height: 1rem;
+    margin-right: 8px;
+    width: 16px;
+    height: 16px;
     vertical-align: middle;
   }
 
   /* Mobile responsive */
   @media (max-width: 768px) {
     .dropdown-item {
-      padding: 0.625rem 0.75rem;
+      padding: 10px 12px;
     }
-    
+
     .dropdown-item :global(svg) {
-      width: 0.875rem;
-      height: 0.875rem;
-      margin-right: 0.375rem;
+      width: 14px;
+      height: 14px;
+      margin-right: 6px;
     }
   }
 </style>

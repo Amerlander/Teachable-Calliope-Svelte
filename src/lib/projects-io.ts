@@ -8,7 +8,7 @@ import {
   type Project,
   type ModelArtifacts
 } from '$lib/stores/projects';
-import { idbPut, STORES } from '$lib/db';
+import { idbPut, idbGet, STORES } from '$lib/db';
 import { loadClassifierFromArtifacts } from '$lib/machine';
 
 type SerializedProject = Omit<Project, 'modelArtifacts'> & {
@@ -62,9 +62,7 @@ function deserializeProject(s: SerializedProject): Project {
   };
 }
 
-export async function exportCurrentProject(): Promise<void> {
-  const p = get(currentProject);
-  if (!p) throw new Error('Kein Projekt offen');
+async function downloadProjectZip(p: Project): Promise<void> {
   const JSZip = (await import('jszip')).default;
   const saveAs = (await import('file-saver')).saveAs;
   const zip = new JSZip();
@@ -72,6 +70,23 @@ export async function exportCurrentProject(): Promise<void> {
   const blob = await zip.generateAsync({ type: 'blob' });
   const safeName = p.name.replace(/[^a-z0-9_\- ]/gi, '_');
   saveAs(blob, `${safeName}.tcproj.zip`);
+}
+
+export async function exportCurrentProject(): Promise<void> {
+  const p = get(currentProject);
+  if (!p) throw new Error('Kein Projekt offen');
+  await downloadProjectZip(p);
+}
+
+/**
+ * Export any stored project without opening it — the overview list offers the
+ * same download entry as the header menu, and reading straight from IndexedDB
+ * keeps `currentProject` (and the loaded classifier) untouched.
+ */
+export async function exportProjectById(id: string): Promise<void> {
+  const p = await idbGet<Project>(STORES.projects, id);
+  if (!p) throw new Error('Projekt nicht gefunden');
+  await downloadProjectZip(p);
 }
 
 export async function importProjectFromFile(file: File): Promise<Project> {

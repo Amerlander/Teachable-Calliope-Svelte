@@ -569,9 +569,11 @@
       padding: 0;
       z-index: 99997;
     }
+    /* px rather than rem — the app's root font-size is 14px, which would shrink
+       the campus rem metrics this menu is meant to match. */
     .dropdown-content {
       background: hsl(0, 0%, 98%); /* #FAFAFA - white background */
-      border-radius: 0.5rem; /* Pill designed - no sharp corners */
+      border-radius: 8px; /* Pill designed - no sharp corners */
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); /* Decent shadow for menus */
       z-index: 99998;
       overflow: hidden;
@@ -580,8 +582,8 @@
 
     .dropdown-content.basic {
       /* Basic dropdown styles */
-      padding: 0.5rem 1rem;
-      font-size: 0.875rem; /* 14px */
+      padding: 8px 16px;
+      font-size: 14px;
       color: hsl(0, 0%, 20%); /* Darker text color */
       line-height: 1.5;
       max-height: 300px; /* Limit height for long menus */

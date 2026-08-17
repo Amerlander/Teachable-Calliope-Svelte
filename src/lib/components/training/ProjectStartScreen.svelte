@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import {
     projectList,
+    currentProject,
     refreshProjectList,
     loadProject,
     deleteProject,
@@ -11,10 +12,12 @@
   import {
     newProject,
     importProjectFromFile,
-    importModelAsNewProject
+    importModelAsNewProject,
+    exportProjectById
   } from '$lib/projects-io';
   import { loadClassifierFromArtifacts } from '$lib/machine';
   import { showNotification } from '$lib/stores/notifications';
+  import { classifierModel } from '$lib/stores';
   import NewProjectDialog from './NewProjectDialog.svelte';
 
   let importProjectEl: HTMLInputElement;
@@ -76,8 +79,20 @@
     await goto('/training');
   }
 
+  async function onDownload(id: string) {
+    try {
+      await exportProjectById(id);
+      showNotification('Projekt exportiert', { type: 'success' });
+    } catch (err) {
+      showNotification((err as Error).message, { type: 'error' });
+    }
+  }
+
   async function onDelete(id: string, name: string) {
     if (!confirm(`Projekt "${name}" wirklich löschen?`)) return;
+    // Deleting the project that is currently open also has to drop its loaded
+    // classifier — `deleteProject` only clears the store entry.
+    if ($currentProject?.id === id) classifierModel.set(null);
     await deleteProject(id);
     showNotification('Projekt gelöscht', { type: 'success' });
   }
@@ -152,14 +167,30 @@
               </div>
               <span class="row-date">{formatDate(prj.updatedAt)}</span>
             </button>
-            <button
-              class="delete-btn ghost"
-              title="Löschen"
-              aria-label="Projekt löschen"
-              onclick={() => onDelete(prj.id, prj.name)}
-            >
-              ✕
-            </button>
+            <div class="row-actions">
+              <button
+                class="row-btn"
+                onclick={() => onDownload(prj.id)}
+                title="Projekt herunterladen"
+                aria-label="Projekt {prj.name} herunterladen"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v8.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 18a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z"/>
+                </svg>
+                <span>Herunterladen</span>
+              </button>
+              <button
+                class="row-btn danger"
+                onclick={() => onDelete(prj.id, prj.name)}
+                title="Projekt löschen"
+                aria-label="Projekt {prj.name} löschen"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path fill="currentColor" d="M9 3a1 1 0 0 0-1 1v1H5a1 1 0 0 0 0 2h14a1 1 0 1 0 0-2h-3V4a1 1 0 0 0-1-1H9zM6 9h12l-.87 10.14A2 2 0 0 1 15.14 21H8.86a2 2 0 0 1-1.99-1.86L6 9z"/>
+                </svg>
+                <span>Löschen</span>
+              </button>
+            </div>
           </li>
         {/each}
       </ul>
@@ -318,16 +349,41 @@
       flex-shrink: 0;
     }
   }
-  .delete-btn {
-    padding: 0 14px;
+  .row-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 10px;
+  }
+  .row-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
     min-height: unset;
-    align-self: stretch;
-    box-shadow: none;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid rgb(var(--md-outline-variant));
+    border-radius: 999px;
+    background: rgb(var(--md-surface));
     color: rgb(var(--md-on-surface-variant));
-    border-radius: 0;
+    box-shadow: none;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
     &:hover {
-      background: rgba(var(--md-error), 0.15);
-      color: rgb(var(--md-error));
+      border-color: rgb(var(--md-primary));
+      background: rgba(var(--md-primary-container), 0.6);
+      color: rgb(var(--md-on-surface));
     }
+    &.danger:hover {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.12);
+      color: #ef4444;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .row-btn span { display: none; }
+    .row-btn { padding: 8px; border-radius: 50%; }
   }
 </style>
