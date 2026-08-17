@@ -4,12 +4,7 @@
   import Dropdown from './ui/Dropdown.svelte';
   import DropdownItem from './ui/DropdownItem.svelte';
   import { ConnectButton } from '@calliope-edu/mini-connection-widget';
-  import {
-    showLanguageOverlay,
-    showAIInfoOverlay,
-    currentLang,
-    t
-  } from '$lib/stores/app';
+  import { showLanguageOverlay, showAIInfoOverlay } from '$lib/stores/app';
   import {
     currentProject,
     closeCurrentProject,
@@ -38,7 +33,6 @@
         : 'training',
   );
 
-  const lang = $derived($currentLang);
 
   // The camera picker used to sit in each view; it lives here now so there is one
   // place to change the camera from. It only makes sense where a live feed is on
@@ -147,13 +141,13 @@
     <nav class="header-center">
       {#if $currentProject}
         <button class="header-btn" class:active={active === 'training'} onclick={() => navTo('training')}>
-          {t('header.training', lang)}
+          Trainieren
         </button>
         <button class="header-btn" class:active={active === 'tryout'} onclick={() => navTo('tryout')}>
-          {t('header.tryout', lang)}
+          Programmieren
         </button>
         <button class="header-btn" class:active={active === 'apply'} onclick={() => navTo('apply')}>
-          {t('header.apply', lang)}
+          Anwenden
         </button>
       {/if}
     </nav>
@@ -172,7 +166,7 @@
 
       <Dropdown bind:isOpen={settingsOpen} minWidth="200px">
         {#snippet trigger()}
-          <button class="settings-btn" aria-label={t('header.settings', lang)}>
+          <button class="settings-btn" aria-label="Einstellungen">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"/>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -181,13 +175,13 @@
         {/snippet}
         {#snippet children()}
           {#if $currentProject}
-            <DropdownItem onclick={onExport}>{t('training.downloadProject', lang)}</DropdownItem>
+            <DropdownItem onclick={onExport}>Projekt herunterladen</DropdownItem>
           {/if}
           {#if showCameraPicker}
             {#if $currentProject}
               <div class="menu-sep" role="separator"></div>
             {/if}
-            <div class="menu-label" id="settings-camera-label">{t('settings.camera', lang)}</div>
+            <div class="menu-label" id="settings-camera-label">Kamera</div>
             <div class="camera-group" role="group" aria-labelledby="settings-camera-label">
               {#each $cameras as cam, i (cam.deviceId)}
                 <DropdownItem
@@ -201,8 +195,8 @@
             </div>
             <div class="menu-sep" role="separator"></div>
           {/if}
-          <DropdownItem onclick={openLanguage}>{t('settings.language', lang)}</DropdownItem>
-          <DropdownItem onclick={openAIInfo}>{t('settings.aiInfo', lang)}</DropdownItem>
+          <DropdownItem onclick={openLanguage}>Sprachen</DropdownItem>
+          <DropdownItem onclick={openAIInfo}>KI-Hinweise</DropdownItem>
         {/snippet}
       </Dropdown>
     </div>

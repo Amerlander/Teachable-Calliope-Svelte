@@ -1,0 +1,1762 @@
+msgid ""
+msgstr ""
+"Plural-Forms: nplurals=2; plural=n == 1 ? 0 : 1;\n"
+"Source-Language: de\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/lib/makecode.ts
+msgid "Programm 1"
+msgstr "Program 1"
+
+#. 0: MIN_CLASSES_FOR_TRAINING; 1: MIN_EXAMPLES_PER_CLASS; 2: readyClasses; 3: MIN_CLASSES_FOR_TRAINING
+#: src/lib/stores.ts
+msgid "Mindestens {0} Klassen mit je {1} Bildern nötig ({2}/{3})"
+msgstr "At least {0} classes with {1} images each required ({2}/{3})"
+
+#. 0: MIN_EXAMPLES_PER_CLASS
+#: src/lib/stores.ts
+msgid "Noch eine Klasse braucht mindestens {0} Bilder"
+msgstr "One more class needs at least {0} images"
+
+#. 0: short; 1: MIN_EXAMPLES_PER_CLASS
+#: src/lib/stores.ts
+msgid "Noch {0} Klassen brauchen mindestens {1} Bilder"
+msgstr "{0} more classes need at least {1} images"
+
+#. 0: index + 1
+#: src/lib/stores/camera.ts
+msgid "Kamera {0}"
+msgstr "Camera {0}"
+
+#. 0: new Date().toLocaleDateString('de-DE')
+#. 0: d
+#: src/lib/components/training/NewProjectDialog.svelte
+#: src/lib/stores/projects.ts
+msgid "Neues Projekt {0}"
+msgstr "New project {0}"
+
+#. 0: (p.makeCodePrograms?.length ?? 0) + 1
+#: src/lib/stores/projects.ts
+msgid "Programm {0}"
+msgstr "Program {0}"
+
+#: src/lib/components/Header.svelte
+#: src/routes/+layout.svelte
+msgid "Calliope Teachable Machine"
+msgstr "Calliope Teachable Machine"
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Du arbeitest mit einem KI-System"
+msgstr "You are working with an AI system"
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Die Calliope Teachable Machine nutzt künstliche Intelligenz (KI), um aus deinen Beispielbildern zu lernen. Das bedeutet: Du trainierst ein Modell, das eigenständig Muster in Bildern erkennt."
+msgstr "The Calliope Teachable Machine uses artificial intelligence (AI) to learn from your example images. That means you train a model that recognises patterns in images on its own."
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "So funktioniert das System"
+msgstr "How the system works"
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Das Modell basiert auf \"Transfer Learning\". Dabei nutzen wir ein bereits vortrainiertes neuronales Netz (MobileNet). Alle Berechnungen finden direkt in deinem Browser statt — keine Daten werden an Server übertragen."
+msgstr "The model is based on \"transfer learning\": we start from an already pre-trained neural network (MobileNet). All computation happens directly in your browser — no data is sent to any server."
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Deine Daten bleiben bei dir"
+msgstr "Your data stays with you"
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Alle Bilder, die du mit der Webcam aufnimmst, werden ausschließlich lokal verarbeitet. Sie verlassen deinen Computer nicht."
+msgstr "Every image you capture with the webcam is processed locally only. It never leaves your computer."
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Grenzen und Einschränkungen"
+msgstr "Limits and constraints"
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Dein trainiertes Modell ist nur so gut wie deine Trainingsdaten. Das System ist für <0>Lern- und Experimentierprojekte</0> gedacht und nicht für sicherheitskritische Anwendungen geeignet."
+msgstr "Your trained model is only as good as your training data. The system is meant for <0>learning and experimentation projects</0> and is not suitable for safety-critical applications."
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Fairness und Verantwortung"
+msgstr "Fairness and responsibility"
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Achte darauf, dass deine Trainingsdaten ausgewogen sind und keine Vorurteile widerspiegeln. Auch der Hintergrund wird trainiert — Gegenstände im Hintergrund können das Modell beeinflussen."
+msgstr "Make sure your training data is balanced and does not reflect bias. The background is trained too — objects behind you can influence the model."
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Weitere Informationen"
+msgstr "More information"
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Bei Fragen: <0>info@calliope.cc</0><1/> Dieses Tool folgt den Transparenzanforderungen der EU-KI-Verordnung (EU) 2024/1689."
+msgstr "Questions? <0>info@calliope.cc</0><1/> This tool follows the transparency requirements of the EU AI Act (EU) 2024/1689."
+
+#: src/lib/components/AIInfoOverlay.svelte
+msgid "Hinweise"
+msgstr "Notes"
+
+#: src/lib/components/Header.svelte
+#: src/lib/components/training/ProjectHeader.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt exportiert"
+msgstr "Project exported"
+
+#: src/lib/components/Header.svelte
+msgid "Zur Startseite"
+msgstr "To the start page"
+
+#: src/lib/components/Header.svelte
+#: src/lib/components/training/ClassItem.svelte
+#: src/lib/components/training/ClassItem.svelte
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ProjectHeader.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/tryout/ProgramList.svelte
+#: src/lib/components/tryout/ProgramList.svelte
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Umbenennen"
+msgstr "Rename"
+
+#: src/lib/components/LanguageOverlay.svelte
+msgid "Deutsch (DE)"
+msgstr "Deutsch (DE)"
+
+#: src/lib/components/LanguageOverlay.svelte
+msgid "English (EN)"
+msgstr "English (EN)"
+
+#: src/lib/components/ImportDialog.svelte
+msgid "Close import dialog"
+msgstr "Close import dialog"
+
+#: src/lib/components/ImportDialog.svelte
+msgid "Vorhandene Klassen"
+msgstr "Existing classes"
+
+#: src/lib/components/ImportDialog.svelte
+msgid "Name für neue Klasse"
+msgstr "Name for the new class"
+
+#: src/lib/components/ImportDialog.svelte
+msgid "Erstellen"
+msgstr "Create"
+
+#: src/lib/components/ImportDialog.svelte
+msgid "Neue Klasse erstellen:"
+msgstr "Create new class:"
+
+#: src/lib/components/ImportDialog.svelte
+#: src/lib/components/training/NewProjectDialog.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Abbrechen"
+msgstr "Cancel"
+
+#: src/lib/components/ImportDialog.svelte
+msgid "Importieren"
+msgstr "Import"
+
+#: src/lib/components/ImportDialog.svelte
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Bilder importieren"
+msgstr "Import images"
+
+#. 0: images.length
+#: src/lib/components/ImportDialog.svelte
+msgid "{0} Bilder importieren. Wähle eine Klasse:"
+msgstr "Importing {0} images. Choose a class:"
+
+#: src/lib/components/Thumbs.svelte
+msgid "Keine Klasse ausgewählt"
+msgstr "No class selected"
+
+#: src/lib/components/Thumbs.svelte
+msgid "Keine Bilder aufgenommen"
+msgstr "No images captured"
+
+#: src/lib/components/Thumbs.svelte
+msgid "Beispielbild"
+msgstr "Example image"
+
+#: src/routes/tryout/+page.svelte
+msgid "MakeCode Calliope Editor"
+msgstr "MakeCode Calliope editor"
+
+#: src/lib/components/training/ModelHistory.svelte
+msgid "Modell geladen"
+msgstr "Model loaded"
+
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/ModelTab.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Fehler: "
+msgstr "Error: "
+
+#: src/lib/components/ModelPicker.svelte
+msgid "Kein Modell"
+msgstr "No model"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/training/NewProjectDialog.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+#: src/lib/components/tryout/TryoutDetailPanel.svelte
+msgid "Pose"
+msgstr "Pose"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/training/NewProjectDialog.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+#: src/lib/components/tryout/TryoutDetailPanel.svelte
+msgid "Objekt"
+msgstr "Object"
+
+#: src/routes/apply/+page.svelte
+msgid "Calliope verbunden"
+msgstr "Calliope connected"
+
+#: src/routes/apply/+page.svelte
+msgid "Calliope nicht verbunden"
+msgstr "Calliope not connected"
+
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Bitte zuerst eine Klasse wählen"
+msgstr "Please choose a class first"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Kamera nicht verbunden"
+msgstr "Camera not connected"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Keine Bilder im ZIP gefunden"
+msgstr "No images found in the ZIP"
+
+#. 0: imgs.length
+#: src/lib/components/training/ClassesTab.svelte
+msgid "{0} Bilder importiert"
+msgstr "{0} images imported"
+
+#. 0: images.length; 1: selectedClass
+#: src/lib/components/training/ClassesTab.svelte
+msgid "{0} Bilder importiert in \"{1}\""
+msgstr "{0} images imported into \"{1}\""
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Alle aufgenommenen Bilder aus allen Klassen löschen?"
+msgstr "Delete every captured image from every class?"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Alle Bilder gelöscht"
+msgstr "All images deleted"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Klassen-Menü"
+msgstr "Class menu"
+
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/ModelTab.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Mehr Aktionen"
+msgstr "More actions"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Alle herunterladen"
+msgstr "Download all"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Alle Klassen leeren"
+msgstr "Clear all classes"
+
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Klassen"
+msgstr "Classes"
+
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Neue Klasse hinzufügen"
+msgstr "Add a new class"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Klasse hinzufügen"
+msgstr "Add class"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Aufnahme stoppen"
+msgstr "Stop capture"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Aufnahme starten"
+msgstr "Start capture"
+
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Klassen-Aktionen"
+msgstr "Class actions"
+
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Dateien herunterladen"
+msgstr "Download files"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Dateien importieren"
+msgstr "Import files"
+
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Klasse leeren"
+msgstr "Clear class"
+
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Klasse löschen"
+msgstr "Delete class"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Halte die Taste gedrückt"
+msgstr "Hold the button down"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Zum Modell-Tab wechseln"
+msgstr "Switch to the model tab"
+
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Mindestens 3 Klassen erforderlich"
+msgstr "At least 3 classes required"
+
+#. 0: $classes.length
+#: src/lib/components/training/ClassesTab.svelte
+msgid "Mindestens 3 Klassen erforderlich ({0}/3)"
+msgstr "At least 3 classes required ({0}/3)"
+
+#: src/lib/components/NoModelNotice.svelte
+#: src/lib/components/training/ClassesTab.svelte
+#: src/lib/components/training/TrainingProgress.svelte
+msgid "Modell trainieren"
+msgstr "Train model"
+
+#: src/lib/components/training/ModelCharts.svelte
+#: src/lib/components/training/ModelCharts.svelte
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/training/ModelStats.svelte
+msgid "Genauigkeit"
+msgstr "Accuracy"
+
+#: src/lib/components/training/ModelCharts.svelte
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Verlust"
+msgstr "Loss"
+
+#: src/lib/components/training/ModelCharts.svelte
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Epoche "
+msgstr "Epoch "
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Warte auf Trainingsdaten…"
+msgstr "Waiting for training data…"
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Konfusionsmatrix: "
+msgstr "Confusion matrix: "
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Verlauf"
+msgstr "History"
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Konfusionsmatrix"
+msgstr "Confusion matrix"
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Konfusionsmatrix verfügbar nach dem Training"
+msgstr "Confusion matrix available after training"
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Berechne…"
+msgstr "Calculating…"
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Noch keine Daten"
+msgstr "No data yet"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Modell-Details"
+msgstr "Model Details"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Projekt"
+msgstr "Project"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Modus"
+msgstr "Mode"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Genauigkeit (final)"
+msgstr "Accuracy (final)"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Loss (final)"
+msgstr "Loss (final)"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Beispiele gesamt"
+msgstr "Examples in total"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Trainiert am"
+msgstr "Trained on"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Zusammenfassung"
+msgstr "Summary"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Was diese Zahlen bedeuten"
+msgstr "What these numbers mean"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Die <0>Genauigkeit</0> zeigt, wie oft das Modell während des Trainings richtig gelegen hat — aber nur auf den Bildern, die du ihm gegeben hast. Eine hohe Trainings-Genauigkeit ist kein Beleg dafür, dass das Modell auch bei neuen Bildern richtig liegt (Überanpassung). Achte beim Testen im Video darauf, ob die Vorhersage stabil bleibt, wenn du Licht, Position oder Hintergrund änderst."
+msgstr "<0>Accuracy</0> shows how often the model was right during training — but only on the images you gave it. High training accuracy is no proof that the model is also right on new images (overfitting). When testing on the video, watch whether the prediction stays stable as you change light, position or background."
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Der <0>Loss</0> misst, wie weit die vorhergesagte Wahrscheinlichkeits­verteilung von der korrekten Antwort entfernt ist. Er sollte im Verlauf des Trainings fallen; steigt er wieder, ist das Modell möglicherweise überangepasst."
+msgstr "The <0>loss</0> measures how far the predicted probability distribution is from the correct answer. It should fall over the course of training; if it rises again, the model may be overfitted."
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Die <0>Anzahl Beispiele</0> beeinflusst die Qualität stärker als jede Parametereinstellung. 30 Bilder pro Klasse sind ein guter Start — bei schwierigen Unterscheidungen lieber 100+."
+msgstr "The <0>number of examples</0> affects quality more than any parameter setting. 30 images per class is a good start — for hard distinctions rather 100+."
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Klasse"
+msgstr "Class"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Beispiele"
+msgstr "Examples"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Anteil"
+msgstr "Share"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Verteilung pro Klasse"
+msgstr "Distribution per class"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Klassen mit deutlich weniger Beispielen werden tendenziell schlechter erkannt — dann lohnt es sich, dort gezielt nachzutrainieren."
+msgstr "Classes with noticeably fewer examples tend to be recognised worse — it pays off to capture more for those specifically."
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Schichten"
+msgstr "Layers"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/training/ModelStats.svelte
+msgid "Parameter"
+msgstr "Parameters"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Modellgröße (~)"
+msgstr "Model size (~)"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/training/ModelStats.svelte
+msgid "Feature-Extraktor"
+msgstr "Feature extractor"
+
+#. 0: extractorLabel
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "{0} (eingefroren)"
+msgstr "{0} (frozen)"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Architektur"
+msgstr "Architecture"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Dieses Projekt nutzt Transfer-Learning: MobileNet extrahiert aus jedem Bild einen Merkmalsvektor und ein kleiner Klassifikator oben drauf wird trainiert. Deshalb reichen vergleichsweise wenige Beispiele."
+msgstr "This project uses transfer learning: MobileNet extracts a feature vector from every image and only a small classifier on top of it is trained. That is why comparatively few examples are enough."
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/training/ModelStats.svelte
+msgid "Epochen"
+msgstr "Epochs"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Ein Durchlauf durch alle Beispiele = eine Epoche. Zu wenige = unterangepasst, zu viele = Überanpassung."
+msgstr "One pass through all examples = one epoch. Too few = underfitting, too many = overfitting."
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/training/ModelStats.svelte
+msgid "Batch-Größe"
+msgstr "Batch size"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Wie viele Beispiele pro Gradientenschritt. Kleiner = rauschiger, aber oft besser für kleine Datensätze."
+msgstr "How many examples per gradient step. Smaller = noisier, but often better for small datasets."
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/training/ModelStats.svelte
+msgid "Lernrate"
+msgstr "Learning rate"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Schrittweite pro Update. Zu groß = schwingt über, zu klein = lernt nichts."
+msgstr "Step size per update. Too large = overshoots, too small = learns nothing."
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/training/ModelStats.svelte
+msgid "Hidden Units"
+msgstr "Hidden units"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Kapazität der versteckten Schicht. Größer = mehr ausdrucksstark, aber auch mehr Daten nötig, um nicht überanzupassen."
+msgstr "Capacity of the hidden layer. Larger = more expressive, but it also needs more data to avoid overfitting."
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Trainings-Konfiguration"
+msgstr "Training configuration"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Loss"
+msgstr "Loss"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+msgid "Verlauf pro Epoche"
+msgstr "History per epoch"
+
+#: src/lib/components/training/ModelDetailsModal.svelte
+#: src/lib/components/ui/Modal.svelte
+#: src/routes/tryout/+page.svelte
+msgid "Schließen"
+msgstr "Close"
+
+#: src/lib/components/training/ModelHistory.svelte
+#: src/routes/apply/+page.svelte
+msgid "Fehler beim Laden: "
+msgstr "Error while loading: "
+
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "aktiv"
+msgstr "active"
+
+#. 0: run.history.epochs.length
+#: src/lib/components/training/ModelHistory.svelte
+msgid "{0} Ep."
+msgstr "{0} ep."
+
+#. 0: run.classes.length
+#. 0: run.classes.length
+#. 0: prj.classCount
+#. 0: p.classes.length
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "{0} Klassen"
+msgstr "{0} classes"
+
+#. 0: Object.values(run.exampleCounts).reduce((a, b) => a + b, 0)
+#. 0: count
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "{0} Bilder"
+msgstr "{0} images"
+
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Aktionen"
+msgstr "Actions"
+
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Mehr"
+msgstr "More"
+
+#: src/lib/components/training/ModelHistory.svelte
+msgid "Dieses Modell laden"
+msgstr "Load this model"
+
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Löschen"
+msgstr "Delete"
+
+#: src/lib/components/training/ModelHistory.svelte
+msgid "Noch kein Training durchgeführt."
+msgstr "No training run yet."
+
+#: src/lib/components/training/NewProjectDialog.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Neues Projekt"
+msgstr "New project"
+
+#: src/lib/components/training/NewProjectDialog.svelte
+msgid "Name"
+msgstr "Name"
+
+#: src/lib/components/training/NewProjectDialog.svelte
+msgid "Mit Kamerabildern trainieren"
+msgstr "Train with camera images"
+
+#: src/lib/components/training/NewProjectDialog.svelte
+msgid "Mit Körperposen trainieren"
+msgstr "Train with body poses"
+
+#: src/lib/components/training/NewProjectDialog.svelte
+msgid "Projekttyp"
+msgstr "Project type"
+
+#: src/lib/components/training/NewProjectDialog.svelte
+msgid "Der Projekttyp kann nachträglich nicht mehr geändert werden."
+msgstr "The project type cannot be changed later."
+
+#: src/lib/components/training/NewProjectDialog.svelte
+msgid "Projekt anlegen"
+msgstr "Create project"
+
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Ganzes Bild"
+msgstr "Whole image"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Anteil der Trainingsbilder, die das Modell nach dem Training richtig erkennt. 100 % heißt: alle Trainingsbilder korrekt klassifiziert — das bedeutet nicht automatisch, dass es mit neuen Bildern auch so gut funktioniert."
+msgstr "The share of training images the model classifies correctly after training. 100 % means every training image was classified correctly — that does not automatically mean it works as well on new images."
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Genauigkeit <0/>"
+msgstr "Accuracy <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Verlust (Loss)"
+msgstr "Loss"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Misst, wie weit die Vorhersagen des Modells von der richtigen Antwort entfernt sind. Sollte im Verlauf des Trainings fallen — steigt er wieder, ist das Modell möglicherweise überangepasst."
+msgstr "Measures how far the model's predictions are from the correct answer. It should fall over the course of training — if it rises again, the model may be overfitted."
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Verlust <0/>"
+msgstr "Loss <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Trainingsbeispiele"
+msgstr "Training examples"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Gesamtzahl der aufgenommenen Bilder über alle Klassen. Je mehr und vielfältiger, desto robuster wird das Modell. Faustregel: mindestens 30 Bilder pro Klasse, in verschiedenen Positionen und bei unterschiedlichem Licht."
+msgstr "Total number of captured images across all classes. The more and the more varied, the more robust the model. Rule of thumb: at least 30 images per class, in different positions and lighting."
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Beispiele <0/>"
+msgstr "Examples <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Wie oft das Modell während des Trainings durch alle Beispiele gelaufen ist. Mehr Epochen = mehr Lernzeit, aber bei zu vielen kann Überanpassung entstehen (Modell merkt sich Bilder statt Muster)."
+msgstr "How often the model went through all examples during training. More epochs = more learning time, but too many can cause overfitting (the model memorises images instead of patterns)."
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Epochen <0/>"
+msgstr "Epochs <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Schrittweite pro Anpassung der Gewichte. Zu groß = das Training schwingt über, zu klein = es lernt kaum. 0.001 ist der Standardwert."
+msgstr "Step size per weight update. Too large = training overshoots, too small = it barely learns. 0.001 is the default."
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Lernrate <0/>"
+msgstr "Learning rate <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Anzahl der Neuronen in der versteckten Schicht. Mehr = komplexere Muster lernbar, aber es braucht auch mehr Bilder, um nicht überanzupassen."
+msgstr "Number of neurons in the hidden layer. More = more complex patterns can be learned, but it also needs more images to avoid overfitting."
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Hidden Units <0/>"
+msgstr "Hidden units <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Wie viele Beispiele pro Lernschritt gleichzeitig durchs Modell laufen. Kleiner = rauschiger, aber oft besser für kleine Datensätze."
+msgstr "How many examples pass through the model at once per learning step. Smaller = noisier, but often better for small datasets."
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Batch-Größe <0/>"
+msgstr "Batch size <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Optimierer"
+msgstr "Optimiser"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Algorithmus, der die Gewichte anpasst. Adam passt für die meisten Fälle, SGD ist robuster für große Datensätze, RMSProp für rauschige."
+msgstr "The algorithm that adjusts the weights. Adam suits most cases, SGD is more robust for large datasets, RMSProp for noisy ones."
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Optimierer <0/>"
+msgstr "Optimiser <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Dropout"
+msgstr "Dropout"
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Anteil der Neuronen, die beim Training zufällig deaktiviert werden. Reduziert Überanpassung. 0 = aus, 0.5 = aggressiv."
+msgstr "The share of neurons randomly switched off during training. Reduces overfitting. 0 = off, 0.5 = aggressive."
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Dropout <0/>"
+msgstr "Dropout <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Validierungs-Split"
+msgstr "Validation split"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Anteil der Bilder, die vom Training zurückgehalten und nur zum Prüfen genutzt werden. Zeigt, wie gut das Modell auf ungesehenen Bildern funktioniert."
+msgstr "The share of images held back from training and used only for checking. Shows how well the model works on unseen images."
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Validierung <0/>"
+msgstr "Validation <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Daten-Augmentierung"
+msgstr "Data augmentation"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Erzeugt zufällig gespiegelte, gedrehte, hellere/dunklere und leicht gezoomte Varianten deiner Bilder, damit das Modell robuster wird."
+msgstr "Creates randomly mirrored, rotated, brighter/darker and slightly zoomed variants of your images so the model becomes more robust."
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "An"
+msgstr "On"
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Aus"
+msgstr "Off"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Augmentierung <0/>"
+msgstr "Augmentation <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Vortrainiertes Netz, das jedes Bild in einen Merkmalsvektor umwandelt. Nur der kleine Klassifikator darüber wird trainiert — deshalb reichen wenige Bilder."
+msgstr "A pre-trained network that turns every image into a feature vector. Only the small classifier on top is trained — which is why few images are enough."
+
+#: src/lib/components/training/ModelStats.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Feature-Extraktor <0/>"
+msgstr "Feature extractor <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Bildbereich (ROI)"
+msgstr "Image region (ROI)"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Der Ausschnitt des Kamerabildes, mit dem trainiert wurde. Beim Testen wird derselbe Ausschnitt verwendet."
+msgstr "The crop of the camera image that was trained on. The same crop is used when testing."
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Bildbereich <0/>"
+msgstr "Image region <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Anzahl der einstellbaren Werte (Gewichte + Bias) im neuronalen Netz. Mehr Parameter = theoretisch mehr Kapazität, aber auch größeres Modell und mehr Gefahr von Überanpassung."
+msgstr "The number of adjustable values (weights + bias) in the neural network. More parameters = more capacity in theory, but also a larger model and more risk of overfitting."
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Parameter <0/>"
+msgstr "Parameters <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Modellgröße"
+msgstr "Model size"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Speicherbedarf des Modells (ungefähr, basierend auf Parametern × 4 Bytes für float32). Wichtig, wenn du das Modell später auf ein Gerät mit wenig Speicher exportierst."
+msgstr "The model's memory footprint (approximate, based on parameters × 4 bytes for float32). Matters when you later export the model to a device with little memory."
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Größe <0/>"
+msgstr "Size <0/>"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Trainingszeitpunkt"
+msgstr "Training time"
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Wann dieses Modell trainiert wurde. Ändern sich Klassen oder Beispiele nach dem Training, sollte neu trainiert werden — das Datum hilft dabei, den Überblick zu behalten."
+msgstr "When this model was trained. If classes or examples change afterwards it should be retrained — the date helps you keep track."
+
+#: src/lib/components/training/ModelStats.svelte
+msgid "Trainiert am <0/>"
+msgstr "Trained on <0/>"
+
+#: src/lib/components/training/ProjectHeader.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt importiert"
+msgstr "Project imported"
+
+#: src/lib/components/NoModelNotice.svelte
+#: src/lib/components/training/ProjectHeader.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Modell importiert"
+msgstr "Model imported"
+
+#. 0: $currentProject.name
+#. 0: name
+#: src/lib/components/training/ProjectHeader.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt \"{0}\" wirklich löschen?"
+msgstr "Really delete project \"{0}\"?"
+
+#: src/lib/components/training/ProjectHeader.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt gelöscht"
+msgstr "Project deleted"
+
+#: src/lib/components/training/ProjectHeader.svelte
+msgid "Zurück zur Übersicht"
+msgstr "Back to the overview"
+
+#: src/lib/components/training/ProjectHeader.svelte
+msgid "Zurück"
+msgstr "Back"
+
+#: src/lib/components/training/ProjectHeader.svelte
+msgid "Projekt-Menü"
+msgstr "Project menu"
+
+#: src/lib/components/Header.svelte
+#: src/lib/components/training/ProjectHeader.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt herunterladen"
+msgstr "Download project"
+
+#: src/lib/components/training/ProjectHeader.svelte
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt löschen"
+msgstr "Delete project"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Zu wenig Trainingsdaten"
+msgstr "Not enough training data"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Bilder werden vorbereitet…"
+msgstr "Preparing images…"
+
+#. 0: ep + 1; 1: opts.epochs
+#: src/lib/components/training/ModelTab.svelte
+msgid "Epoche {0}/{1}"
+msgstr "Epoch {0}/{1}"
+
+#: src/lib/components/training/ModelTab.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Training abgeschlossen"
+msgstr "Training finished"
+
+#. 0: modelLabel(trained)
+#: src/lib/components/training/ModelTab.svelte
+msgid "Starter — {0}"
+msgstr "Starter — {0}"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Fehler beim Training"
+msgstr "Error during training"
+
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modell exportiert"
+msgstr "Model exported"
+
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Fehler beim Speichern"
+msgstr "Error while saving"
+
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modell gelöscht"
+msgstr "Model deleted"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modell-Aktionen"
+msgstr "Model actions"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modell exportieren"
+msgstr "Export model"
+
+#: src/lib/components/NoModelNotice.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modell importieren"
+msgstr "Import model"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modell löschen"
+msgstr "Delete model"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modelle"
+msgstr "Models"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Neues Modell (Name)"
+msgstr "New model (name)"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Vorbereitung läuft"
+msgstr "Preparing"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Training läuft"
+msgstr "Training"
+
+#. 0: $trainPhase === 'preparing' ? 'Vorbereitung läuft' \\: 'Training läuft'
+#: src/lib/components/training/ModelTab.svelte
+msgid "{0} — den Fortschritt siehst du unter dem Video."
+msgstr "{0} — you can watch the progress under the video."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Klassen, Auswertung und Kennzahlen dieses Modells stehen unter dem Video."
+msgstr "This model's classes, evaluation and metrics are shown under the video."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Wähle ein Modell aus der Liste oder trainiere ein neues."
+msgstr "Choose a model from the list or train a new one."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Wie oft die gesamten Trainingsdaten durchlaufen werden. Mehr Epochen = genauer, aber langsamer. 30 ist ein guter Startwert."
+msgstr "How often the whole training set is passed through. More epochs = more accurate, but slower. 30 is a good starting value."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Wie viele Beispiele gleichzeitig durchs Modell laufen. Größer = schneller, aber mehr Speicherbedarf."
+msgstr "How many examples pass through the model at once. Larger = faster, but needs more memory."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Wie stark das Modell bei jedem Schritt angepasst wird. Kleiner = stabiler, aber langsamer. 0.001 ist Standard."
+msgstr "How strongly the model is adjusted at each step. Smaller = more stable, but slower. 0.001 is the default."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Anzahl der Neuronen in der versteckten Schicht. Mehr = komplexere Muster lernbar, aber Überanpassungs­risiko."
+msgstr "Number of neurons in the hidden layer. More = more complex patterns can be learned, but with a risk of overfitting."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. v1 ist der bewährte Standard, v2 etwas genauer bei ähnlicher Größe, Lite am schnellsten auf schwacher Hardware."
+msgstr "The base CNN that turns images into feature vectors. v1 is the proven default, v2 is slightly more accurate at a similar size, Lite is the fastest on weak hardware."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "MobileNet v1 (α=1.0, ~16 MB, Standard)"
+msgstr "MobileNet v1 (α=1.0, ~16 MB, default)"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "MobileNet v2 (α=1.0, ~14 MB, genauer)"
+msgstr "MobileNet v2 (α=1.0, ~14 MB, more accurate)"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "MobileNet v1 Lite (α=0.5, ~5 MB, schneller)"
+msgstr "MobileNet v1 Lite (α=0.5, ~5 MB, faster)"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Algorithmus, der die Gewichte des Modells anpasst. Adam funktioniert für die meisten Fälle. SGD ist robuster für große Datensätze, RMSProp für rauschige."
+msgstr "The algorithm that adjusts the model's weights. Adam works for most cases. SGD is more robust for large datasets, RMSProp for noisy ones."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Anteil der Bilder, die als Validierungsdaten zurückgehalten werden (0 – 0.5). Zeigt, wie gut das Modell auf ungesehenen Bildern funktioniert."
+msgstr "The share of images held back as validation data (0 – 0.5). Shows how well the model works on unseen images."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Validierungs-Split <0/>"
+msgstr "Validation split <0/>"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Frühzeitiger Abbruch: Training stoppt, sobald der Trainings-Loss unter diesen Wert fällt. 0 = kein frühzeitiger Abbruch."
+msgstr "Early stopping: training stops as soon as the training loss falls below this value. 0 = no early stopping."
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Stop-Loss <0/>"
+msgstr "Stop loss <0/>"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Erzeugt zufällig gespiegelte, gedrehte, heller/dunkler und leicht gezoomte Varianten deiner Bilder, damit das Modell robuster wird."
+msgstr "Creates randomly mirrored, rotated, brighter/darker and slightly zoomed variants of your images so the model becomes more robust."
+
+#: src/lib/components/training/ModelTab.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Augmentierung konfigurieren"
+msgstr "Configure augmentation"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Daten-Augmentierung <0/>"
+msgstr "Data augmentation <0/>"
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Fertig"
+msgstr "Done"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Horizontal spiegeln"
+msgstr "Mirror horizontally"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Rotation (±°)"
+msgstr "Rotation (±°)"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Helligkeit (±)"
+msgstr "Brightness (±)"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Zoom-Jitter (±)"
+msgstr "Zoom jitter (±)"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Extra-Kopien pro Bild"
+msgstr "Extra copies per image"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Augmentierungs-Details"
+msgstr "Augmentation details"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Erweiterte Optionen"
+msgstr "Advanced options"
+
+#: src/lib/components/Header.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Trainieren"
+msgstr "Train"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Trainings-Optionen"
+msgstr "Training options"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt konnte nicht erstellt werden"
+msgstr "The project could not be created"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt wählen"
+msgstr "Choose a project"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Starte ein neues Projekt, importiere ein bestehendes oder lade ein fertiges Modell."
+msgstr "Start a new project, import an existing one or load a finished model."
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Klassen aufnehmen, Modell trainieren"
+msgstr "Capture classes, train a model"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt importieren"
+msgstr "Import project"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Vorhandenes Projekt laden (.zip)"
+msgstr "Load an existing project (.zip)"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Fertiges Modell importieren"
+msgstr "Import a finished model"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Trainiertes Modell laden (.zip)"
+msgstr "Load a trained model (.zip)"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+#: src/lib/components/tryout/ProgramList.svelte
+#: src/routes/apply/+page.svelte
+msgid "Modell"
+msgstr "Model"
+
+#. 0: prj.name
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt {0} herunterladen"
+msgstr "Download project {0}"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Herunterladen"
+msgstr "Download"
+
+#. 0: prj.name
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Projekt {0} löschen"
+msgstr "Delete project {0}"
+
+#: src/lib/components/training/ProjectStartScreen.svelte
+msgid "Zuletzt verwendet"
+msgstr "Recently used"
+
+#: src/lib/components/training/TrainingProgress.svelte
+msgid "Vorbereitung…"
+msgstr "Preparing…"
+
+#: src/lib/components/training/TrainingProgress.svelte
+msgid "Training läuft…"
+msgstr "Training…"
+
+#: src/lib/components/training/TrainingProgress.svelte
+msgid "Bilder vorbereiten (Feature-Extraktion)"
+msgstr "Prepare images (feature extraction)"
+
+#. 0: $trainEpoch; 1: $trainTotalEpochs; 2: $trainProgress
+#: src/lib/components/training/TrainingProgress.svelte
+msgid "Epoche {0} / {1} · {2}%"
+msgstr "Epoch {0} / {1} · {2}%"
+
+#: src/lib/components/training/TrainingProgress.svelte
+msgid "Features werden aus deinen Bildern berechnet…"
+msgstr "Computing features from your images…"
+
+#: src/lib/components/training/TrainingProgress.svelte
+msgid "Das Modell lernt gerade aus deinen Bildern. Das kann je nach Anzahl der Klassen und Bilder ein paar Sekunden bis einige Minuten dauern."
+msgstr "The model is learning from your images right now. Depending on the number of classes and images this can take a few seconds to several minutes."
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Kamera wird geladen…"
+msgstr "Loading camera…"
+
+#~ msgid "{0} Hz"
+#~ msgstr "{0} Hz"
+
+#~ msgid "Alle Klassen"
+#~ msgstr "All classes"
+
+#~ msgid "Glättung (Fenster): <0/>"
+#~ msgstr "Smoothing (window): <0/>"
+
+#~ msgid "Median über die letzten N Vorhersagen"
+#~ msgstr "Median over the last N predictions"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "importiertes Modell"
+msgstr "imported model"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "kein Modell geladen"
+msgstr "no model loaded"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Details…"
+msgstr "Details…"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Modell-Info"
+msgstr "Model info"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Klassen des Modells"
+msgstr "The model's classes"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Auswertung"
+msgstr "Evaluation"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Wähle links ein Modell aus oder trainiere ein neues, um es hier zu testen."
+msgstr "Choose a model on the left or train a new one to test it here."
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Trainingsbereich"
+msgstr "Training region"
+
+#~ msgid "Zurücksetzen"
+#~ msgstr "Reset"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Klassen & Bilder"
+msgstr "Classes & images"
+
+#. 0: selectedIdx.size
+#: src/lib/components/training/VideoPanel.svelte
+msgid "{0} ausgewählt"
+msgstr "{0} selected"
+
+#. 0: cls
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Bilder von {0}"
+msgstr "Images of {0}"
+
+#. 0: i + 1
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Bild {0} löschen"
+msgstr "Delete image {0}"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Klick löscht · ziehen wählt mehrere aus"
+msgstr "Click deletes · drag selects several"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Keine Bilder"
+msgstr "No images"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Serienaufnahme abbrechen"
+msgstr "Cancel burst capture"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Bild aufnehmen"
+msgstr "Capture image"
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Klicken zum Abbrechen"
+msgstr "Click to cancel"
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Halten zum Aufnehmen"
+msgstr "Hold to capture"
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Erweiterte Aufnahme"
+msgstr "Advanced capture"
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Serie"
+msgstr "Burst"
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Verzögerung vor Start (s)"
+msgstr "Delay before start (s)"
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Anzahl Bilder"
+msgstr "Number of images"
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Abstand (ms)"
+msgstr "Interval (ms)"
+
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Start"
+msgstr "Start"
+
+#: src/lib/components/ui/Dropdown.svelte
+#: src/lib/components/ui/Dropdown.svelte
+#: src/lib/components/ui/Dropdown.svelte
+msgid "Close dropdown"
+msgstr "Close dropdown"
+
+#: src/lib/components/ui/InfoTooltip.svelte
+#: src/lib/components/ui/InfoTooltip.svelte
+msgid "Info"
+msgstr "Info"
+
+#. 0: n
+#. 0: n
+#. 0: i + 1
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/components/training/VideoPanel.svelte
+#: src/lib/machine.ts
+msgid "Klasse {0}"
+msgstr "Class {0}"
+
+#. 0: layout.hidden
+#: src/lib/components/training/VideoPanel.svelte
+msgid "{0} ältere Bilder"
+msgstr "{0} older images"
+
+#. 0: pendingClassName
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Enter legt „{0}“ an"
+msgstr "Enter creates “{0}”"
+
+#. 0: pendingClassName
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Aufnahme legt „{0}“ an"
+msgstr "Capturing creates “{0}”"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Neue Klasse aufnehmen"
+msgstr "Capture a new class"
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Genauigkeit — so sollte die Kurve aussehen"
+msgstr "Accuracy — what the curve should look like"
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Gut: Sie steigt in den ersten Epochen steil an und läuft dann flach auf einem hohen Wert aus. Bleibt sie flach und niedrig? Das Modell lernt kaum — Lernrate erhöhen (z. B. 0.001 → 0.005) oder mehr Hidden Units. Springt sie stark auf und ab? Lernrate zu hoch oder Batch-Größe zu klein. Erreicht sie schon nach wenigen Epochen 100 %? Meist zu wenige oder zu ähnliche Bilder — das Modell merkt sich die Bilder statt Muster. Dann helfen mehr und vielfältigere Aufnahmen, Augmentierung und weniger Epochen."
+msgstr "Good: it rises steeply over the first epochs and then levels off at a high value. Stays flat and low? The model is barely learning — raise the learning rate (e.g. 0.001 → 0.005) or add hidden units. Jumps up and down? The learning rate is too high or the batch size too small. Hits 100 % after only a few epochs? Usually too few or too similar images — the model is memorising the images instead of patterns. More varied captures, augmentation and fewer epochs help."
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Verlust — so sollte die Kurve aussehen"
+msgstr "Loss — what the curve should look like"
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "Gut: Sie fällt gleichmäßig und wird zum Ende hin flach. Fällt sie kaum? Länger trainieren (mehr Epochen) oder Lernrate erhöhen. Zappelt sie oder steigt sie wieder an? Lernrate verringern (z. B. 0.001 → 0.0003) oder Batch-Größe erhöhen. Fällt sie fast auf 0, obwohl neue Bilder im Test falsch erkannt werden? Das ist Überanpassung — Dropout erhöhen, Augmentierung anschalten oder früher stoppen (weniger Epochen, Stop-Loss setzen)."
+msgstr "Good: it falls steadily and flattens out towards the end. Barely falling? Train longer (more epochs) or raise the learning rate. Jittery or rising again? Lower the learning rate (e.g. 0.001 → 0.0003) or raise the batch size. Falls to almost 0 while new images are still misclassified in testing? That is overfitting — raise dropout, switch on augmentation or stop earlier (fewer epochs, set a stop loss)."
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "<0/> Genauigkeit <1/>"
+msgstr "<0/> Accuracy <1/>"
+
+#: src/lib/components/training/ModelCharts.svelte
+msgid "<0/> Verlust <1/>"
+msgstr "<0/> Loss <1/>"
+
+#. 0: roiSizeLabel(model.roi)
+#: src/lib/components/ModelPicker.svelte
+msgid "· Bereich {0}"
+msgstr "· Region {0}"
+
+#: src/lib/components/ModelPicker.svelte
+msgid "· importiert"
+msgstr "· imported"
+
+#. 0: model.classes.length
+#: src/lib/components/ModelPicker.svelte
+msgid "{0} Klassen <0/> <1/> <2/>"
+msgstr "{0} classes <0/> <1/> <2/>"
+
+#: src/lib/components/NoModelNotice.svelte
+msgid "Noch kein Modell vorhanden"
+msgstr "No model yet"
+
+#: src/lib/components/NoModelNotice.svelte
+msgid "Trainiere ein Modell mit deinen eigenen Bildern oder importiere ein fertiges Modell."
+msgstr "Train a model with your own images or import a finished one."
+
+#: src/lib/components/NoModelNotice.svelte
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modell konnte nicht gelesen werden"
+msgstr "The model could not be read"
+
+#: src/lib/components/NoModelNotice.svelte
+msgid "Fehler beim Import: "
+msgstr "Import error: "
+
+#: src/lib/components/NoModelNotice.svelte
+msgid "Importiere…"
+msgstr "Importing…"
+
+#: src/lib/components/RoiOverlay.svelte
+msgid "Bildbereich des Modells"
+msgstr "The model's image region"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Bereich für das nächste Modell"
+msgstr "Region for the next model"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Bereich ändern"
+msgstr "Change region"
+
+#. 0: roiSizeLabel(run.roi)
+#. 0: roiSizeLabel($draftRoi)
+#: src/lib/components/training/ModelHistory.svelte
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Bereich {0}"
+msgstr "Region {0}"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Bereich festlegen"
+msgstr "Set region"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "werden im festgelegten Bereich trainiert"
+msgstr "are trained on the region you set"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "werden mit dem ganzen Bild trainiert"
+msgstr "are trained on the whole image"
+
+#: src/lib/components/training/ModelTab.svelte
+msgid "Kein Modell ausgewählt"
+msgstr "No model selected"
+
+#: src/lib/components/training/ModelHistory.svelte
+msgid "Dieses Modell löschen?"
+msgstr "Delete this model?"
+
+#: src/lib/components/training/ModelHistory.svelte
+msgid "importiert"
+msgstr "imported"
+
+#: src/lib/components/training/ModelHistory.svelte
+msgid "Exportieren"
+msgstr "Export"
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Trainiere oder importiere zuerst ein Modell"
+msgstr "Train or import a model first"
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Dieses Modell passt nicht zu den Klassen des Programms"
+msgstr "This model does not match the program's classes"
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Neues Programm"
+msgstr "New program"
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Programme"
+msgstr "Programs"
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Ein Programm wird immer für ein Modell erstellt. Trainiere eines mit deinen Bildern oder importiere ein fertiges."
+msgstr "A program is always created for a model. Train one with your own images or import a finished one."
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Noch kein Programm gespeichert."
+msgstr "No program saved yet."
+
+#: src/lib/components/tryout/TryoutCamera.svelte
+msgid "Kein Modell geladen — wähle oben ein Programm mit Modell."
+msgstr "No model loaded — choose a program with a model above."
+
+#: src/lib/components/tryout/TryoutCamera.svelte
+msgid "· Bereich"
+msgstr "· Region"
+
+#: src/lib/components/tryout/TryoutCamera.svelte
+msgid "· Ganzes Bild"
+msgstr "· Whole image"
+
+#. 0: $activeModel.classes.length
+#: src/lib/components/tryout/TryoutCamera.svelte
+msgid "{0} Klassen <0/>"
+msgstr "{0} classes <0/>"
+
+#: src/lib/components/tryout/ProgramList.svelte
+#: src/routes/apply/+page.svelte
+msgid "Modell wählen"
+msgstr "Choose a model"
+
+#: src/routes/apply/+page.svelte
+msgid "Zum Anwenden brauchst du ein Modell. Trainiere eines mit deinen Bildern oder importiere ein fertiges."
+msgstr "You need a model before you can apply it. Train one with your own images or import a finished one."
+
+#: src/routes/apply/+page.svelte
+msgid "Wähle oben rechts ein Modell aus."
+msgstr "Choose a model in the top right."
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Das Modell dieses Programms wurde gelöscht."
+msgstr "This program's model has been deleted."
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "ohne Klassen-Blöcke"
+msgstr "without class blocks"
+
+#. 0: modelLabel(model)
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Programm nutzt jetzt „{0}“"
+msgstr "Program now uses “{0}”"
+
+#. 0: modelLabel(model)
+#: src/routes/apply/+page.svelte
+msgid "Modell „{0}“ aktiv"
+msgstr "Model “{0}” active"
+
+#. 0: modelLabel(imported)
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modell „{0}“ importiert"
+msgstr "Model “{0}” imported"
+
+#. 0: modelLabel(model)
+#: src/lib/components/training/ModelTab.svelte
+msgid "Modell „{0}“ löschen?"
+msgstr "Delete model “{0}”?"
+
+#: src/routes/tryout/+page.svelte
+msgid "Calliope mini Programm"
+msgstr "Calliope mini program"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Keine Beispiele im Projekt — Bereiche bitte von Hand setzen."
+msgstr "No examples in the project — please set the regions by hand."
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Automatik fehlgeschlagen."
+msgstr "Automatic detection failed."
+
+#. 0: Math.round(CLASS_THRESHOLD * 100)
+#: src/lib/components/training/VideoPanel.svelte
+msgid "unter {0}%"
+msgstr "below {0}%"
+
+#~ msgid "Bereich für {0} festlegen"
+#~ msgstr "Set the region for {0}"
+
+#~ msgid "Bereich"
+#~ msgstr "Region"
+
+#. 0: Math.round(raw * 100)
+#: src/lib/components/training/VideoPanel.svelte
+msgid "roh {0}%"
+msgstr "raw {0}%"
+
+#~ msgid "erkannt ab roh {0}%"
+#~ msgstr "detected from raw {0}%"
+
+#. 0: Math.round(CLASS_THRESHOLD * 100)
+#: src/lib/components/tryout/TryoutDetailPanel.svelte
+msgid "Erkannt ab {0}%"
+msgstr "Detected from {0}%"
+
+#. 0: roiSizeLabel(run.roi)
+#: src/lib/components/training/ModelHistory.svelte
+msgid "Trainiert im Bildbereich {0}"
+msgstr "Trained on image region {0}"
+
+#: src/lib/components/training/ModelHistory.svelte
+msgid "Trainiert mit dem ganzen Bild"
+msgstr "Trained on the whole image"
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Kein passendes Modell"
+msgstr "No matching model"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Messe…"
+msgstr "Measuring…"
+
+#~ msgid "Bereiche automatisch"
+#~ msgstr "Regions automatically"
+
+#: src/lib/components/Header.svelte
+msgid "Kamera"
+msgstr "Camera"
+
+#: src/routes/tryout/+page.svelte
+msgid "Blöcke"
+msgstr "Blocks"
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Modell fehlt"
+msgstr "Model missing"
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "Dieses Programm öffnen"
+msgstr "Open this program"
+
+#: src/lib/components/tryout/ProgramList.svelte
+msgid "<0/> Neues Programm"
+msgstr "<0/> New program"
+
+#: src/routes/tryout/+page.svelte
+msgid "Erweiterung"
+msgstr "Extension"
+
+#: src/routes/tryout/+page.svelte
+#: src/routes/tryout/+page.svelte
+msgid "Erweiterungen"
+msgstr "Extensions"
+
+#: src/routes/tryout/+page.svelte
+msgid "Der Link konnte nicht erstellt werden. Versuche es später erneut."
+msgstr "The link could not be created. Please try again later."
+
+#: src/lib/components/LanguageOverlay.svelte
+msgid "Sprache auswählen"
+msgstr "Select language"
+
+#: src/lib/components/Header.svelte
+msgid "Programmieren"
+msgstr "Program"
+
+#: src/lib/components/Header.svelte
+msgid "Anwenden"
+msgstr "Apply"
+
+#: src/lib/components/Header.svelte
+msgid "Einstellungen"
+msgstr "Settings"
+
+#: src/lib/components/Header.svelte
+msgid "Sprachen"
+msgstr "Languages"
+
+#: src/lib/components/Header.svelte
+msgid "KI-Hinweise"
+msgstr "AI Information"
+
+#: src/lib/components/tryout/TryoutDetailPanel.svelte
+msgid "Noch keine Erkennung."
+msgstr "No detection yet."
+
+#: src/lib/components/tryout/TryoutDetailPanel.svelte
+msgid "Aktuelle Erkennung"
+msgstr "Current detection"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Bereit zum Testen"
+msgstr "Ready to test"
+
+#: src/routes/tryout/+page.svelte
+msgid "Programmiermodus"
+msgstr "Programming mode"
+
+#: src/routes/tryout/+page.svelte
+msgid "Teilen"
+msgstr "Share"
+
+#: src/routes/tryout/+page.svelte
+#: src/routes/tryout/+page.svelte
+msgid "Programm teilen"
+msgstr "Share program"
+
+#: src/routes/tryout/+page.svelte
+msgid "Wird geteilt…"
+msgstr "Sharing…"
+
+#: src/routes/tryout/+page.svelte
+msgid "Keine Erweiterungen hinzugefügt"
+msgstr "No extensions added"
+
+#: src/routes/tryout/+page.svelte
+msgid "Auf GitHub öffnen"
+msgstr "Open on GitHub"
+
+#: src/routes/tryout/+page.svelte
+msgid "Erweiterung entfernen"
+msgstr "Remove extension"
+
+#: src/routes/tryout/+page.svelte
+msgid "Calliope mini Version"
+msgstr "Calliope mini version"
+
+#: src/routes/tryout/+page.svelte
+msgid "Link wird erstellt…"
+msgstr "Creating link…"
+
+#: src/routes/tryout/+page.svelte
+msgid "Jeder mit diesem Link kann "
+msgstr "Anyone with this link can open and copy "
+
+#: src/routes/tryout/+page.svelte
+msgid "Link zum Programm"
+msgstr "Link to the program"
+
+#: src/routes/tryout/+page.svelte
+msgid "Link kopieren"
+msgstr "Copy link"
+
+#: src/routes/tryout/+page.svelte
+msgid "Link kopiert"
+msgstr "Link copied"
+
+#: src/routes/tryout/+page.svelte
+msgid "Kopieren fehlgeschlagen"
+msgstr "Copying failed"
+
+#: src/routes/tryout/+page.svelte
+msgid "QR-Code zum Programm"
+msgstr "QR code for the program"
+
+#: src/routes/tryout/+page.svelte
+msgid "Öffnen"
+msgstr "Open"
+
+#: src/routes/tryout/+page.svelte
+msgid " öffnen und kopieren."
+msgstr "."
+
+#: src/routes/tryout/+page.svelte
+msgid "dieses Programm"
+msgstr "this program"
+
+#~ msgid "Zuletzt geoeffnet HMRTEST"
+#~ msgstr ""
+
+#~ msgid "Zuletzt benutzt"
+#~ msgstr ""
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Bereiche"
+msgstr "Ranges"
+
+#. 0: $predictionClasses.length; 1: prediction && fps ? ` · ${fps} Hz` \\: ''
+#: src/lib/components/training/VideoPanel.svelte
+msgid "{0} Klassen{1}"
+msgstr "{0} classes{1}"
+
+#. 0: cls
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Roher Wert für 0 %, {0}"
+msgstr "Raw value for 0%, {0}"
+
+#. 0: cls
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Roher Wert für 100 %, {0}"
+msgstr "Raw value for 100%, {0}"
+
+#. 0: Math.round(range.lo * 100)
+#: src/lib/components/training/VideoPanel.svelte
+msgid "0 % ab roh {0}%"
+msgstr "0% from raw {0}%"
+
+#. 0: Math.round(range.hi * 100)
+#: src/lib/components/training/VideoPanel.svelte
+msgid "100 % ab roh {0}%"
+msgstr "100% from raw {0}%"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Aus Beispielen bestimmen"
+msgstr "Derive from examples"
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Auf 0–100 % zurücksetzen"
+msgstr "Reset to 0–100%"
+
+#. 0: Math.round(CLASS_THRESHOLD * 100)
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Die Griffe legen fest, welcher Wert des Modells als 0 % und welcher als 100 % angezeigt wird. Erkannt wird ab {0}%."
+msgstr "The handles set which model value reads as 0% and which as 100%. A class counts as detected from {0}% up."
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Glättung <0/>"
+msgstr "Smoothing <0/>"
+
+#. 0: Math.round(rawTriggerPoint(range) * 100)
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Erkannt ab roh {0}%"
+msgstr "Detected from raw {0}%"

@@ -23,8 +23,9 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Paraglide
-src/lib/paraglide
+# wuchale — compiled catalogs and proxies, regenerated on startup.
+# The .po files and the loaders next to them are committed.
+src/locales/.wuchale
 
 *storybook.log
 storybook-static

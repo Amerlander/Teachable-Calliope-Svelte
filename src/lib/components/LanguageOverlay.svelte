@@ -1,18 +1,16 @@
 <script lang="ts">
-  import { showLanguageOverlay, currentLang, t } from '$lib/stores/app';
+  import { showLanguageOverlay, currentLang, setLang } from '$lib/stores/app';
   import type { Lang } from '$lib/stores/app';
 
+  // Only the languages that actually have a catalog. French, Spanish, Italian
+  // and Greek used to be offered here and silently fell back to German.
   const LANGUAGES: { code: Lang; label: string }[] = [
     { code: 'de', label: 'Deutsch (DE)' },
-    { code: 'en', label: 'English (EN)' },
-    { code: 'fr', label: 'Français (FR)' },
-    { code: 'es', label: 'Español (ES)' },
-    { code: 'it', label: 'Italiano (IT)' },
-    { code: 'el', label: 'Ελληνικά (EL)' }
+    { code: 'en', label: 'English (EN)' }
   ];
 
-  function select(code: Lang) {
-    currentLang.set(code);
+  async function select(code: Lang) {
+    await setLang(code);
     showLanguageOverlay.set(false);
   }
   function close(e: MouseEvent) { if (e.target === e.currentTarget) showLanguageOverlay.set(false); }
@@ -23,7 +21,7 @@
   <div class="backdrop" onclick={close} onkeydown={(e) => e.key === 'Escape' && closeBtn()} role="presentation">
     <div class="box">
       <button class="close" onclick={closeBtn}>&times;</button>
-      <h2>{t('language.title', $currentLang)}</h2>
+      <h2>Sprache auswählen</h2>
       <div class="list">
         {#each LANGUAGES as lang}
           <button

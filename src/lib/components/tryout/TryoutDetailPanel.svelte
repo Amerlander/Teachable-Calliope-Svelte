@@ -1,11 +1,9 @@
 <script lang="ts">
   import { calliopeLog, clearCalliopeLog, ConnectionPanel } from '@calliope-edu/mini-connection-widget';
   import { currentDetection } from '$lib/stores/streaming';
-  import { currentLang, t } from '$lib/stores/app';
-  import { currentProject } from '$lib/stores/projects';
+    import { currentProject } from '$lib/stores/projects';
   import { CLASS_THRESHOLD } from '$lib/calibration';
 
-  const lang = $derived($currentLang);
   const det = $derived($currentDetection);
   const log = $derived($calliopeLog);
   const mode = $derived($currentProject?.mode ?? 'image');
@@ -18,7 +16,7 @@
 <div class="detail-panel">
   <!-- Section: current detection -->
   <section>
-    <h4>{t('detail.currentDetection', lang)}</h4>
+    <h4>Aktuelle Erkennung</h4>
     {#if det}
       <ul class="score-list">
         <!-- Scores are the mapped ones the detection carries; the threshold is
@@ -50,7 +48,7 @@
         <span>{formatTime(det.at)}</span>
       </div>
     {:else}
-      <div class="empty">{t('detail.noDetection', lang)}</div>
+      <div class="empty">Noch keine Erkennung.</div>
     {/if}
   </section>
 
@@ -63,12 +61,12 @@
   <!-- Section: communication log -->
   <!-- <section>
     <div class="log-head">
-      <h4>{t('detail.log', lang)}</h4>
-      <button class="link-btn" onclick={clearCalliopeLog}>{t('detail.clear', lang)}</button>
+      <h4>Kommunikation</h4>
+      <button class="link-btn" onclick={clearCalliopeLog}>Leeren</button>
     </div>
     <div class="log-list">
       {#if log.length === 0}
-        <div class="empty">{t('detail.logEmpty', lang)}</div>
+        <div class="empty">Keine Nachrichten.</div>
       {:else}
         {#each log.slice().reverse() as e (e.id)}
           <div class="log-row dir-{e.direction}">
