@@ -1,7 +1,7 @@
 <script lang="ts">
   import { calliopeLog, clearCalliopeLog, ConnectionPanel } from '@calliope-edu/mini-connection-widget';
   import { currentDetection } from '$lib/stores/streaming';
-    import { currentProject } from '$lib/stores/projects';
+  import { currentProject } from '$lib/stores/projects';
   import { CLASS_THRESHOLD } from '$lib/calibration';
 
   const det = $derived($currentDetection);
