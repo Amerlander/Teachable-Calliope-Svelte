@@ -67,8 +67,7 @@
 <svelte:head>
   <title>Calliope Teachable Machine</title>
   <link rel="icon" href={favicon} />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- The Inter webfont is declared in src/app.html, not here — see the comment there. -->
 </svelte:head>
 
 <LanguageOverlay />

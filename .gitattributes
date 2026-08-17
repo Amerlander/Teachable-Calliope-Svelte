@@ -1,0 +1,4 @@
+# Model weights and webfonts must never go through line-ending normalisation —
+# a single converted byte silently corrupts a tensor or a font table.
+*.bin binary
+*.woff2 binary

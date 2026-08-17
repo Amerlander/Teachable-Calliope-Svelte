@@ -215,7 +215,7 @@
     try {
       const diag = await getModelDiagnostics();
       console.debug('Model diagnostics', diag);
-      showNotification(`Mobilenet: ${diag.mobilenetLoaded}\nClassifier: ${diag.classifierLoaded}\nClasses: ${diag.classesCount}\nEmb Shape: ${JSON.stringify(diag.embeddingShape)}\nClassifier Input: ${JSON.stringify(diag.classifierInputShape)}`, { type: 'info', duration: 10000 });
+      showNotification(`Mobilenet: ${diag.mobilenetLoaded} (${diag.extractor ?? '–'}, ${diag.expectedFeatures ?? '?'} Merkmale)\nClassifier: ${diag.classifierLoaded}\nClasses: ${diag.classesCount}\nEmb Shape: ${JSON.stringify(diag.embeddingShape)}\nClassifier Input: ${JSON.stringify(diag.classifierInputShape)}`, { type: 'info', duration: 10000 });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       showNotification('Diagnose fehlgeschlagen: ' + msg, { type: 'error' });

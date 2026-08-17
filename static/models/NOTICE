@@ -1,0 +1,41 @@
+Third-party machine learning models bundled with this application
+=================================================================
+
+The model weights in this directory are not our own work. They are redistributed
+here unmodified in content — only repacked, in that the upstream weight shards
+were concatenated into a single .bin per model and the `weightsManifest` in each
+model.json was rewritten to point at it. Numerical output is bit-identical to the
+upstream files.
+
+See PROVENANCE.json for the exact source URL, retrieval date and SHA-256 of every
+file, and scripts/vendor-models.mjs for the script that produced them.
+
+Why these are vendored rather than fetched at runtime: the upstream host
+tfhub.dev now redirects to kaggle.com, and that redirect chain does not answer
+browser fetches (HTTP 403, no Access-Control-Allow-Origin header). Self-hosting
+is therefore required for the models to load at all, and it additionally lets the
+application run in filtered school networks and offline.
+
+-----------------------------------------------------------------------
+MobileNet v1 (mobilenet-v1, mobilenet-v1-lite)
+MobileNet v2 (mobilenet-v2)
+MoveNet SinglePose Lightning (movenet-singlepose-lightning)
+
+Copyright The TensorFlow Authors. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+these files except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+MobileNet architectures are described in:
+  Howard et al., "MobileNets: Efficient Convolutional Neural Networks for Mobile
+  Vision Applications", arXiv:1704.04861
+  Sandler et al., "MobileNetV2: Inverted Residuals and Linear Bottlenecks",
+  arXiv:1801.04381

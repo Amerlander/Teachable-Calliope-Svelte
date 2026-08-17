@@ -1,0 +1,40 @@
+{
+  "models": [
+    {
+      "dir": "mobilenet-v1",
+      "note": "MobileNet v1, alpha 1.0, 224px — feature extractor (graph model, embedding at module_apply_default/MobilenetV1/Logits/global_pool)",
+      "source": "https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v1_1.0_224/model.json",
+      "retrieved": "2026-08-17",
+      "shardsMerged": 5,
+      "bytes": 16968664,
+      "sha256": "9a011da5efb592d18c4ecd5dcb7a36f56bdb34727ed8b254175641bb7ed94b2f"
+    },
+    {
+      "dir": "mobilenet-v2",
+      "note": "MobileNet v2, alpha 1.0, 224px — feature extractor (graph model, embedding at module_apply_default/MobilenetV2/Logits/AvgPool)",
+      "source": "https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/model.json",
+      "retrieved": "2026-08-17",
+      "shardsMerged": 4,
+      "bytes": 14091181,
+      "sha256": "2769bdfb5759eb57aaa20afb795f2586df8b90e4b69d6e23fe804de7ba4f8e41"
+    },
+    {
+      "dir": "mobilenet-v1-lite",
+      "note": "MobileNet v1, alpha 0.5, 224px — feature extractor (Keras layers model, truncated at conv_pw_13_relu)",
+      "source": "https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.50_224/model.json",
+      "retrieved": "2026-08-17",
+      "shardsMerged": 55,
+      "bytes": 5417174,
+      "sha256": "286de58469ed6a98ef6bb451a0b5a75b5a83ad480945100e7c4c33f11ac753d7"
+    },
+    {
+      "dir": "movenet-singlepose-lightning",
+      "note": "MoveNet SinglePose Lightning v4 — pose detection",
+      "source": "https://tfhub.dev/google/tfjs-model/movenet/singlepose/lightning/4/model.json?tfjs-format=file",
+      "retrieved": "2026-08-17",
+      "shardsMerged": 2,
+      "bytes": 4808148,
+      "sha256": "bf97bc10d9c8a11200b0190ed64ce039b6252f1aff7cb552aca99b3d191c2f34"
+    }
+  ]
+}

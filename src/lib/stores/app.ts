@@ -43,7 +43,7 @@ function persisted<T>(key: string, initial: T): ReturnType<typeof writable<T>> {
 
 // --- Workspace sidebar tab: drives the camera panel mode ---
 export type WorkspaceTab = 'classes' | 'model';
-export const workspaceTab = persisted<WorkspaceTab>('teachable-workspace-tab', 'classes');
+export const workspaceTab = persisted<WorkspaceTab>('teachable-workspace-tab', 'model');
 
 // --- Model tab sub-view: 'model' shows stats, 'new' shows training-prep UI ---
 export type ModelTabView = 'model' | 'new';

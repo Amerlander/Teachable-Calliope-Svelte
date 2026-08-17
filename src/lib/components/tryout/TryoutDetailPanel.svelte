@@ -53,12 +53,12 @@
 
   <!-- Section: Calliope connection — full panel inline (the compact dropdown
        version of this lives in the header). -->
-  <section class="conn-section">
+  <!-- <section class="conn-section">
     <ConnectionPanel />
-  </section>
+  </section> -->
 
   <!-- Section: communication log -->
-  <section>
+  <!-- <section>
     <div class="log-head">
       <h4>{t('detail.log', lang)}</h4>
       <button class="link-btn" onclick={clearCalliopeLog}>{t('detail.clear', lang)}</button>
@@ -84,7 +84,7 @@
         {/each}
       {/if}
     </div>
-  </section>
+  </section> -->
 </div>
 
 <style lang="scss">
