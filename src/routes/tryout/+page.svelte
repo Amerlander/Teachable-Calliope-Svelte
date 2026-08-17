@@ -43,11 +43,65 @@
   let iframeEl: HTMLIFrameElement | undefined = $state();
   const src = createMakeCodeIframeUrl(get(currentLang));
 
-  let editorLang: MakeCodeLang = $state('blocks');
+  const lang = $derived($currentLang);
 
-  function pickEditorLang(l: MakeCodeLang) {
-    editorLang = l;
-    void switchMakeCodeLang(l);
+  // The shared toolbar and share modal carry German defaults; route them through
+  // the app's own dictionary so they follow the language switcher.
+  const makeCodeLabels = $derived<Partial<MakeCodeLabels>>({
+    programmingMode: t('makecode.programmingMode', lang),
+    modeBlocks: t('makecode.modeBlocks', lang),
+    share: t('makecode.share', lang),
+    shareProgram: t('makecode.shareProgram', lang),
+    sharingInProgress: t('makecode.sharingInProgress', lang),
+    extensions: t('makecode.extensions', lang),
+    extensionsCount: (count: number) =>
+      `${count} ${count === 1 ? t('makecode.extension', lang) : t('makecode.extensions', lang)}`,
+    noExtensionsAdded: t('makecode.noExtensionsAdded', lang),
+    openOnGithub: t('makecode.openOnGithub', lang),
+    removeExtension: t('makecode.removeExtension', lang),
+    calliopeMiniVersion: t('makecode.calliopeMiniVersion', lang),
+    shareModalTitle: t('makecode.shareModalTitle', lang),
+    shareCreatingLink: t('makecode.shareCreatingLink', lang),
+    shareIntroBefore: t('makecode.shareIntroBefore', lang),
+    shareIntroAfter: t('makecode.shareIntroAfter', lang),
+    shareThisProgram: t('makecode.shareThisProgram', lang),
+    shareLinkAria: t('makecode.shareLinkAria', lang),
+    shareCopyLink: t('makecode.shareCopyLink', lang),
+    shareLinkCopied: t('makecode.shareLinkCopied', lang),
+    shareCopyFailed: t('makecode.shareCopyFailed', lang),
+    shareQrAlt: t('makecode.shareQrAlt', lang),
+    shareClose: t('makecode.shareClose', lang),
+    shareOpen: t('makecode.shareOpen', lang),
+  });
+
+  function pickEditorLang(mode: MakeCodeMode) {
+    void switchMakeCodeLang(mode);
+  }
+
+  // ---- Share ----
+  // The editor runs with hidemenu=1, so pxt's own share entry is hidden and the
+  // toolbar button is the only way to publish a program.
+  let shareOpen = $state(false);
+  let shareLoading = $state(false);
+  let shareError = $state<string | null>(null);
+  let shareResult = $state<ShareResult | null>(null);
+
+  async function handleShare() {
+    if (shareLoading) return;
+    shareOpen = true;
+    shareResult = null;
+    shareError = null;
+    shareLoading = true;
+    try {
+      shareResult = await shareMakeCodeProject(
+        getCurrentMakeCodeProgram()?.name || $currentProject?.name || 'Calliope mini Programm',
+      );
+    } catch (err) {
+      console.warn('[tryout] shareProject failed', err);
+      shareError = t('makecode.shareFailed', lang);
+    } finally {
+      shareLoading = false;
+    }
   }
 
   onMount(() => {
@@ -114,26 +168,31 @@
       </Pane>
       <Pane size={64}>
         <div class="panel editor-panel">
-          <div class="lang-toolbar">
-            <button
-              class:active={editorLang === 'blocks'}
-              onclick={() => pickEditorLang('blocks')}
-            >Blöcke</button>
-            <button
-              class:active={editorLang === 'js'}
-              onclick={() => pickEditorLang('js')}
-            >JavaScript</button>
-            <button
-              class:active={editorLang === 'python'}
-              onclick={() => pickEditorLang('python')}
-            >Python</button>
-          </div>
+          <MakeCodeToolbar
+            currentMode={$makeCodeMode}
+            currentVersion={$makeCodeHardwareVersion ?? 3}
+            extensions={$makeCodeExtensions}
+            sharing={shareLoading}
+            labels={makeCodeLabels}
+            onModeChange={pickEditorLang}
+            onVersionChange={setMakeCodeHardwareVersion}
+            onExtensionRemoved={removeMakeCodeExtension}
+            onShare={handleShare}
+          >
+            {#snippet barRightExtra()}
+              <ConnectButton appearance="icon" />
+            {/snippet}
+          </MakeCodeToolbar>
+          <!-- No `sandbox` here (campus runs the editor the same way): the
+               attribute this frame used to carry omitted `allow-downloads`, which
+               is exactly what the "Als Datei herunterladen" path needs, and with
+               allow-scripts + allow-same-origin it bought no real isolation from
+               a first-party Calliope origin anyway. -->
           <iframe
             bind:this={iframeEl}
             title="MakeCode Calliope Editor"
             {src}
             allow="usb; bluetooth; autoplay;"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
             style="width:100%;flex:1;border:0;"
             allowfullscreen
           ></iframe>
@@ -143,19 +202,35 @@
   {/if}
 </div>
 
+<MakeCodeShareModal
+  open={shareOpen}
+  loading={shareLoading}
+  error={shareError}
+  result={shareResult}
+  programName={getCurrentMakeCodeProgram()?.name ?? ''}
+  labels={makeCodeLabels}
+  onClose={() => (shareOpen = false)}
+  onCopied={(msg) => showNotification(msg, { type: 'success' })}
+  onCopyFailed={(msg) => showNotification(msg, { type: 'error' })}
+/>
+
 <style lang="scss">
+  // No padding and no panel frames: the panes reach the window edges and the
+  // black splitter bar separates them. See src/lib/styles/splitpanes.scss.
   .tryout-view {
     width: 100%;
     height: 100%;
-    padding: 16px;
+    padding: 0;
     display: block;
   }
+  // Both resets undo the global .panel card look — the pane is the surface now.
   .panel {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    border-radius: 12px;
     background: #fff;
+    border-radius: 0;
+    box-shadow: none;
   }
   .camera-panel {
     padding: 0;
@@ -170,71 +245,20 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-  }
-  .lang-toolbar {
-    display: flex;
-    gap: 4px;
-    padding: 6px 8px;
-    background: #f3f4f6;
-    border-bottom: 1px solid #e5e7eb;
-    flex: 0 0 auto;
 
-    button {
-      padding: 4px 12px;
-      font-size: 12px;
-      font-weight: 500;
-      border-radius: 6px;
-      background: transparent;
-      border: 1px solid transparent;
-      color: #4b5563;
-      cursor: pointer;
-      min-height: unset;
-      box-shadow: none;
-      transition: background 0.15s, color 0.15s;
-
-      &:hover {
-        background: rgba(0, 0, 0, 0.06);
-      }
-      &.active {
-        background: #fff;
-        color: #111;
-        font-weight: 600;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-      }
-    }
-  }
-
-  :global(.splitpanes.modern-theme) {
-    background: transparent;
-  }
-  :global(.splitpanes.modern-theme .splitpanes__pane) {
-    background: transparent;
-    padding: 0 8px;
-    &:first-child { padding-left: 0; }
-    &:last-child  { padding-right: 0; }
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-  :global(.splitpanes.modern-theme .splitpanes__splitter) {
-    background: transparent;
-    position: relative;
-    width: 6px;
-    margin: 0 -3px;
-    z-index: 2;
-    cursor: col-resize;
-    &::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      margin: auto 2px;
-      width: 2px;
-      background: rgba(0, 0, 0, 0.15);
-      border-radius: 2px;
-      transition: background 0.15s;
-    }
-    &:hover::before {
-      background: rgba(0, 0, 0, 0.35);
-    }
+    /* The shared toolbar defaults to campus's dark bar; these map it onto the
+       light surface the rest of Teachable uses. */
+    --mkc-toolbar-bg: #f3f4f6;
+    --mkc-toolbar-border: #e5e7eb;
+    --mkc-mode-group-bg: #ffffff;
+    --mkc-mode-fg: #4b5563;
+    --mkc-mode-hover-bg: rgba(0, 0, 0, 0.06);
+    --mkc-mode-active-bg: #111827;
+    --mkc-mode-active-fg: #ffffff;
+    --mkc-button-bg: #ffffff;
+    --mkc-button-fg: #374151;
+    --mkc-button-border: #d1d5db;
+    --mkc-button-hover-bg: #f9fafb;
+    --mkc-button-hover-border: #9ca3af;
   }
 </style>

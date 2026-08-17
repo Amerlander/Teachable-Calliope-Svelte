@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
-import { paraglideVitePlugin } from '@inlang/paraglide-js';
+import { wuchale } from 'wuchale/vite';
 import { defineConfig } from 'vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 
@@ -8,6 +8,12 @@ import { sveltekit } from '@sveltejs/kit/vite';
 // `_linkWidget` below.
 const _widgetSrc = fileURLToPath(
 	new URL('../../../lib/mini-connection-widget/src/index.ts', import.meta.url)
+);
+// The `./makecode` subpath (embedded MakeCode host) needs its own alias: Vite
+// matches string alias keys exactly, so the bare-specifier entry below does not
+// cover it, and this import alone would fall back to the pinned copy.
+const _widgetMakeCodeSrc = fileURLToPath(
+	new URL('../../../lib/mini-connection-widget/src/makecode/index.ts', import.meta.url)
 );
 
 export default defineConfig(({ command }) => {
@@ -32,19 +38,33 @@ export default defineConfig(({ command }) => {
 	);
 
 	return {
-		plugins: [
-			sveltekit(),
-			paraglideVitePlugin({
-				project: './project.inlang',
-				outdir: './src/lib/paraglide'
-			})
-		],
+		// wuchale has to run before sveltekit so it sees the untransformed
+		// components: it extracts the German source text and rewrites it into
+		// catalog lookups. Configured in wuchale.config.js.
+		plugins: [wuchale(), sveltekit()],
 		resolve: {
 			// The widget checkout carries its own node_modules, so without this the
 			// linked copy would pull a second svelte / microbit-connection /
 			// nrf-intel-hex instance instead of sharing ours.
-			dedupe: ['svelte', '@microbit/microbit-connection', 'nrf-intel-hex'],
-			alias: _linkWidget ? { '@calliope-edu/mini-connection-widget': _widgetSrc } : {}
+			// `@microbit/makecode-embed` is listed for resolution as much as dedupe:
+			// the linked widget source sits outside this tree and has no copy of it,
+			// so the MakeCode host's imports must resolve from our root.
+			dedupe: [
+				'svelte',
+				'@microbit/microbit-connection',
+				'nrf-intel-hex',
+				'@microbit/makecode-embed'
+			],
+			// Typed as a record so both ternary branches share one shape; an
+			// inferred union of "two keys" and "no keys" doesn't satisfy
+			// AliasOptions.
+			alias: (_linkWidget
+				? {
+						// Longest specifier first — Vite replaces on exact match.
+						'@calliope-edu/mini-connection-widget/makecode': _widgetMakeCodeSrc,
+						'@calliope-edu/mini-connection-widget': _widgetSrc
+					}
+				: {}) as Record<string, string>
 		},
 		optimizeDeps: {
 			// The widget ships unbuilt source: its entry is `src/index.ts` and it
@@ -52,7 +72,10 @@ export default defineConfig(({ command }) => {
 			// it was a `link:` dep (Vite treats linked packages as source), but it is
 			// pinned to a commit now and installs as a real node_modules package, so
 			// the dep optimizer would try to prebundle it and fail.
-			exclude: ['@calliope-edu/mini-connection-widget'],
+			exclude: [
+				'@calliope-edu/mini-connection-widget',
+				'@calliope-edu/mini-connection-widget/makecode'
+			],
 			// Excluding the widget means Vite never crawls its imports, so its
 			// transitive deps go un-prebundled too. `nrf-intel-hex` (imported as
 			// MemoryMap by four widget modules) ships a UMD `browser` build with no

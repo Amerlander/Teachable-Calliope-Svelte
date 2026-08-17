@@ -163,7 +163,12 @@
            Calliope logo instead of the labelled pill. It morphs into a short
            pill while transferring (percent, or a spinner for the
            indeterminate phases). -->
-      <ConnectButton appearance="icon" />
+      <!-- On /tryout the connection pill is docked into the MakeCode toolbar
+           instead, right next to the editor it acts on — showing it here too
+           would be the same control twice on one screen. -->
+      {#if active !== 'tryout'}
+        <ConnectButton appearance="icon" />
+      {/if}
 
       <Dropdown bind:isOpen={settingsOpen} minWidth="200px">
         {#snippet trigger()}
