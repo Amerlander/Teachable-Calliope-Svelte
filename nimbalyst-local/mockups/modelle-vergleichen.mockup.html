@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Modelle vergleichen — Mockup</title>
+<style>
+  :root {
+    --md-primary: 0,0,0;
+    --md-on-primary: 255,255,255;
+    --md-surface: 255,255,255;
+    --md-on-surface: 28,27,31;
+    --md-surface-variant: 232,234,237;
+    --md-on-surface-variant: 70,70,79;
+    --md-outline-variant: 202,204,211;
+    --md-radius-sm: 8px;
+    --md-radius-md: 12px;
+    --md-radius-lg: 16px;
+    --md-radius-xl: 28px;
+    --md-font: 'Inter', system-ui, -apple-system, sans-serif;
+
+    /* Identität je Modell — nur Punkt + Kurvenfarbe, sonst bleibt alles monochrom */
+    --m-a: #1B1C1D;
+    --m-b: #42C9CB;
+    --m-c: #3B82F6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--md-font); color: rgb(var(--md-on-surface));
+    background: #2b2c2e; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; gap: 30px;
+    padding: 30px 16px 60px;
+  }
+  .stage-label {
+    width: 100%; max-width: 1380px; margin-bottom: -18px;
+    font-size: 11px; letter-spacing: .6px; text-transform: uppercase; font-weight: 600;
+    color: rgba(255,255,255,.55);
+  }
+  .stage-label b { color: rgba(255,255,255,.9); font-weight: 700; }
+  .stage-label .note { text-transform: none; letter-spacing: 0; font-weight: 400; color: rgba(255,255,255,.4); }
+
+  /* ============ gemeinsame Bausteine (aus der App) ============ */
+  .chip {
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
+    padding: 2px 7px; border-radius: 99px; background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary));
+    white-space: nowrap;
+  }
+  .chip.muted { background: rgba(28,27,31,.10); color: rgb(var(--md-on-surface-variant)); }
+  .chip.outline { background: transparent; color: rgb(var(--md-on-surface-variant)); border: 1px solid rgb(var(--md-outline-variant)); }
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 9px 18px; border-radius: 99px;
+    border: none; cursor: pointer; background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary));
+  }
+  .btn.ghost { background: transparent; color: rgb(var(--md-on-surface)); border: 1px solid rgb(var(--md-outline-variant)); }
+  .btn.small { font-size: 12px; padding: 6px 13px; }
+  .btn:disabled { opacity: .38; }
+  .hint { font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); }
+
+  /* ============ 1 + 2: Seitenleiste „Modelle“ ============ */
+  .row-stages { width: 100%; max-width: 1380px; display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .sidebar {
+    width: 396px; background: rgb(var(--md-surface)); border-radius: var(--md-radius-lg);
+    padding: 12px; display: flex; flex-direction: column; gap: 8px;
+    box-shadow: 0 4px 8px 3px rgba(0,0,0,.15);
+  }
+  .sb-head { display: flex; align-items: center; gap: 8px; padding: 2px 2px 4px; }
+  .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; color: rgb(var(--md-on-surface-variant)); }
+  .head-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; position: relative; }
+  .add-btn {
+    font: inherit; font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 99px;
+    border: 1px solid rgb(var(--md-outline-variant)); background: transparent; cursor: pointer;
+  }
+  .kebab {
+    width: 30px; height: 30px; border-radius: 99px; border: none; background: transparent;
+    font-size: 16px; line-height: 1; cursor: pointer; color: rgb(var(--md-on-surface-variant));
+  }
+  .kebab.open { background: rgb(var(--md-surface-variant)); color: rgb(var(--md-on-surface)); }
+  .menu {
+    position: absolute; top: 34px; right: 0; z-index: 5; width: 208px; padding: 6px;
+    background: rgb(var(--md-surface)); border-radius: var(--md-radius-md);
+    box-shadow: 0 4px 8px 3px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.3);
+  }
+  .menu-item {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    font: inherit; font-size: 13px; padding: 8px 10px; border: none; background: transparent;
+    border-radius: var(--md-radius-sm); cursor: pointer; color: rgb(var(--md-on-surface));
+  }
+  .menu-item.hi { background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); font-weight: 600; }
+  .menu-sep { height: 1px; background: rgb(var(--md-outline-variant)); margin: 5px 6px; }
+
+  .entry-row {
+    border-radius: var(--md-radius-md); background: rgba(232,234,237,.30);
+    border: 2px solid transparent; display: flex; align-items: flex-start; gap: 4px; padding: 2px 4px 2px 0;
+  }
+  .entry-row.active { border-color: rgb(var(--md-primary)); background: rgba(0,0,0,.05); }
+  .entry-row.picked { border-color: rgb(var(--md-primary)); background: rgba(0,0,0,.05); }
+  .entry-main { flex: 1; min-width: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .entry-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .entry-meta { font-size: 12px; color: rgb(var(--md-on-surface-variant)); display: flex; gap: 6px; }
+  .entry-meta .acc { font-weight: 600; color: rgb(var(--md-primary)); }
+  .entry-meta.settings { font-size: 11px; opacity: .85; font-variant-numeric: tabular-nums; }
+  .cb {
+    width: 18px; height: 18px; border-radius: 5px; border: 2px solid rgb(var(--md-outline-variant));
+    margin: 12px 0 0 10px; flex-shrink: 0; background: rgb(var(--md-surface));
+  }
+  .cb.on { background: rgb(var(--md-primary)); border-color: rgb(var(--md-primary)); position: relative; }
+  .cb.on::after {
+    content: ''; position: absolute; left: 4px; top: 1px; width: 5px; height: 9px;
+    border: solid rgb(var(--md-on-primary)); border-width: 0 2px 2px 0; transform: rotate(45deg);
+  }
+  .cb.off-disabled { opacity: .35; }
+  .select-bar {
+    display: flex; align-items: center; gap: 10px; padding: 10px 4px 2px;
+    border-top: 1px solid rgb(var(--md-outline-variant)); margin-top: 2px;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+
+  /* ============ 3: Vergleichsansicht ============ */
+  .screen {
+    width: 100%; max-width: 1380px; background: rgb(var(--md-surface));
+    border-radius: var(--md-radius-xl); overflow: hidden;
+    box-shadow: 0 4px 8px 3px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.3);
+    display: flex; flex-direction: column;
+  }
+  .scr-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 24px 14px; }
+  .scr-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  .scr-sub { margin-top: 3px; font-size: 12px; color: rgb(var(--md-on-surface-variant)); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .head-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .close-btn { width: 40px; height: 40px; border: none; background: transparent; font-size: 26px; line-height: 1; border-radius: 50%; cursor: pointer; color: rgb(var(--md-on-surface-variant)); }
+
+  /* --- Quellen-Band: eine Kamera für alle --- */
+  .source-band {
+    display: grid; grid-template-columns: 268px 1fr; gap: 16px;
+    margin: 0 24px 10px; padding: 12px; border-radius: var(--md-radius-lg);
+    background: rgba(232,234,237,.45);
+  }
+  .cam { position: relative; border-radius: var(--md-radius-md); overflow: hidden; aspect-ratio: 4/3; background: #d7dade; }
+  .cam .fake-frame {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(120px 90px at 62% 55%, #c9cdd2 0%, #b9bec4 60%, #aeb3b9 100%),
+      linear-gradient(160deg, #e2e5e8, #c5c9ce);
+  }
+  .cam .banana {
+    position: absolute; left: 30%; top: 34%; width: 44%; height: 34%;
+    border-radius: 50% 40% 55% 45%; background: #9aa0a6; transform: rotate(-18deg);
+    box-shadow: inset 0 -6px 12px rgba(0,0,0,.12);
+  }
+  .cam .roi { position: absolute; left: 14%; top: 12%; right: 14%; bottom: 12%; border: 2px dashed rgba(255,255,255,.85); border-radius: 6px; }
+  .cam .cam-tag {
+    position: absolute; left: 8px; top: 8px; font-size: 10px; font-weight: 700; letter-spacing: .4px;
+    text-transform: uppercase; background: rgba(0,0,0,.72); color: #fff; padding: 3px 8px; border-radius: 99px;
+  }
+  .cam .cam-tag .live { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #98F600; margin-right: 5px; vertical-align: middle; }
+  .cam .cam-foot { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 8px; display: flex; gap: 6px; background: linear-gradient(transparent, rgba(0,0,0,.5)); }
+  .cam .cam-foot .mini {
+    font: inherit; font-size: 11px; font-weight: 600; color: #fff; background: rgba(0,0,0,.55);
+    border: none; border-radius: 99px; padding: 4px 10px; cursor: pointer;
+  }
+  .src-right { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .seg { display: inline-flex; background: rgb(var(--md-surface)); border-radius: 99px; padding: 3px; gap: 2px; align-self: flex-start; box-shadow: inset 0 0 0 1px rgb(var(--md-outline-variant)); }
+  .seg button {
+    font: inherit; font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 99px;
+    border: none; background: transparent; cursor: pointer; color: rgb(var(--md-on-surface-variant));
+  }
+  .seg button.on { background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); }
+  .src-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .fact { background: rgb(var(--md-surface)); border-radius: var(--md-radius-md); padding: 8px 12px; }
+  .fact .f-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: rgb(var(--md-on-surface-variant)); }
+  .fact .f-value { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .fact .f-sub { font-size: 11px; color: rgb(var(--md-on-surface-variant)); }
+  .agree-bar { height: 6px; border-radius: 99px; background: rgba(28,27,31,.12); margin-top: 6px; overflow: hidden; }
+  .agree-bar span { display: block; height: 100%; background: rgb(var(--md-primary)); border-radius: 99px; }
+  .src-note { font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); line-height: 1.45; }
+
+  /* --- Verteil-Streifen: dasselbe Bild geht an alle Spalten --- */
+  .fanout { display: grid; grid-template-columns: 190px repeat(3, minmax(0,1fr)); margin: 0 24px; align-items: center; }
+  .fanout .fan-label { font-size: 11px; color: rgb(var(--md-on-surface-variant)); text-align: right; padding-right: 12px; }
+  .fanout .arrow { text-align: center; color: rgba(28,27,31,.35); font-size: 15px; line-height: 1; }
+
+  /* --- Vergleichsraster --- */
+  .cmp { display: grid; grid-template-columns: 190px repeat(3, minmax(0,1fr)); margin: 0 24px; }
+  .cmp > div { padding: 8px 12px; border-bottom: 1px solid rgba(202,204,211,.55); min-width: 0; }
+  .cmp .col-sep { border-left: 1px solid rgba(202,204,211,.55); }
+  .cmp .rail {
+    font-size: 12px; color: rgb(var(--md-on-surface-variant)); display: flex; align-items: center; gap: 6px;
+    justify-content: flex-end; text-align: right;
+  }
+  .cmp .rail.same { opacity: .45; }
+  .group-head {
+    grid-column: 1 / -1; padding: 16px 0 6px !important; border-bottom: 1px solid rgb(var(--md-outline-variant)) !important;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; color: rgb(var(--md-on-surface-variant));
+  }
+  .group-head .gh-right { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; display: flex; align-items: center; gap: 8px; }
+  .switch { width: 30px; height: 17px; border-radius: 99px; background: rgba(28,27,31,.18); position: relative; display: inline-block; }
+  .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; }
+  .switch.on { background: rgb(var(--md-primary)); }
+  .switch.on::after { left: 15px; }
+
+  /* Spaltenkopf */
+  .chead { padding: 12px !important; }
+  .chead .ch-top { display: flex; align-items: center; gap: 6px; }
+  .chead .ch-name { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chead .ch-menu { margin-left: auto; border: none; background: transparent; cursor: pointer; color: rgb(var(--md-on-surface-variant)); font-size: 15px; line-height: 1; }
+  .chead .ch-meta { font-size: 11px; color: rgb(var(--md-on-surface-variant)); margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .chead .ch-chips { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+  .chead .ch-actions { display: flex; gap: 6px; margin-top: 9px; }
+
+  /* Live-Erkennung */
+  .top-class { display: flex; align-items: baseline; gap: 8px; }
+  .top-class .tc-name { font-size: 17px; font-weight: 700; }
+  .top-class .tc-pct { font-size: 13px; font-variant-numeric: tabular-nums; color: rgb(var(--md-on-surface-variant)); }
+  .cell.disagree { background: rgba(28,27,31,.045); box-shadow: inset 2px 0 0 rgb(var(--md-primary)); }
+  .flag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); margin-top: 3px; display: block; }
+
+  .bar-row { display: flex; align-items: center; gap: 8px; }
+  .bar { flex: 1; height: 7px; border-radius: 99px; background: rgba(28,27,31,.10); position: relative; overflow: hidden; }
+  .bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: rgba(28,27,31,.30); }
+  .bar.win span { background: rgb(var(--md-primary)); }
+  .bar .thr { position: absolute; top: -2px; bottom: -2px; width: 2px; background: rgba(28,27,31,.45); }
+  .pct { font-size: 12px; font-variant-numeric: tabular-nums; width: 38px; text-align: right; font-weight: 600; }
+  .pct.dim { font-weight: 400; color: rgb(var(--md-on-surface-variant)); }
+  .missing { font-size: 12px; color: rgb(var(--md-on-surface-variant)); opacity: .6; }
+
+  /* Kennzahlen */
+  .val { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 7px; }
+  .val .best { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); padding: 2px 6px; border-radius: 99px; }
+  .val .ref { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); border: 1px solid rgb(var(--md-outline-variant)); padding: 1px 5px; border-radius: 99px; }
+  .delta { font-size: 11px; color: rgb(var(--md-on-surface-variant)); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .val.plain { font-weight: 500; font-size: 13px; }
+  .val.diff { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+
+  /* Diagramm */
+  .chart-card { margin: 16px 24px 0; border: 1px solid rgb(var(--md-outline-variant)); border-radius: var(--md-radius-md); padding: 12px 14px; }
+  .chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .chart-head .ct { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; color: rgb(var(--md-on-surface-variant)); }
+  .legend { display: flex; gap: 14px; margin-left: auto; font-size: 12px; align-items: center; }
+  .legend i { width: 16px; height: 0; border-top-width: 3px; border-top-style: solid; display: inline-block; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
+  .chart-foot { display: flex; gap: 18px; margin-top: 6px; font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); }
+
+  /* --- Verwechslungsmatrizen nebeneinander --- */
+  .mx { display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
+  .mx .hd, .mx .rl2 { font-size: 9.5px; color: rgb(var(--md-on-surface-variant)); text-transform: uppercase; letter-spacing: .3px; }
+  .mx .hd { text-align: center; padding-bottom: 2px; }
+  .mx .rl2 { text-align: right; padding-right: 5px; align-self: center; }
+  .mx .c {
+    height: 54px; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: rgb(var(--md-on-surface));
+  }
+  .mx .c.diag { color: rgb(var(--md-on-primary)); }
+  .mx-note { font-size: 11px; color: rgb(var(--md-on-surface-variant)); margin-top: 7px; }
+
+  /* --- Streifen der uneinigen Bilder --- */
+  .strip { display: flex; gap: 10px; overflow: hidden; padding: 2px 0 4px; }
+  .shot { width: 128px; flex-shrink: 0; }
+  .shot .thumb {
+    aspect-ratio: 4/3; border-radius: var(--md-radius-sm); margin-bottom: 6px;
+    background: linear-gradient(150deg, #e2e5e8, #c0c5ca); position: relative; overflow: hidden;
+  }
+  .shot .thumb::after {
+    content: ''; position: absolute; left: 26%; top: 30%; width: 46%; height: 38%;
+    border-radius: 50% 42% 55% 45%; background: #9aa0a6; transform: rotate(-14deg);
+  }
+  .shot .verdict { display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 1.55; }
+  .shot .verdict .nm { color: rgb(var(--md-on-surface-variant)); }
+  .shot .verdict b { font-weight: 600; }
+  .strip-more {
+    width: 128px; flex-shrink: 0; border: 1px dashed rgb(var(--md-outline-variant)); border-radius: var(--md-radius-sm);
+    display: flex; align-items: center; justify-content: center; text-align: center; font-size: 12px;
+    color: rgb(var(--md-on-surface-variant)); padding: 8px;
+  }
+
+  .scr-foot { display: flex; align-items: center; gap: 10px; padding: 14px 24px 18px; margin-top: 14px; border-top: 1px solid rgb(var(--md-outline-variant)); }
+  .scr-foot .spacer { margin-left: auto; }
+
+  /* Ideen-Notizen */
+  .notes {
+    width: 100%; max-width: 1380px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14);
+    border-radius: var(--md-radius-lg); padding: 16px 20px; color: rgba(255,255,255,.82);
+  }
+  .notes h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: rgba(255,255,255,.6); }
+  .notes ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.75; }
+  .notes b { color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ 1 ============ -->
+<div class="stage-label"><b>1 — Einstieg</b> &nbsp; Modelle-Ansicht, ⋯ Menü über der Liste <span class="note">— ein Eintrag mehr, sonst unverändert</span></div>
+<div class="row-stages">
+
+  <div class="sidebar">
+    <div class="sb-head">
+      <span class="section-label">Modelle</span>
+      <div class="head-actions">
+        <button class="add-btn">+ Neues Modell</button>
+        <button class="kebab open">⋯</button>
+        <div class="menu">
+          <button class="menu-item">Modell exportieren</button>
+          <button class="menu-item">Modell importieren</button>
+          <div class="menu-sep"></div>
+          <button class="menu-item hi">Modelle vergleichen</button>
+          <div class="menu-sep"></div>
+          <button class="menu-item">Modell löschen</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="entry-row active">
+      <div class="entry-main">
+        <div class="entry-title"><span>Sortierung v3</span><span class="chip">aktiv</span></div>
+        <div class="entry-meta"><span class="acc">96,4 %</span><span>·</span><span>30 Ep.</span><span>·</span><span>4 Klassen</span><span>·</span><span>412 Bilder</span></div>
+        <div class="entry-meta settings"><span>Lernrate 0.001</span><span>·</span><span>Batch 16</span><span>·</span><span>100 Units</span></div>
+      </div>
+      <button class="kebab">⋯</button>
+    </div>
+    <div class="entry-row">
+      <div class="entry-main">
+        <div class="entry-title"><span>Sortierung v2</span></div>
+        <div class="entry-meta"><span class="acc">91,2 %</span><span>·</span><span>20 Ep.</span><span>·</span><span>4 Klassen</span><span>·</span><span>268 Bilder</span></div>
+        <div class="entry-meta settings"><span>Lernrate 0.001</span><span>·</span><span>Batch 16</span><span>·</span><span>64 Units</span></div>
+      </div>
+      <button class="kebab">⋯</button>
+    </div>
+    <div class="entry-row">
+      <div class="entry-main">
+        <div class="entry-title"><span>Sortierung lite</span></div>
+        <div class="entry-meta"><span class="acc">88,7 %</span><span>·</span><span>40 Ep.</span><span>·</span><span>3 Klassen</span><span>·</span><span>337 Bilder</span></div>
+        <div class="entry-meta settings"><span>Lernrate 0.0005</span><span>·</span><span>Batch 32</span><span>·</span><span>48 Units</span></div>
+      </div>
+      <button class="kebab">⋯</button>
+    </div>
+  </div>
+
+  <!-- ============================================================ 2 ============ -->
+  <div style="display:flex; flex-direction:column; gap:10px;">
+    <div class="stage-label" style="margin:0; width:396px;"><b>2 — Auswählen</b> <span class="note">— die Liste bleibt, sie bekommt Kästchen</span></div>
+    <div class="sidebar">
+      <div class="sb-head">
+        <span class="section-label">Vergleich · 3 ausgewählt</span>
+        <div class="head-actions">
+          <button class="add-btn">Alle abwählen</button>
+          <button class="kebab">×</button>
+        </div>
+      </div>
+
+      <div class="entry-row picked">
+        <div class="cb on"></div>
+        <div class="entry-main">
+          <div class="entry-title"><span class="dot" style="background:var(--m-a)"></span><span>Sortierung v3</span><span class="chip">aktiv</span></div>
+          <div class="entry-meta"><span class="acc">96,4 %</span><span>·</span><span>30 Ep.</span><span>·</span><span>4 Klassen</span></div>
+        </div>
+      </div>
+      <div class="entry-row picked">
+        <div class="cb on"></div>
+        <div class="entry-main">
+          <div class="entry-title"><span class="dot" style="background:var(--m-b)"></span><span>Sortierung v2</span></div>
+          <div class="entry-meta"><span class="acc">91,2 %</span><span>·</span><span>20 Ep.</span><span>·</span><span>4 Klassen</span></div>
+        </div>
+      </div>
+      <div class="entry-row picked">
+        <div class="cb on"></div>
+        <div class="entry-main">
+          <div class="entry-title"><span class="dot" style="background:var(--m-c)"></span><span>Sortierung lite</span><span class="chip muted">andere Klassen</span></div>
+          <div class="entry-meta"><span class="acc">88,7 %</span><span>·</span><span>40 Ep.</span><span>·</span><span>3 Klassen</span></div>
+        </div>
+      </div>
+      <div class="entry-row">
+        <div class="cb"></div>
+        <div class="entry-main">
+          <div class="entry-title"><span>Import vom Tablet</span><span class="chip muted">importiert</span></div>
+          <div class="entry-meta"><span>4 Klassen</span></div>
+        </div>
+      </div>
+
+      <div class="select-bar">
+        <span class="hint">2 bis 4 Modelle · 3 ausgewählt</span>
+        <button class="btn small" style="margin-left:auto">Vergleichen (3)</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============================================================ 3 ============ -->
+<div class="stage-label" style="margin-top:14px;"><b>3 — Vergleich</b> &nbsp; Vollbild-Overlay über der Trainieren-Ansicht <span class="note">— eine Kamera oben, ein Modell je Spalte, ein Diagramm unten</span></div>
+
+<div class="screen" id="cmp">
+  <div class="scr-head">
+    <div>
+      <h2>Modelle vergleichen</h2>
+      <div class="scr-sub">
+        <span>3 Modelle</span><span>·</span><span>Projekt „Müll sortieren“</span><span>·</span>
+        <span>alle sehen dasselbe Bild</span>
+        <span class="chip muted">Klassen weichen ab</span>
+      </div>
+    </div>
+    <div class="head-right">
+      <button class="btn ghost small">+ Modell hinzufügen</button>
+      <button class="close-btn">×</button>
+    </div>
+  </div>
+
+  <!-- ---------- eine Kamera für alle ---------- -->
+  <div class="source-band">
+    <div class="cam">
+      <div class="fake-frame"></div>
+      <div class="banana"></div>
+      <div class="roi"></div>
+      <div class="cam-tag"><span class="live"></span>Live · Kamera 1</div>
+      <div class="cam-foot">
+        <button class="mini">⏸ Einfrieren</button>
+        <button class="mini">⌗ Bild merken</button>
+      </div>
+    </div>
+
+    <div class="src-right">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span class="hint" style="font-weight:600">Quelle</span>
+        <div class="seg">
+          <button class="on">Live-Kamera</button>
+          <button>Testbilder</button>
+          <button>Gemerkte Bilder (4)</button>
+        </div>
+      </div>
+
+      <div class="src-facts">
+        <div class="fact">
+          <div class="f-label">Einig gerade</div>
+          <div class="f-value">2 von 3</div>
+          <div class="f-sub">Banane · lite sagt Apfel</div>
+        </div>
+        <div class="fact">
+          <div class="f-label">Einigkeit (letzte 100 Bilder)</div>
+          <div class="f-value">78 %</div>
+          <div class="agree-bar"><span style="width:78%"></span></div>
+        </div>
+        <div class="fact">
+          <div class="f-label">Bildrate</div>
+          <div class="f-value">14 Hz</div>
+          <div class="f-sub">3 Modelle gleichzeitig</div>
+        </div>
+      </div>
+
+      <div class="src-note">
+        Jedes Bild der Kamera läuft durch alle drei Modelle — die Prozentwerte unten gehören also zum
+        <b>selben Moment</b>. Mit „Einfrieren“ hältst du ein Bild an und siehst in Ruhe, wo die Modelle
+        auseinanderliegen; „Bild merken“ legt es in eine kleine Sammlung, die du später wieder durchlaufen lassen kannst.
+      </div>
+    </div>
+  </div>
+
+  <div class="fanout">
+    <div class="fan-label">dasselbe Bild →</div>
+    <div class="arrow">▼</div><div class="arrow">▼</div><div class="arrow">▼</div>
+  </div>
+
+  <!-- ---------- Spalten ---------- -->
+  <div class="cmp">
+
+    <!-- Kopfzeile -->
+    <div class="rail" style="align-items:flex-end; padding-bottom:14px;"></div>
+    <div class="chead col-sep">
+      <div class="ch-top"><span class="dot" style="background:var(--m-a)"></span><span class="ch-name">Sortierung v3</span><button class="ch-menu">⋯</button></div>
+      <div class="ch-meta">18.08.2026, 14:20</div>
+      <div class="ch-chips"><span class="chip">aktiv</span><span class="chip outline">Referenz</span></div>
+      <div class="ch-actions"><button class="btn small ghost">Details</button></div>
+    </div>
+    <div class="chead col-sep">
+      <div class="ch-top"><span class="dot" style="background:var(--m-b)"></span><span class="ch-name">Sortierung v2</span><button class="ch-menu">⋯</button></div>
+      <div class="ch-meta">17.08.2026, 09:05</div>
+      <div class="ch-chips"><span class="chip muted">nicht geladen</span></div>
+      <div class="ch-actions"><button class="btn small">Verwenden</button><button class="btn small ghost">Details</button></div>
+    </div>
+    <div class="chead col-sep">
+      <div class="ch-top"><span class="dot" style="background:var(--m-c)"></span><span class="ch-name">Sortierung lite</span><button class="ch-menu">⋯</button></div>
+      <div class="ch-meta">17.08.2026, 16:41</div>
+      <div class="ch-chips"><span class="chip muted">andere Klassen</span></div>
+      <div class="ch-actions"><button class="btn small">Verwenden</button><button class="btn small ghost">Details</button></div>
+    </div>
+
+    <!-- Gruppe: Live-Erkennung -->
+    <div class="group-head">
+      Erkannt in diesem Bild
+      <span class="gh-right"><span class="hint">Schwelle 60 % ist als Strich in den Balken markiert</span></span>
+    </div>
+
+    <div class="rail" style="font-weight:600; color:rgb(var(--md-on-surface));">Top-Klasse</div>
+    <div class="cell col-sep">
+      <div class="top-class"><span class="tc-name">Banane</span><span class="tc-pct">94 %</span></div>
+    </div>
+    <div class="cell col-sep">
+      <div class="top-class"><span class="tc-name">Banane</span><span class="tc-pct">71 %</span></div>
+    </div>
+    <div class="cell col-sep disagree">
+      <div class="top-class"><span class="tc-name">Apfel</span><span class="tc-pct">58 %</span></div>
+      <span class="flag">▲ weicht ab · unter Schwelle</span>
+    </div>
+
+    <div class="rail">Apfel</div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:4%"></span><i class="thr" style="left:60%"></i></div><span class="pct dim">4 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:5%"></span><i class="thr" style="left:60%"></i></div><span class="pct dim">5 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar win"><span style="width:58%"></span><i class="thr" style="left:60%"></i></div><span class="pct">58 %</span></div></div>
+
+    <div class="rail">Banane</div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar win"><span style="width:94%"></span><i class="thr" style="left:60%"></i></div><span class="pct">94 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar win"><span style="width:71%"></span><i class="thr" style="left:60%"></i></div><span class="pct">71 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:39%"></span><i class="thr" style="left:60%"></i></div><span class="pct dim">39 %</span></div></div>
+
+    <div class="rail">Zitrone</div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:1%"></span><i class="thr" style="left:60%"></i></div><span class="pct dim">1 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:22%"></span><i class="thr" style="left:60%"></i></div><span class="pct dim">22 %</span></div></div>
+    <div class="cell col-sep"><span class="missing">— Klasse fehlt in diesem Modell</span></div>
+
+    <div class="rail">Nichts</div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:1%"></span><i class="thr" style="left:60%"></i></div><span class="pct dim">1 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:2%"></span><i class="thr" style="left:60%"></i></div><span class="pct dim">2 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:3%"></span><i class="thr" style="left:60%"></i></div><span class="pct dim">3 %</span></div></div>
+
+    <!-- Gruppe: Kennzahlen -->
+    <div class="group-head">
+      Kennzahlen
+      <span class="gh-right"><span class="hint">Abweichung zur Referenz „Sortierung v3“</span></span>
+    </div>
+
+    <div class="rail">Genauigkeit</div>
+    <div class="cell col-sep"><div class="val">96,4 %<span class="best">beste</span></div><div class="delta">Referenz</div></div>
+    <div class="cell col-sep"><div class="val">91,2 %</div><div class="delta">▼ 5,2 pp</div></div>
+    <div class="cell col-sep"><div class="val">88,7 %</div><div class="delta">▼ 7,7 pp</div></div>
+
+    <div class="rail">Genauigkeit (Validierung)</div>
+    <div class="cell col-sep"><div class="val">93,8 %<span class="best">beste</span></div><div class="delta">Referenz</div></div>
+    <div class="cell col-sep"><div class="val">89,6 %</div><div class="delta">▼ 4,2 pp</div></div>
+    <div class="cell col-sep"><div class="val">87,9 %</div><div class="delta">▼ 5,9 pp</div></div>
+
+    <div class="rail">Verlust</div>
+    <div class="cell col-sep"><div class="val">0,118<span class="best">beste</span></div><div class="delta">Referenz</div></div>
+    <div class="cell col-sep"><div class="val">0,241</div><div class="delta">▲ 0,123</div></div>
+    <div class="cell col-sep"><div class="val">0,296</div><div class="delta">▲ 0,178</div></div>
+
+    <div class="rail">Trainingsbilder</div>
+    <div class="cell col-sep"><div class="val plain">412</div></div>
+    <div class="cell col-sep"><div class="val plain">268</div><div class="delta">▼ 144</div></div>
+    <div class="cell col-sep"><div class="val plain">337</div><div class="delta">▼ 75</div></div>
+
+    <div class="rail">Klassen</div>
+    <div class="cell col-sep"><div class="val plain">4</div></div>
+    <div class="cell col-sep"><div class="val plain">4</div></div>
+    <div class="cell col-sep"><div class="val plain diff">3<span class="chip muted" style="margin-left:6px">ohne Zitrone</span></div></div>
+
+    <div class="rail">Größe</div>
+    <div class="cell col-sep"><div class="val plain">3,1 MB</div></div>
+    <div class="cell col-sep"><div class="val plain">3,0 MB</div></div>
+    <div class="cell col-sep"><div class="val">1,2 MB<span class="best">kleinste</span></div><div class="delta">▼ 1,9 MB</div></div>
+
+    <div class="rail">Zeit pro Bild</div>
+    <div class="cell col-sep"><div class="val plain">21 ms</div></div>
+    <div class="cell col-sep"><div class="val plain">20 ms</div></div>
+    <div class="cell col-sep"><div class="val">9 ms<span class="best">schnellste</span></div><div class="delta">▼ 12 ms</div></div>
+
+    <div class="rail">Häufigste Verwechslung</div>
+    <div class="cell col-sep"><div class="val plain">Zitrone → Apfel <span class="hint">(3)</span></div></div>
+    <div class="cell col-sep"><div class="val plain">Zitrone → Banane <span class="hint">(11)</span></div></div>
+    <div class="cell col-sep"><div class="val plain">Apfel → Banane <span class="hint">(14)</span></div></div>
+
+    <!-- Gruppe: Einstellungen -->
+    <div class="group-head">
+      Einstellungen
+      <span class="gh-right"><span class="hint">nur Unterschiede zeigen</span><span class="switch"></span></span>
+    </div>
+
+    <div class="rail same">Lernrate</div>
+    <div class="cell col-sep"><div class="val plain">0.001</div></div>
+    <div class="cell col-sep"><div class="val plain">0.001</div></div>
+    <div class="cell col-sep"><div class="val plain diff">0.0005</div></div>
+
+    <div class="rail same">Batch-Größe</div>
+    <div class="cell col-sep"><div class="val plain">16</div></div>
+    <div class="cell col-sep"><div class="val plain">16</div></div>
+    <div class="cell col-sep"><div class="val plain diff">32</div></div>
+
+    <div class="rail">Epochen</div>
+    <div class="cell col-sep"><div class="val plain">30</div></div>
+    <div class="cell col-sep"><div class="val plain diff">20</div></div>
+    <div class="cell col-sep"><div class="val plain diff">40</div></div>
+
+    <div class="rail">Hidden Units</div>
+    <div class="cell col-sep"><div class="val plain">100</div></div>
+    <div class="cell col-sep"><div class="val plain diff">64</div></div>
+    <div class="cell col-sep"><div class="val plain diff">48</div></div>
+
+    <div class="rail">Feature-Extraktor</div>
+    <div class="cell col-sep"><div class="val plain">MobileNet v1</div></div>
+    <div class="cell col-sep"><div class="val plain">MobileNet v1</div></div>
+    <div class="cell col-sep"><div class="val plain diff">MobileNet v1 Lite</div></div>
+
+    <div class="rail same">Optimierer</div>
+    <div class="cell col-sep"><div class="val plain">Adam</div></div>
+    <div class="cell col-sep"><div class="val plain">Adam</div></div>
+    <div class="cell col-sep"><div class="val plain">Adam</div></div>
+
+    <div class="rail">Augmentierung</div>
+    <div class="cell col-sep"><div class="val plain">an · ×3</div></div>
+    <div class="cell col-sep"><div class="val plain diff">aus</div></div>
+    <div class="cell col-sep"><div class="val plain">an · ×3</div></div>
+  </div>
+
+  <!-- ---------- ein Diagramm für alle ---------- -->
+  <div class="chart-card">
+    <div class="chart-head">
+      <span class="ct">Trainingsverlauf</span>
+      <div class="seg" style="box-shadow:inset 0 0 0 1px rgb(var(--md-outline-variant));">
+        <button class="on">Genauigkeit</button>
+        <button>Verlust</button>
+        <button>Validierung</button>
+      </div>
+      <div class="legend">
+        <span><i style="border-color:var(--m-a)"></i>Sortierung v3</span>
+        <span><i style="border-color:var(--m-b)"></i>Sortierung v2</span>
+        <span><i style="border-color:var(--m-c)"></i>Sortierung lite</span>
+      </div>
+    </div>
+
+    <svg viewBox="0 0 1280 250" width="100%" height="230" role="img" aria-label="Genauigkeit über Epochen, drei Kurven">
+      <!-- Gitter -->
+      <g stroke="rgba(0,0,0,.08)" stroke-width="1">
+        <line x1="60" y1="20"  x2="1250" y2="20"/>
+        <line x1="60" y1="72"  x2="1250" y2="72"/>
+        <line x1="60" y1="124" x2="1250" y2="124"/>
+        <line x1="60" y1="176" x2="1250" y2="176"/>
+        <line x1="60" y1="215" x2="1250" y2="215"/>
+      </g>
+      <g font-size="11" fill="#46464F" font-family="Inter, system-ui, sans-serif">
+        <text x="52" y="24"  text-anchor="end">100 %</text>
+        <text x="52" y="76"  text-anchor="end">80 %</text>
+        <text x="52" y="128" text-anchor="end">60 %</text>
+        <text x="52" y="180" text-anchor="end">40 %</text>
+        <text x="52" y="219" text-anchor="end">20 %</text>
+        <text x="60"  y="238">0</text>
+        <text x="360" y="238" text-anchor="middle">10</text>
+        <text x="660" y="238" text-anchor="middle">20</text>
+        <text x="960" y="238" text-anchor="middle">30</text>
+        <text x="1250" y="238" text-anchor="end">40 Epochen</text>
+      </g>
+
+      <!-- v3: 30 Epochen, endet bei 96,4 % -->
+      <polyline fill="none" stroke="var(--m-a)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
+        points="60,196 90,168 120,140 150,120 180,104 210,92 240,82 270,74 300,66 330,60 360,55 390,50 420,47 450,44 480,41 510,38 540,36 570,34 600,33 630,32 660,31 690,30 720,29 750,29 780,28 810,28 840,27 870,27 900,26 930,26 960,26"/>
+      <circle cx="960" cy="26" r="3.5" fill="var(--m-a)"/>
+
+      <!-- v2: 20 Epochen, endet bei 91,2 % -->
+      <polyline fill="none" stroke="var(--m-b)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
+        points="60,205 90,180 120,158 150,141 180,127 210,116 240,107 270,99 300,92 330,86 360,80 390,75 420,71 450,67 480,64 510,61 540,58 570,56 600,54 630,52 660,49"/>
+      <circle cx="660" cy="49" r="3.5" fill="var(--m-b)"/>
+
+      <!-- lite: 40 Epochen, endet bei 88,7 % -->
+      <polyline fill="none" stroke="var(--m-c)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="7 5"
+        points="60,212 90,196 120,182 150,170 180,160 210,151 240,143 270,136 300,130 330,124 360,119 390,114 420,110 450,106 480,102 510,99 540,96 570,93 600,90 630,88 660,85 690,83 720,81 750,79 780,77 810,75 840,73 870,71 900,69 930,67 960,65 990,64 1020,63 1050,62 1080,61 1110,60 1140,59 1170,58 1200,58 1230,57 1250,57"/>
+      <circle cx="1250" cy="57" r="3.5" fill="var(--m-c)"/>
+    </svg>
+
+    <div class="chart-foot">
+      <span>Kurven enden dort, wo das Training aufhörte — verschieden lange Läufe stehen nebeneinander.</span>
+      <span style="margin-left:auto">Umschalter oben wechselt alle drei Kurven gemeinsam.</span>
+    </div>
+  </div>
+
+
+  <!-- ---------- Verwechslungen nebeneinander ---------- -->
+  <div class="cmp" style="margin-top:6px;">
+    <div class="group-head">
+      Verwechslungen
+      <span class="gh-right"><span class="hint">Zeile = was es war, Spalte = was das Modell sagte</span></span>
+    </div>
+    <div class="rail" style="align-items:flex-start; padding-top:16px;">Matrix</div>
+    <div class="cell col-sep"><div class="mx" style="grid-template-columns: 40px repeat(4, 54px);"><div></div><div class="hd">Apf</div><div class="hd">Ban</div><div class="hd">Zit</div><div class="hd">Nic</div><div class="rl2">Apf</div><div class="c diag" style="background:rgba(28,27,31,0.95)">100</div><div class="c" style="background:rgba(28,27,31,0.05)">2</div><div class="c" style="background:rgba(28,27,31,0.05)">1</div><div class="c" style="background:rgba(28,27,31,0.04)">0</div><div class="rl2">Ban</div><div class="c" style="background:rgba(28,27,31,0.05)">1</div><div class="c diag" style="background:rgba(28,27,31,0.96)">101</div><div class="c" style="background:rgba(28,27,31,0.05)">1</div><div class="c" style="background:rgba(28,27,31,0.04)">0</div><div class="rl2">Zit</div><div class="c" style="background:rgba(28,27,31,0.06)">3</div><div class="c" style="background:rgba(28,27,31,0.05)">1</div><div class="c diag" style="background:rgba(28,27,31,0.92)">96</div><div class="c" style="background:rgba(28,27,31,0.06)">3</div><div class="rl2">Nic</div><div class="c" style="background:rgba(28,27,31,0.04)">0</div><div class="c" style="background:rgba(28,27,31,0.04)">0</div><div class="c" style="background:rgba(28,27,31,0.05)">2</div><div class="c diag" style="background:rgba(28,27,31,0.96)">101</div></div><div class="mx-note">3 Zitronen als Apfel gelesen.</div></div>
+    <div class="cell col-sep"><div class="mx" style="grid-template-columns: 40px repeat(4, 54px);"><div></div><div class="hd">Apf</div><div class="hd">Ban</div><div class="hd">Zit</div><div class="hd">Nic</div><div class="rl2">Apf</div><div class="c diag" style="background:rgba(28,27,31,0.92)">95</div><div class="c" style="background:rgba(28,27,31,0.06)">3</div><div class="c" style="background:rgba(28,27,31,0.07)">5</div><div class="c" style="background:rgba(28,27,31,0.04)">0</div><div class="rl2">Ban</div><div class="c" style="background:rgba(28,27,31,0.05)">2</div><div class="c diag" style="background:rgba(28,27,31,0.94)">97</div><div class="c" style="background:rgba(28,27,31,0.06)">4</div><div class="c" style="background:rgba(28,27,31,0.04)">0</div><div class="rl2">Zit</div><div class="c" style="background:rgba(28,27,31,0.06)">4</div><div class="c" style="background:rgba(28,27,31,0.10)">11</div><div class="c diag" style="background:rgba(28,27,31,0.83)">85</div><div class="c" style="background:rgba(28,27,31,0.06)">3</div><div class="rl2">Nic</div><div class="c" style="background:rgba(28,27,31,0.05)">1</div><div class="c" style="background:rgba(28,27,31,0.04)">0</div><div class="c" style="background:rgba(28,27,31,0.06)">3</div><div class="c diag" style="background:rgba(28,27,31,0.96)">99</div></div><div class="mx-note">Zitrone rutscht 11×&nbsp;auf Banane — die schwächste Klasse.</div></div>
+    <div class="cell col-sep"><div class="mx" style="grid-template-columns: 40px repeat(3, 54px);"><div></div><div class="hd">Apf</div><div class="hd">Ban</div><div class="hd">Nic</div><div class="rl2">Apf</div><div class="c diag" style="background:rgba(28,27,31,0.89)">99</div><div class="c" style="background:rgba(28,27,31,0.10)">12</div><div class="c" style="background:rgba(28,27,31,0.05)">2</div><div class="rl2">Ban</div><div class="c" style="background:rgba(28,27,31,0.07)">5</div><div class="c diag" style="background:rgba(28,27,31,0.96)">108</div><div class="c" style="background:rgba(28,27,31,0.05)">1</div><div class="rl2">Nic</div><div class="c" style="background:rgba(28,27,31,0.05)">2</div><div class="c" style="background:rgba(28,27,31,0.06)">3</div><div class="c diag" style="background:rgba(28,27,31,0.94)">105</div></div><div class="mx-note">Ohne Zitrone landen deren Bilder bei Apfel.</div></div>
+  </div>
+
+  <div class="scr-foot">
+    <span class="hint">Bestes Modell nach Genauigkeit: <b style="font-weight:600">Sortierung v3</b> · nach Größe und Tempo: <b style="font-weight:600">Sortierung lite</b></span>
+    <button class="btn spacer">Fertig</button>
+  </div>
+</div>
+
+<!-- ============================================================ 4 ============ -->
+<div class="stage-label" style="margin-top:14px;"><b>4 — Quelle „Testbilder“</b> &nbsp; dieselben Spalten, statt Live-Bild alle aufgenommenen Bilder durchgerechnet</div>
+
+<div class="screen" id="testsrc">
+  <div class="source-band" style="margin-top:18px;">
+    <div class="cam" style="display:flex; align-items:center; justify-content:center; background:rgba(232,234,237,.9);">
+      <div style="text-align:center; padding:12px;">
+        <div style="font-size:30px; font-weight:700; font-variant-numeric:tabular-nums;">412</div>
+        <div class="hint">aufgenommene Bilder<br>aus diesem Projekt</div>
+        <div style="margin-top:10px;"><button class="btn small">Durchrechnen</button></div>
+      </div>
+    </div>
+    <div class="src-right">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span class="hint" style="font-weight:600">Quelle</span>
+        <div class="seg">
+          <button>Live-Kamera</button>
+          <button class="on">Testbilder</button>
+          <button>Gemerkte Bilder (4)</button>
+        </div>
+      </div>
+      <div class="src-facts">
+        <div class="fact"><div class="f-label">Bilder geprüft</div><div class="f-value">412</div><div class="f-sub">je Modell</div></div>
+        <div class="fact"><div class="f-label">Alle drei einig</div><div class="f-value">331</div><div class="f-sub">80 % der Bilder</div><div class="agree-bar"><span style="width:80%"></span></div></div>
+        <div class="fact"><div class="f-label">Uneinig</div><div class="f-value">81</div><div class="f-sub">anschauen ↗</div></div>
+      </div>
+      <div class="src-note">
+        Beim Live-Bild siehst du <b>ein</b> Bild. Hier laufen alle aufgenommenen Bilder durch jedes Modell — das ist der faire
+        Vergleich, weil alle dieselben Bilder bekommen. Die 81 uneinigen Bilder lassen sich als Streifen öffnen: dort steht
+        pro Bild, was jedes Modell gesagt hat.
+      </div>
+    </div>
+  </div>
+
+  <div class="cmp" style="margin-bottom:18px;">
+    <div class="rail" style="border-bottom:none;"></div>
+    <div class="chead col-sep"><div class="ch-top"><span class="dot" style="background:var(--m-a)"></span><span class="ch-name">Sortierung v3</span></div></div>
+    <div class="chead col-sep"><div class="ch-top"><span class="dot" style="background:var(--m-b)"></span><span class="ch-name">Sortierung v2</span></div></div>
+    <div class="chead col-sep"><div class="ch-top"><span class="dot" style="background:var(--m-c)"></span><span class="ch-name">Sortierung lite</span></div></div>
+
+    <div class="group-head">Ergebnis auf denselben 412 Bildern</div>
+
+    <div class="rail">Richtig erkannt</div>
+    <div class="cell col-sep"><div class="val">394 von 412<span class="best">beste</span></div><div class="delta">95,6 %</div></div>
+    <div class="cell col-sep"><div class="val">371 von 412</div><div class="delta">90,0 % · ▼ 5,6 pp</div></div>
+    <div class="cell col-sep"><div class="val">318 von 337</div><div class="delta">94,4 % · nur 3 Klassen</div></div>
+
+    <div class="rail">Sicher (über 60 %)</div>
+    <div class="cell col-sep"><div class="val">381<span class="best">beste</span></div></div>
+    <div class="cell col-sep"><div class="val plain">340</div></div>
+    <div class="cell col-sep"><div class="val plain">289</div></div>
+
+    <div class="rail">Apfel</div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar win"><span style="width:97%"></span></div><span class="pct">97 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:92%"></span></div><span class="pct dim">92 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:88%"></span></div><span class="pct dim">88 %</span></div></div>
+
+    <div class="rail">Banane</div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar win"><span style="width:98%"></span></div><span class="pct">98 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:94%"></span></div><span class="pct dim">94 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:96%"></span></div><span class="pct dim">96 %</span></div></div>
+
+    <div class="rail">Zitrone</div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar win"><span style="width:91%"></span></div><span class="pct">91 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:79%"></span></div><span class="pct dim">79 %</span></div></div>
+    <div class="cell col-sep"><span class="missing">— Klasse fehlt in diesem Modell</span></div>
+
+    <div class="rail">Nichts</div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar win"><span style="width:96%"></span></div><span class="pct">96 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:95%"></span></div><span class="pct dim">95 %</span></div></div>
+    <div class="cell col-sep"><div class="bar-row"><div class="bar"><span style="width:93%"></span></div><span class="pct dim">93 %</span></div></div>
+  </div>
+</div>
+
+
+  <div style="padding: 0 24px 20px;">
+    <div class="group-head" style="border-bottom:1px solid rgb(var(--md-outline-variant)); padding-bottom:6px; margin-bottom:10px;">
+      Die 81 uneinigen Bilder
+      <span class="gh-right"><span class="hint">nur Bilder, bei denen nicht alle dasselbe sagen</span></span>
+    </div>
+    <div class="strip">
+      <div class="shot"><div class="thumb"></div><div class="hint" style="font-weight:600; margin-bottom:3px;">war: Zitrone</div><div class="verdict"><span class="dot" style="background:var(--m-a)"></span><span class="nm">v3</span> <b>Zitrone</b></div><div class="verdict"><span class="dot" style="background:var(--m-b)"></span><span class="nm">v2</span> <b>Banane</b></div><div class="verdict"><span class="dot" style="background:var(--m-c)"></span><span class="nm">lite</span> <b>Apfel</b></div></div><div class="shot"><div class="thumb"></div><div class="hint" style="font-weight:600; margin-bottom:3px;">war: Apfel</div><div class="verdict"><span class="dot" style="background:var(--m-a)"></span><span class="nm">v3</span> <b>Apfel</b></div><div class="verdict"><span class="dot" style="background:var(--m-b)"></span><span class="nm">v2</span> <b>Apfel</b></div><div class="verdict"><span class="dot" style="background:var(--m-c)"></span><span class="nm">lite</span> <b>Banane</b></div></div><div class="shot"><div class="thumb"></div><div class="hint" style="font-weight:600; margin-bottom:3px;">war: Banane</div><div class="verdict"><span class="dot" style="background:var(--m-a)"></span><span class="nm">v3</span> <b>Banane</b></div><div class="verdict"><span class="dot" style="background:var(--m-b)"></span><span class="nm">v2</span> <b>Zitrone</b></div><div class="verdict"><span class="dot" style="background:var(--m-c)"></span><span class="nm">lite</span> <b>Banane</b></div></div><div class="shot"><div class="thumb"></div><div class="hint" style="font-weight:600; margin-bottom:3px;">war: Zitrone</div><div class="verdict"><span class="dot" style="background:var(--m-a)"></span><span class="nm">v3</span> <b>Apfel</b></div><div class="verdict"><span class="dot" style="background:var(--m-b)"></span><span class="nm">v2</span> <b>Zitrone</b></div><div class="verdict"><span class="dot" style="background:var(--m-c)"></span><span class="nm">lite</span> <b>Apfel</b></div></div><div class="shot"><div class="thumb"></div><div class="hint" style="font-weight:600; margin-bottom:3px;">war: Nichts</div><div class="verdict"><span class="dot" style="background:var(--m-a)"></span><span class="nm">v3</span> <b>Nichts</b></div><div class="verdict"><span class="dot" style="background:var(--m-b)"></span><span class="nm">v2</span> <b>Nichts</b></div><div class="verdict"><span class="dot" style="background:var(--m-c)"></span><span class="nm">lite</span> <b>Apfel</b></div></div>
+      <div class="strip-more">76 weitere<br>durchblättern →</div>
+    </div>
+    <div class="hint" style="margin-top:8px;">
+      Ein Klick auf ein Bild öffnet es im Vergleich oben — die Spalten zeigen dann die Prozentwerte zu genau diesem Bild.
+    </div>
+  </div>
+
+<div class="notes">
+  <h3>Entschieden · Vollbild-Overlay wie die Modell-Details</h3>
+  <ul>
+    <li><b>Eine Kamera für alle.</b> Ein Frame geht durch jedes Modell, die Prozentwerte gehören zum selben Moment. <b>Einfrieren</b> hält das Bild an, <b>Bild merken</b> sammelt Fälle für später.</li>
+    <li><b>Uneinigkeit sichtbar.</b> Weicht eine Spalte in der Top-Klasse ab, wird sie markiert — dazu ein Zähler „Einigkeit der letzten 100 Bilder“.</li>
+    <li><b>Klassen-Union.</b> Die Zeilen sind alle Klassen aller Modelle. Fehlt eine Klasse im Modell, steht dort „—“ statt einer 0 — sonst liest sich der Vergleich falsch.</li>
+    <li><b>Referenz-Spalte.</b> Ein Klick auf einen Spaltenkopf macht das Modell zur Referenz, die anderen zeigen die Abweichung (▼ 5,2 pp).</li>
+    <li><b>„Beste“-Marke je Zeile</b> — und getrennt für Genauigkeit, Größe und Tempo, weil das für den Calliope nicht dasselbe Modell sein muss.</li>
+    <li><b>Nur Unterschiede zeigen.</b> Schalter in den Einstellungen blendet alles aus, worin sich die Modelle einig sind.</li>
+    <li><b>Testbilder statt Live.</b> Alle aufgenommenen Bilder durch jedes Modell — der faire Vergleich; die uneinigen Bilder liegen darunter als Streifen zum Durchblättern.</li>
+    <li><b>Verwechslungsmatrizen nebeneinander.</b> Dieselben Spalten, dieselbe Breite — dort steht, <i>welche</i> Klasse ein Modell verliert, nicht nur wie viel.</li>
+    <li><b>Ein Diagramm, drei Kurven.</b> Genauigkeit / Verlust / Validierung umschaltbar, verschieden lange Läufe enden dort, wo sie aufhörten.</li>
+    <li><b>Direkt weiterarbeiten.</b> „Verwenden“ lädt das Modell, „Details“ öffnet die bekannte Modell-Details-Ansicht, ⋯ hat Exportieren und Umbenennen.</li>
+  </ul>
+</div>
+
+</body>
+</html>

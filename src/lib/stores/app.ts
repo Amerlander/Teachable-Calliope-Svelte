@@ -30,12 +30,19 @@ export async function setLang(lang: Lang): Promise<void> {
 
 // --- UI overlays ---
 export const showLanguageOverlay = writable(false);
+export const showCameraOverlay = writable(false);
 export const showAIInfoOverlay = writable(false);
 
 // --- Training UI state ---
 export const trainStatus = writable<string>('Bereit');
 export const isTraining = writable(false);
 export const isTesting = writable(false);
+/**
+ * True while the comparison overlay is open. The camera panel keeps predicting
+ * behind it otherwise, and both loops would then fight over the same GPU while
+ * only one of them is on screen.
+ */
+export const isComparing = writable(false);
 export const modelTrained = writable(false);
 
 /**

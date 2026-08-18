@@ -89,7 +89,8 @@ export type VideoRefKey =
   | 'webcamTestBg'
   | 'webcamPrep'
   | 'webcamPrepBg'
-  | 'webcamTryout';
+  | 'webcamTryout'
+  | 'webcamCompare';
 
 export type VideoRefs = Partial<Record<VideoRefKey, HTMLVideoElement | null>>;
 
@@ -181,13 +182,27 @@ export function setTrainingHistory(h: TrainingHistory): void {
   });
 }
 
-export function appendTrainingEpoch(epoch: number, accuracy: number, loss: number): void {
+// The validation pair is only passed while a run has a validation split, so the
+// arrays stay absent rather than filling up with zeros that would read as "0 %".
+export function appendTrainingEpoch(
+  epoch: number,
+  accuracy: number,
+  loss: number,
+  valAccuracy?: number,
+  valLoss?: number
+): void {
   updateProject((p) => {
-    p.trainingHistory = {
-      epochs: [...p.trainingHistory.epochs, epoch],
-      accuracy: [...p.trainingHistory.accuracy, accuracy],
-      loss: [...p.trainingHistory.loss, loss]
+    const h = p.trainingHistory;
+    const next: TrainingHistory = {
+      epochs: [...h.epochs, epoch],
+      accuracy: [...h.accuracy, accuracy],
+      loss: [...h.loss, loss]
     };
+    if (valAccuracy != null && valLoss != null) {
+      next.valAccuracy = [...(h.valAccuracy ?? []), valAccuracy];
+      next.valLoss = [...(h.valLoss ?? []), valLoss];
+    }
+    p.trainingHistory = next;
   });
 }
 

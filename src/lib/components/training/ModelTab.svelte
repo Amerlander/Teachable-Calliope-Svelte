@@ -13,7 +13,8 @@
     currentProject,
     deleteTrainedModel,
     getModelById,
-    renameTrainedModel
+    renameTrainedModel,
+    type TrainedModel
   } from '$lib/stores/projects';
   import {
     isTraining,
@@ -38,6 +39,8 @@
     type DeleteTarget
   } from '$lib/components/DeleteConfirmDialog.svelte';
   import ModelHistory from './ModelHistory.svelte';
+  import ModelCompareModal from './ModelCompareModal.svelte';
+  import { MAX_COMPARED, MIN_COMPARED } from '$lib/compare';
 
   let loadModelEl: HTMLInputElement = $state()!;
 
@@ -206,6 +209,49 @@
 
   let augSettingsOpen = $state(false);
 
+  // ---------- Comparing models ----------
+  // Picking the models happens in the list itself rather than in a dialog of its
+  // own: the numbers that decide which two runs are worth putting next to each
+  // other are already on the rows.
+  let compareMode = $state(false);
+  let compareIds = $state<string[]>([]);
+  let compareOpen = $state(false);
+
+  const compareModels = $derived(
+    compareIds
+      .map((id) => $availableModels.find((m) => m.id === id))
+      .filter(Boolean) as TrainedModel[]
+  );
+
+  function startCompare() {
+    if ($availableModels.length < MIN_COMPARED) {
+      showNotification(`Zum Vergleichen braucht es mindestens ${MIN_COMPARED} Modelle`, {
+        type: 'warning'
+      });
+      return;
+    }
+    compareMode = true;
+    // The model in use is the one a comparison usually starts from.
+    const current = $currentProject?.currentModelId;
+    compareIds = current ? [current] : [];
+    modelTabView.set('model');
+  }
+
+  function endCompare() {
+    compareMode = false;
+    compareIds = [];
+  }
+
+  function toggleCompare(id: string) {
+    if (compareIds.includes(id)) compareIds = compareIds.filter((x) => x !== id);
+    else if (compareIds.length < MAX_COMPARED) compareIds = [...compareIds, id];
+  }
+
+  function openCompare() {
+    if (compareModels.length < MIN_COMPARED) return;
+    compareOpen = true;
+  }
+
   function updateAug<K extends keyof TrainingOptions['augmentationSettings']>(
     key: K,
     value: TrainingOptions['augmentationSettings'][K]
@@ -217,29 +263,48 @@
 
 <div class="model-tab">
   <div class="head">
-    <span class="section-label">Modelle</span>
+    <span class="section-label">
+      {compareMode ? `Vergleich · ${compareIds.length} ausgewählt` : 'Modelle'}
+    </span>
     <div class="head-actions">
-      <!-- Sits above the list because that is where its result appears: the run
-           being composed, and afterwards its model, are the first entry. -->
-      <button type="button" class="add-btn" onclick={startNewModel} disabled={$isTraining}>
-        <span aria-hidden="true">+</span> Neues Modell
-      </button>
-      <Dropdown placement="bottom-end">
-        {#snippet trigger()}
-          <Button variant="ghost" size="small" aria-label="Modell-Aktionen" title="Mehr Aktionen">⋯</Button>
-        {/snippet}
-        {#snippet children()}
-          <DropdownItem onclick={onExportModel} disabled={!hasSelectedModel}>
-            Modell exportieren
-          </DropdownItem>
-          <DropdownItem onclick={() => loadModelEl?.click()}>
-            Modell importieren
-          </DropdownItem>
-          <DropdownItem onclick={onDeleteModel} disabled={!hasSelectedModel}>
-            Modell löschen
-          </DropdownItem>
-        {/snippet}
-      </Dropdown>
+      {#if compareMode}
+        <button
+          type="button"
+          class="add-btn"
+          onclick={() => (compareIds = [])}
+          disabled={!compareIds.length}
+        >
+          Alle abwählen
+        </button>
+        <Button variant="ghost" size="small" onclick={endCompare} aria-label="Vergleich verlassen" title="Vergleich verlassen">
+          ×
+        </Button>
+      {:else}
+        <!-- Sits above the list because that is where its result appears: the run
+             being composed, and afterwards its model, are the first entry. -->
+        <button type="button" class="add-btn" onclick={startNewModel} disabled={$isTraining}>
+          <span aria-hidden="true">+</span> Neues Modell
+        </button>
+        <Dropdown placement="bottom-end">
+          {#snippet trigger()}
+            <Button variant="ghost" size="small" aria-label="Modell-Aktionen" title="Mehr Aktionen">⋯</Button>
+          {/snippet}
+          {#snippet children()}
+            <DropdownItem onclick={onExportModel} disabled={!hasSelectedModel}>
+              Modell exportieren
+            </DropdownItem>
+            <DropdownItem onclick={() => loadModelEl?.click()}>
+              Modell importieren
+            </DropdownItem>
+            <DropdownItem onclick={startCompare} disabled={$availableModels.length < MIN_COMPARED}>
+              Modelle vergleichen
+            </DropdownItem>
+            <DropdownItem onclick={onDeleteModel} disabled={!hasSelectedModel}>
+              Modell löschen
+            </DropdownItem>
+          {/snippet}
+        </Dropdown>
+      {/if}
       <input
         bind:this={loadModelEl}
         type="file"
@@ -382,15 +447,17 @@
                   <span class="opt-label">
                     Feature-Extraktor
                     <InfoTooltip
-                      text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. v1 ist der bewährte Standard, v2 etwas genauer bei ähnlicher Größe, Lite am schnellsten auf schwacher Hardware."
+                      text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. v3 Large ist der Standard und trifft am genauesten, v1 und v2 sind die bewährten Vorgänger, v3 Small und Lite laufen am schnellsten auf schwacher Hardware."
                     />
                   </span>
                   <select
                     value={$trainingOptions.featureExtractor}
                     onchange={(e) => updateOpt('featureExtractor', (e.target as HTMLSelectElement).value as any)}
                   >
-                    <option value="mobilenet-v1">MobileNet v1 (α=1.0, ~16 MB, Standard)</option>
-                    <option value="mobilenet-v2">MobileNet v2 (α=1.0, ~14 MB, genauer)</option>
+                    <option value="mobilenet-v3-large">MobileNet v3 Large (α=1.0, ~16 MB, Standard)</option>
+                    <option value="mobilenet-v1">MobileNet v1 (α=1.0, ~16 MB, bewährt)</option>
+                    <option value="mobilenet-v2">MobileNet v2 (α=1.0, ~14 MB)</option>
+                    <option value="mobilenet-v3-small">MobileNet v3 Small (α=1.0, ~6 MB, schnell)</option>
                     <option value="mobilenet-v1-lite">MobileNet v1 Lite (α=0.5, ~5 MB, schneller)</option>
                   </select>
                 </label>
@@ -564,9 +631,26 @@
     <ModelHistory
       highlightActive={$modelTabView === 'model'}
       onselect={() => modelTabView.set('model')}
+      selectable={compareMode}
+      selectedIds={compareIds}
+      ontoggle={toggleCompare}
     />
   </div>
+
+  {#if compareMode}
+    <!-- Sits below the list, where the selection it counts is. -->
+    <div class="compare-bar">
+      <span class="hint">
+        {MIN_COMPARED} bis {MAX_COMPARED} Modelle · {compareIds.length} ausgewählt
+      </span>
+      <Button size="small" disabled={compareIds.length < MIN_COMPARED} onclick={openCompare}>
+        Vergleichen ({compareIds.length})
+      </Button>
+    </div>
+  {/if}
 </div>
+
+<ModelCompareModal bind:isOpen={compareOpen} models={compareModels} />
 
 <DeleteConfirmDialog
   target={pendingDelete}
@@ -595,6 +679,19 @@
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+  .compare-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 2px 2px;
+    border-top: 1px solid rgb(var(--md-outline-variant));
+    .hint {
+      font-size: 11.5px;
+      color: rgb(var(--md-on-surface-variant));
+      margin-right: auto;
+    }
   }
   .add-btn { @include entry-add-btn; }
   .list-scroll {

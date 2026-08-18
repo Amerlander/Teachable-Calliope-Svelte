@@ -18,7 +18,7 @@
     title?: string;
     subtitle?: Snippet;
     isOpen?: boolean;
-    size?: 'small' | 'medium' | 'large' | 'fullscreen';
+    size?: 'small' | 'medium' | 'large' | 'fullscreen' | 'wide';
     flush?: boolean;
     showCloseButton?: boolean;
     onclose?: () => void;
@@ -83,6 +83,9 @@
     &.size-medium   { width: 90%; max-width: 600px; }
     &.size-large    { width: 90%; max-width: 860px; }
     &.size-fullscreen { width: 95%; max-width: 1200px; height: 88vh; }
+    // For dialogs whose content is columns rather than prose: a comparison of
+    // several models has nothing to gain from a reading width.
+    &.size-wide { width: 97%; max-width: none; height: 92vh; }
   }
   .modal-header {
     display: flex;

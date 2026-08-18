@@ -13,13 +13,27 @@
   import DeleteConfirmDialog, {
     type DeleteTarget
   } from '$lib/components/DeleteConfirmDialog.svelte';
+  import { COMPARE_COLORS, MAX_COMPARED } from '$lib/compare';
 
   // `highlightActive` is off while the sidebar is composing a new model: nothing
   // in the list is the subject of the view then, so nothing should look selected.
+  //
+  // In `selectable` mode the same list picks the models for a comparison instead
+  // of loading one: the rows keep their layout and only gain a checkbox, because
+  // the facts that decide which runs are worth comparing are already on them.
   let {
     onselect,
-    highlightActive = true
-  }: { onselect?: (id: string) => void; highlightActive?: boolean } = $props();
+    highlightActive = true,
+    selectable = false,
+    selectedIds = [],
+    ontoggle
+  }: {
+    onselect?: (id: string) => void;
+    highlightActive?: boolean;
+    selectable?: boolean;
+    selectedIds?: string[];
+    ontoggle?: (id: string) => void;
+  } = $props();
 
   const currentId = $derived(
     highlightActive ? ($currentProject?.currentModelId ?? null) : null
@@ -50,6 +64,13 @@
     editingId = null;
     draft = '';
   }
+
+  // Renaming and picking are two different jobs on the same row. Once the list
+  // is picking models for a comparison, a rename that was already open would
+  // sit inside a row that now reacts to every click — so it ends here.
+  $effect(() => {
+    if (selectable) cancelEdit();
+  });
 
   function onInputKey(e: KeyboardEvent) {
     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
@@ -108,18 +129,51 @@
   <ul class="entry-list">
     {#each models as run (run.id)}
       {@const acc = accuracyOf(run.history.epochs, run.history.accuracy)}
-      <li class="entry-row" class:active={run.id === currentId}>
-        <div class="row-top">
+      {@const pickedAt = selectedIds.indexOf(run.id)}
+      {@const full = selectedIds.length >= MAX_COMPARED && pickedAt < 0}
+      <li
+        class="entry-row"
+        class:active={!selectable && run.id === currentId}
+        class:picked={selectable && pickedAt >= 0}
+        class:full={selectable && full}
+      >
+        <!-- In selection mode the whole row is the target, checkbox included: the
+             box is the thing people aim at, and it is the one spot a handler on
+             the row body would not have covered. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <div
+          class="row-top"
+          class:pickable={selectable}
+          role={selectable ? 'button' : undefined}
+          tabindex={selectable ? 0 : undefined}
+          aria-pressed={selectable ? pickedAt >= 0 : undefined}
+          onclick={selectable ? () => !full && ontoggle?.(run.id) : undefined}
+          onkeydown={selectable
+            ? (e) => e.key === 'Enter' && !full && ontoggle?.(run.id)
+            : undefined}
+        >
+          {#if selectable}
+            <span class="cb" class:on={pickedAt >= 0} aria-hidden="true"></span>
+          {/if}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
             class="main"
-            role="button"
-            tabindex="0"
-            onclick={() => onLoad(run.id)}
-            onkeydown={(e) => e.key === 'Enter' && onLoad(run.id)}
+            role={selectable ? undefined : 'button'}
+            tabindex={selectable ? undefined : 0}
+            onclick={selectable ? undefined : () => onLoad(run.id)}
+            onkeydown={selectable ? undefined : (e) => e.key === 'Enter' && onLoad(run.id)}
           >
             <div class="title">
-              {#if editingId === run.id}
+              {#if selectable && pickedAt >= 0}
+                <span
+                  class="pick-dot"
+                  style="background: {COMPARE_COLORS[pickedAt % COMPARE_COLORS.length]}"
+                  aria-hidden="true"
+                ></span>
+              {/if}
+              {#if editingId === run.id && !selectable}
                 <!-- svelte-ignore a11y_autofocus -->
                 <input
                   class="title-edit"
@@ -131,6 +185,7 @@
                 />
               {:else}
                 <span class="title-text">{run.label || formatDate(run.trainedAt)}</span>
+                {#if !selectable}
                 <button
                   type="button"
                   class="edit-btn"
@@ -142,6 +197,7 @@
                     <path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
                   </svg>
                 </button>
+                {/if}
               {/if}
               {#if run.id === currentId}
                 <span class="chip">aktiv</span>
@@ -176,6 +232,7 @@
               </div>
             {/if}
           </div>
+          {#if !selectable}
           <Dropdown placement="bottom-end">
             {#snippet trigger()}
               <button type="button" class="menu" aria-label="Aktionen" title="Mehr">⋯</button>
@@ -187,6 +244,7 @@
               <DropdownItem onclick={() => onDelete(run.id)}>Löschen</DropdownItem>
             {/snippet}
           </Dropdown>
+          {/if}
         </div>
       </li>
     {/each}
@@ -216,6 +274,54 @@
   .chip { @include entry-chip; }
   .menu { @include entry-menu-btn; }
   .empty { @include entry-empty; }
+
+  // Selection mode: the checkbox sits where the row's left padding is, so the
+  // rows do not shift when the mode is turned on.
+  .cb {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 2px solid rgb(var(--md-outline-variant));
+    background: rgb(var(--md-surface));
+    margin: 12px 0 0 10px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .cb.on {
+    background: rgb(var(--md-primary));
+    border-color: rgb(var(--md-primary));
+    &::after {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 4px;
+      height: 8px;
+      border: solid rgb(var(--md-on-primary));
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+  }
+  .row-top.pickable {
+    cursor: pointer;
+    .main { cursor: inherit; }
+  }
+  .entry-row.picked {
+    border-color: rgb(var(--md-primary));
+    background: rgba(var(--md-surface-variant), 0.8);
+  }
+  // Nothing more fits into a comparison; the row stays readable but inert.
+  .entry-row.full {
+    opacity: 0.45;
+    .row-top.pickable { cursor: default; }
+  }
+  .pick-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+  }
 
   .entry-row:hover .edit-btn,
   .entry-row.active .edit-btn {
