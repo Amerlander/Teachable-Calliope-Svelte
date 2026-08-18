@@ -12,8 +12,8 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format": "prettier --write .",
 		"lint": "prettier --check . && eslint .",
-		"i18n": "wuchale",
-		"i18n:clean": "wuchale --clean",
+		"i18n": "wuchale --sync",
+		"i18n:clean": "wuchale --sync --clean",
 		"i18n:status": "wuchale status",
 		"i18n:check": "wuchale check",
 		"test:unit": "vitest",
@@ -59,7 +59,7 @@
 		"wuchale": "^0.25.7"
 	},
 	"dependencies": {
-		"@calliope-edu/mini-connection-widget": "github:calliope-edu/mini-connection-widget#a107863685bc08a59a636f1d5b86bcd10cd837b5",
+		"@calliope-edu/mini-connection-widget": "github:calliope-edu/mini-connection-widget#47e0c1b2d4106c679d1fa7233d0fa1bc9f205a1a",
 		"@capacitor-community/bluetooth-le": "^7.3.0",
 		"@capacitor/core": "^7.4.4",
 		"@capacitor/filesystem": "^7.1.6",

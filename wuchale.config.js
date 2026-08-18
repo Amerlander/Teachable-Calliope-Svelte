@@ -68,6 +68,19 @@ const denying = (base) => (msg) => (isVerbatim(msg) ? false : base(msg));
 // ever actually shipped.
 export default defineConfig({
 	locales: ['de', 'en'],
+	// `'add'` instead of the default `'refs'`. The catalog index is positional and
+	// recomputed from scratch by every process that loads the plugin: it numbers
+	// the *still-referenced* .po entries densely, so the moment an entry loses its
+	// last reference it drops out of the numbering and every entry after it shifts
+	// — while the running dev server keeps the old numbers baked into the modules
+	// it has already transformed. `'refs'` is what removes those references (see
+	// `modifyExistingRefs` in wuchale/dist/handler/index.js), and editing a single
+	// German string was enough to trigger it: the whole UI came back scrambled.
+	// `'add'` still extracts new strings live, but never un-references an existing
+	// one, so the .po — and with it the numbering — only ever grows. Dead entries
+	// pile up until `npm run i18n:clean`, which prunes them properly because the
+	// CLI does update references.
+	dev: 'add',
 	adapters: {
 		// Components. `loader: 'svelte'` rather than `'sveltekit'`: the app runs
 		// with `ssr = false` (see src/routes/+layout.ts), so it is a prerendered
