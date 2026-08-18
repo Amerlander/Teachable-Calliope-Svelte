@@ -25,7 +25,6 @@
     type MakeCodeLabels,
   } from '@calliope-edu/mini-connection-widget/makecode';
   import {
-    ConnectButton,
     flashCalliope,
     setConnectionUiActive,
     setTransferProgram,
@@ -181,11 +180,7 @@
             onVersionChange={setMakeCodeHardwareVersion}
             onExtensionRemoved={removeMakeCodeExtension}
             onShare={handleShare}
-          >
-            {#snippet barRightExtra()}
-              <ConnectButton appearance="icon" />
-            {/snippet}
-          </MakeCodeToolbar>
+          />
           <!-- No `sandbox` here (campus runs the editor the same way): the
                attribute this frame used to carry omitted `allow-downloads`, which
                is exactly what the "Als Datei herunterladen" path needs, and with

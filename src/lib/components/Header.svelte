@@ -34,14 +34,19 @@
   );
 
 
+  // The three project views. `$currentProject` on its own can't decide what the
+  // header shows: the layout restores the last project on load, so it is set on
+  // the overview too — and there the nav would point into a project the user has
+  // not picked yet.
+  const onProjectView = $derived(
+    ['/training', '/tryout', '/apply'].some((p) => $page.url.pathname.startsWith(p))
+  );
+
   // The camera picker used to sit in each view; it lives here now so there is one
   // place to change the camera from. It only makes sense where a live feed is on
   // screen, and only when there is something to choose between.
-  const onCameraView = $derived(
-    ['/training', '/tryout', '/apply'].some((p) => $page.url.pathname.startsWith(p))
-  );
   const currentCameraId = $derived($selectedCameraId ?? $cameras[0]?.deviceId ?? '');
-  const showCameraPicker = $derived(onCameraView && $cameras.length > 1);
+  const showCameraPicker = $derived(onProjectView && $cameras.length > 1);
 
   // Devices come and go, so the list is re-read every time the menu opens rather
   // than once at startup.
@@ -139,7 +144,7 @@
     </div>
 
     <nav class="header-center">
-      {#if $currentProject}
+      {#if $currentProject && onProjectView}
         <button class="header-btn" class:active={active === 'training'} onclick={() => navTo('training')}>
           Trainieren
         </button>
@@ -157,12 +162,7 @@
            Calliope logo instead of the labelled pill. It morphs into a short
            pill while transferring (percent, or a spinner for the
            indeterminate phases). -->
-      <!-- On /tryout the connection pill is docked into the MakeCode toolbar
-           instead, right next to the editor it acts on — showing it here too
-           would be the same control twice on one screen. -->
-      {#if active !== 'tryout'}
-        <ConnectButton appearance="icon" />
-      {/if}
+      <ConnectButton appearance="icon" />
 
       <Dropdown bind:isOpen={settingsOpen} minWidth="200px">
         {#snippet trigger()}
