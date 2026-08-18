@@ -4,6 +4,7 @@
   import Header from '$lib/components/Header.svelte';
   import Toast from '$lib/components/Toast.svelte';
   import LanguageOverlay from '$lib/components/LanguageOverlay.svelte';
+  import CameraOverlay from '$lib/components/CameraOverlay.svelte';
   import AIInfoOverlay from '$lib/components/AIInfoOverlay.svelte';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
@@ -78,6 +79,7 @@
 </svelte:head>
 
 <LanguageOverlay />
+<CameraOverlay />
 <AIInfoOverlay />
 <!-- Every widget modal below is a host-owned singleton driven by a store that
      carries a pending promise or callback, so each one has to be mounted or its
