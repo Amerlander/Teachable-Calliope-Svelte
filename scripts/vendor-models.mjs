@@ -16,13 +16,14 @@
  * into 2.
  */
 import { createHash } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_ROOT = join(ROOT, 'static', 'models');
 const TFJS_MODELS = 'https://storage.googleapis.com/tfjs-models';
+const TFHUB = 'https://tfhub.dev';
 
 /** @type {{dir: string, url: string, note: string}[]} */
 const MODELS = [
@@ -37,13 +38,23 @@ const MODELS = [
     note: 'MobileNet v2, alpha 1.0, 224px — feature extractor (graph model, embedding at module_apply_default/MobilenetV2/Logits/AvgPool)'
   },
   {
+    dir: 'mobilenet-v3-small',
+    url: `${TFHUB}/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1/model.json?tfjs-format=file`,
+    note: 'MobileNet v3 Small, alpha 1.0, 224px — feature extractor (graph model, feature vector is the default output "Identity")'
+  },
+  {
+    dir: 'mobilenet-v3-large',
+    url: `${TFHUB}/google/tfjs-model/imagenet/mobilenet_v3_large_100_224/feature_vector/5/default/1/model.json?tfjs-format=file`,
+    note: 'MobileNet v3 Large, alpha 1.0, 224px — feature extractor (graph model, feature vector is the default output "Identity")'
+  },
+  {
     dir: 'mobilenet-v1-lite',
     url: `${TFJS_MODELS}/tfjs/mobilenet_v1_0.50_224/model.json`,
     note: 'MobileNet v1, alpha 0.5, 224px — feature extractor (Keras layers model, truncated at conv_pw_13_relu)'
   },
   {
     dir: 'movenet-singlepose-lightning',
-    url: 'https://tfhub.dev/google/tfjs-model/movenet/singlepose/lightning/4/model.json?tfjs-format=file',
+    url: `${TFHUB}/google/tfjs-model/movenet/singlepose/lightning/4/model.json?tfjs-format=file`,
     note: 'MoveNet SinglePose Lightning v4 — pose detection'
   }
 ];
@@ -137,8 +148,28 @@ async function vendor(model) {
   };
 }
 
-const provenance = [];
-for (const model of MODELS) provenance.push(await vendor(model));
+// Without arguments every model is re-downloaded. Naming directories vendors only
+// those and keeps the recorded provenance of the rest, so adding one model does not
+// have to touch weights that are already committed.
+const only = process.argv.slice(2);
+const unknown = only.filter((dir) => !MODELS.some((m) => m.dir === dir));
+if (unknown.length) throw new Error(`Unbekannte Modelle: ${unknown.join(', ')}`);
+const selected = only.length ? MODELS.filter((m) => only.includes(m.dir)) : MODELS;
+
+const previous = await readFile(join(OUT_ROOT, 'PROVENANCE.json'), 'utf8')
+  .then((raw) => JSON.parse(raw).models)
+  .catch(() => []);
+
+const vendored = new Map();
+for (const model of selected) vendored.set(model.dir, await vendor(model));
+// Models this script does not know about — MobileNet v4 is converted by
+// scripts/convert-mobilenet-v4.py — keep their recorded provenance instead of being
+// dropped from the file the next time somebody refreshes the downloads.
+const foreign = previous.filter((p) => !MODELS.some((m) => m.dir === p.dir));
+const provenance = MODELS
+  .map((m) => vendored.get(m.dir) ?? previous.find((p) => p.dir === m.dir))
+  .filter(Boolean)
+  .concat(foreign);
 await writeFile(
   join(OUT_ROOT, 'PROVENANCE.json'),
   JSON.stringify({ models: provenance }, null, 2) + '\n'

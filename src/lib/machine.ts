@@ -34,45 +34,84 @@ import { normalizeRange, normalizeSmoothing, type ClassRange } from './calibrati
 // We will dynamically import TensorFlow and other libs on the client side
 
 let currentStream: MediaStream | null = null;
+let lastCameraFailure: unknown = null;
+
+/**
+ * The rejection that stopped the last camera start, for the picker to turn into
+ * a sentence. Cleared as soon as a stream comes up.
+ */
+export function getLastCameraFailure(): unknown {
+  return lastCameraFailure;
+}
+
+async function openStream(deviceId?: string): Promise<MediaStream> {
+  return navigator.mediaDevices.getUserMedia({
+    video: deviceId ? { deviceId: { exact: deviceId } } : true
+  });
+}
 
 export async function initSharedCamera(
   videoElements: VideoRefs = {},
   deviceId?: string
 ): Promise<MediaStream | null> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices) return null;
-  try {
-    if (currentStream) {
-      currentStream.getTracks().forEach((t) => t.stop());
-      currentStream = null;
-    }
-    const constraints: MediaStreamConstraints = {
-      video: deviceId ? { deviceId: { exact: deviceId } } : true
-    };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    currentStream = stream;
-    for (const vid of Object.values(videoElements)) {
-      if (!vid) continue;
-      try {
-        vid.srcObject = stream;
-        vid.onloadedmetadata = () => vid.play().catch(console.warn);
-      } catch (err) {
-        console.warn('Failed to bind video element', err);
-      }
-    }
-    return stream;
-  } catch (err) {
-    console.error('Could not start camera', err);
-    return null;
+  if (currentStream) {
+    currentStream.getTracks().forEach((t) => t.stop());
+    currentStream = null;
   }
+  let stream: MediaStream;
+  try {
+    stream = await openStream(deviceId);
+  } catch (err) {
+    if (!deviceId) {
+      lastCameraFailure = err;
+      console.error('Could not start camera', err);
+      return null;
+    }
+    // A remembered device that has been unplugged, or is held by another
+    // program, fails the `exact` constraint. Falling back to the default camera
+    // keeps the view alive instead of leaving it black; the caller compares the
+    // track's deviceId against the one it asked for to notice the swap.
+    console.warn('Could not start the selected camera, falling back to the default', err);
+    try {
+      stream = await openStream();
+    } catch (fallbackErr) {
+      lastCameraFailure = fallbackErr;
+      console.error('Could not start camera', fallbackErr);
+      return null;
+    }
+  }
+  lastCameraFailure = null;
+  currentStream = stream;
+  for (const vid of Object.values(videoElements)) {
+    if (!vid) continue;
+    try {
+      vid.srcObject = stream;
+      vid.onloadedmetadata = () => vid.play().catch(console.warn);
+    } catch (err) {
+      console.warn('Failed to bind video element', err);
+    }
+  }
+  return stream;
 }
 
 /**
- * True while a shared stream is live. Device enumeration only yields usable
- * labels once permission has been granted, so the camera picker uses this to
- * enumerate off the back of a running view instead of prompting on its own.
+ * True while a shared stream is live. The picker leans on this to stay out of the
+ * way: with a feed already running it enumerates off the back of that stream's
+ * permission, and it only ever restarts a stream that actually exists.
  */
 export function isCameraRunning(): boolean {
   return currentStream !== null;
+}
+
+/**
+ * The live view stream, for a second sink onto the same picture. One MediaStream
+ * can feed any number of video elements, which is how the picker previews the
+ * running camera without opening a stream of its own — a second stream on the
+ * same device is what fails on some Windows drivers.
+ */
+export function getSharedStream(): MediaStream | null {
+  return currentStream;
 }
 
 // ---------- Feature extractor abstraction ----------
@@ -83,6 +122,10 @@ export function isCameraRunning(): boolean {
 // Self-hosting also keeps the app working in filtered school networks and offline.
 // See scripts/vendor-models.mjs for where the weights come from.
 const MODEL_ROOT = `${base}/models`;
+
+/** Channel statistics timm normalises with, needed by the MobileNet v4 extractors. */
+const IMAGENET_MEAN = [0.485, 0.456, 0.406];
+const IMAGENET_STD = [0.229, 0.224, 0.225];
 
 type ExtractorConfig = {
   /**
@@ -96,10 +139,11 @@ type ExtractorConfig = {
   inputSize: number;
   /**
    * How raw 0..255 pixels must be scaled for this model.
-   *  '01' -> x/255        (the tfhub-converted MobileNets)
-   *  'tf' -> x/127.5 - 1  (keras.applications MobileNet)
+   *  '01'       -> x/255              (the tfhub-converted MobileNets and v3 feature vectors)
+   *  'tf'       -> x/127.5 - 1        (keras.applications MobileNet)
+   *  'imagenet' -> (x/255 - mean)/std (timm, which is where the v4 weights come from)
    */
-  preprocess: '01' | 'tf';
+  preprocess: '01' | 'tf' | 'imagenet';
   /** Embedding length, used only for diagnostics/labelling. */
   featureCount: number;
 };
@@ -119,6 +163,40 @@ const EXTRACTOR_CONFIGS: Record<FeatureExtractor, ExtractorConfig> = {
     outputName: 'module_apply_default/MobilenetV2/Logits/AvgPool',
     inputSize: 224,
     preprocess: '01',
+    featureCount: 1280
+  },
+  'mobilenet-v3-small': {
+    kind: 'graph',
+    url: `${MODEL_ROOT}/mobilenet-v3-small/model.json`,
+    outputName: 'Identity',
+    inputSize: 224,
+    preprocess: '01',
+    featureCount: 1024
+  },
+  'mobilenet-v3-large': {
+    kind: 'graph',
+    url: `${MODEL_ROOT}/mobilenet-v3-large/model.json`,
+    outputName: 'Identity',
+    inputSize: 224,
+    preprocess: '01',
+    featureCount: 1280
+  },
+  // Converted by scripts/convert-mobilenet-v4.py, verified by
+  // scripts/verify-mobilenet-v4.mjs. timm normalisation, hence 'imagenet'.
+  'mobilenet-v4-small': {
+    kind: 'graph',
+    url: `${MODEL_ROOT}/mobilenet-v4-small/model.json`,
+    outputName: 'Identity',
+    inputSize: 224,
+    preprocess: 'imagenet',
+    featureCount: 1280
+  },
+  'mobilenet-v4-medium': {
+    kind: 'graph',
+    url: `${MODEL_ROOT}/mobilenet-v4-medium/model.json`,
+    outputName: 'Identity',
+    inputSize: 224,
+    preprocess: 'imagenet',
     featureCount: 1280
   },
   'mobilenet-v1-lite': {
@@ -157,7 +235,12 @@ async function loadExtractor(key: FeatureExtractor): Promise<LoadedExtractor> {
 
   const prepare = (pixels: any) => {
     const float = tf.cast(pixels, 'float32');
-    const scaled = preprocess === '01' ? tf.div(float, 255) : tf.sub(tf.div(float, 127.5), 1);
+    const scaled =
+      preprocess === '01'
+        ? tf.div(float, 255)
+        : preprocess === 'tf'
+          ? tf.sub(tf.div(float, 127.5), 1)
+          : tf.div(tf.sub(tf.div(float, 255), tf.tensor1d(IMAGENET_MEAN)), tf.tensor1d(IMAGENET_STD));
     const batched = tf.reshape(scaled, [-1, ...(scaled.shape.slice(-3) as number[])]);
     return batched.shape[1] === inputSize && batched.shape[2] === inputSize
       ? batched
@@ -169,9 +252,13 @@ async function loadExtractor(key: FeatureExtractor): Promise<LoadedExtractor> {
     return {
       key,
       config,
-      // The embedding node yields [1, 1, 1, D]; drop the spatial dims.
+      // The v1/v2 pooling nodes yield [1, 1, 1, D], the v3 feature vector is already
+      // flat at [1, D]. Folding everything after the batch axis handles both.
       infer: (pixels: any) =>
-        tf.tidy(() => tf.squeeze(model.execute(prepare(pixels), outputName) as any, [1, 2])),
+        tf.tidy(() => {
+          const out = model.execute(prepare(pixels), outputName) as any;
+          return tf.reshape(out, [out.shape[0], -1]);
+        }),
       dispose: () => model.dispose()
     };
   }
@@ -532,10 +619,27 @@ export function captureFrameFromVideo(video: HTMLVideoElement, short = CAPTURE_S
   return canvas.toDataURL('image/jpeg', 0.9);
 }
 
+/**
+ * Embed every recorded example, and split off a validation set when asked for
+ * one.
+ *
+ * The split is done here rather than through `fit`'s `validationSplit`, which
+ * takes the *last* fraction of the samples before shuffling. Our samples are
+ * built class by class, so that fraction is whatever the last class happens to
+ * be: the validation set then contains one or two classes, the model can never
+ * be right about the rest, and the checked accuracy sits at a constant low
+ * value for the whole run. Splitting per class fixes that.
+ *
+ * The split is also grouped by source image: augmented copies stay with their
+ * original, and a held-back image contributes only its unaltered version. A
+ * rotated copy of a validation image sitting in the training set would make the
+ * checked number look better than it is.
+ */
 export async function prepareDatasetForTraining(
   roi?: Roi | null,
   aug?: AugmentationSettings | null,
-  requestedExtractor: FeatureExtractor = 'mobilenet-v1'
+  requestedExtractor: FeatureExtractor = 'mobilenet-v1',
+  validationSplit = 0
 ) {
   const tfModule = await import('@tensorflow/tfjs');
   const extractor = resolveFeatureExtractor(requestedExtractor);
@@ -543,20 +647,17 @@ export async function prepareDatasetForTraining(
 
   const classesList = get(classes);
   const ex = get(examples);
+  const split = Math.max(0, Math.min(0.5, validationSplit));
 
-  const xs: any[] = [];
-  const ys: any[] = [];
   const canvas = document.createElement('canvas');
   const augMultiplier = aug ? Math.max(0, Math.floor(aug.multiplier)) : 0;
 
-  const embedCanvas = async () => {
-    const emb = await embedCanvasWith(extractor, canvas);
-    xs.push(emb);
-    ys.push(tfModule.oneHot([i], classesList.length).squeeze());
-  };
+  // One entry per source image: its unaltered embedding plus the augmented
+  // copies made from it, so the two can be routed to different sets.
+  type Group = { original: any; copies: any[] };
+  const perClass: Group[][] = classesList.map(() => []);
 
-  let i = 0;
-  for (i = 0; i < classesList.length; i++) {
+  for (let i = 0; i < classesList.length; i++) {
     const className = classesList[i];
     const classExamples = ex[className] || [];
     for (const example of classExamples) {
@@ -564,28 +665,77 @@ export async function prepareDatasetForTraining(
       img.src = example.data;
       await new Promise<void>(r => (img.onload = () => r()));
 
-      // Always include the (ROI-cropped) original.
       drawWithRoi(img, roi ?? null, canvas, 224);
-      await embedCanvas();
+      const original = await embedCanvasWith(extractor, canvas);
 
-      // Augmented copies.
+      const copies: any[] = [];
       for (let k = 0; k < augMultiplier; k++) {
         drawAugmented(img, roi ?? null, aug!, canvas, 224);
-        await embedCanvas();
+        copies.push(await embedCanvasWith(extractor, canvas));
       }
+      perClass[i].push({ original, copies });
     }
   }
 
-  if (xs.length === 0) {
+  const trainX: any[] = [];
+  const trainY: any[] = [];
+  const valX: any[] = [];
+  const valY: any[] = [];
+
+  for (let i = 0; i < classesList.length; i++) {
+    const groups = perClass[i];
+    if (!groups.length) continue;
+    const label = () => tfModule.oneHot([i], classesList.length).squeeze();
+
+    // At least one image per class when a split was asked for, but never the
+    // last one: a class has to keep something to train on.
+    const wanted = split > 0 ? Math.max(1, Math.round(split * groups.length)) : 0;
+    const nVal = Math.min(groups.length - 1, wanted);
+
+    // Which images are held back is drawn per class, so the set is not always
+    // the images that happen to have been recorded last.
+    const order = groups.map((_, idx) => idx);
+    for (let k = order.length - 1; k > 0; k--) {
+      const j = Math.floor(Math.random() * (k + 1));
+      [order[k], order[j]] = [order[j], order[k]];
+    }
+    const held = new Set(order.slice(0, nVal));
+
+    groups.forEach((group, idx) => {
+      if (held.has(idx)) {
+        valX.push(group.original);
+        valY.push(label());
+        // The copies of a held-back image belong nowhere: dropping them keeps
+        // the check honest.
+        group.copies.forEach((t) => { try { t.dispose(); } catch (e) {} });
+        return;
+      }
+      trainX.push(group.original);
+      trainY.push(label());
+      for (const copy of group.copies) {
+        trainX.push(copy);
+        trainY.push(label());
+      }
+    });
+  }
+
+  if (trainX.length === 0) {
     throw new Error('No examples to prepare');
   }
 
-  const stackedX = tfModule.stack(xs);
-  const stackedY = tfModule.stack(ys);
+  const stackedX = tfModule.stack(trainX);
+  const stackedY = tfModule.stack(trainY);
+  const valXs = valX.length ? tfModule.stack(valX) : null;
+  const valYs = valY.length ? tfModule.stack(valY) : null;
   // dispose individual tensors now that we have stacked ones
-  try { xs.forEach(t => { try { t.dispose(); } catch (e) {} }); } catch(e) {}
-  try { ys.forEach(t => { try { t.dispose(); } catch (e) {} }); } catch(e) {}
-  return { xs: stackedX, ys: stackedY };
+  const dispose = (list: any[]) => {
+    try { list.forEach(t => { try { t.dispose(); } catch (e) {} }); } catch (e) {}
+  };
+  dispose(trainX);
+  dispose(trainY);
+  dispose(valX);
+  dispose(valY);
+  return { xs: stackedX, ys: stackedY, valXs, valYs, valCount: valX.length };
 }
 
 export type TrainOptions = {
@@ -623,7 +773,12 @@ export async function trainModel(
   const aug = opts.augmentation && opts.augmentationSettings
     ? opts.augmentationSettings
     : null;
-  const data = await prepareDatasetForTraining(opts.roi ?? null, aug, featureExtractor);
+  const data = await prepareDatasetForTraining(
+    opts.roi ?? null,
+    aug,
+    featureExtractor,
+    validationSplit
+  );
 
   const model = tfModule.sequential();
   const xsShape = (data.xs as any).shape as number[] | undefined;
@@ -646,10 +801,20 @@ export async function trainModel(
   // reset training history for new training session
   setTrainingHistory({ epochs: [], accuracy: [], loss: [] });
 
+  // `validationData` rather than `validationSplit`: the set was already picked
+  // per class in prepareDatasetForTraining — see the note there for why fit's own
+  // split cannot be used here.
+  const validationData =
+    data.valXs && data.valYs ? ([data.valXs, data.valYs] as [any, any]) : undefined;
+  // Recorded on the model: the details view would otherwise have to guess them
+  // back from the options, which no longer adds up once images are held back.
+  const trainSamples = ((data.xs as any).shape?.[0] as number) ?? 0;
+  const valSamples = data.valCount;
+
   await model.fit(data.xs, data.ys, {
     epochs,
     batchSize,
-    validationSplit,
+    ...(validationData ? { validationData } : {}),
     shuffle: true,
     callbacks: {
       onEpochEnd: (e: number, logs: any) => {
@@ -670,6 +835,8 @@ export async function trainModel(
 
   data.xs.dispose();
   data.ys.dispose();
+  data.valXs?.dispose();
+  data.valYs?.dispose();
 
   // Update model metadata when training completes
   try {
@@ -696,7 +863,8 @@ export async function trainModel(
           {
             roi: opts.roi ?? undefined,
             featureExtractor,
-            mode: get(currentProject)?.mode ?? 'image'
+            mode: get(currentProject)?.mode ?? 'image',
+            sampleCounts: { train: trainSamples, validation: valSamples }
           }
         );
         return { modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' } } as any;
@@ -725,21 +893,97 @@ async function persistClassifierArtifacts(model: any): Promise<void> {
   );
 }
 
-export async function loadClassifierFromArtifacts(artifacts: {
+/**
+ * Build a runnable classifier from stored artifacts *without* touching the
+ * runtime classifier the rest of the app predicts through. Comparing models
+ * means several heads alive at once, and none of them may become "the" model.
+ */
+export async function createClassifierFromArtifacts(artifacts: {
   topology: unknown;
   weightSpecs: unknown[];
   weightData: ArrayBuffer;
 }): Promise<any> {
   const tfModule = await import('@tensorflow/tfjs');
-  const model = await tfModule.loadLayersModel(
+  return tfModule.loadLayersModel(
     tfModule.io.fromMemory({
       modelTopology: artifacts.topology as any,
       weightSpecs: artifacts.weightSpecs as any,
       weightData: artifacts.weightData
     })
   );
+}
+
+export async function loadClassifierFromArtifacts(artifacts: {
+  topology: unknown;
+  weightSpecs: unknown[];
+  weightData: ArrayBuffer;
+}): Promise<any> {
+  const model = await createClassifierFromArtifacts(artifacts);
   classifierModel.set(model);
   return model;
+}
+
+// ---------- Several models at once (the comparison view) ----------
+// `ensureExtractor` above keeps exactly one extractor alive and frees the
+// previous one as soon as a different key is asked for. That is right for the
+// rest of the app, where one model predicts at a time, but a comparison can
+// hold models trained on different extractors — and switching per frame would
+// mean downloading and disposing MobileNet several times a second. These get
+// their own cache instead: filled while a comparison is open, emptied when it
+// closes, and skipped entirely when the main extractor already is the one
+// asked for, which is the usual case.
+const compareExtractors = new Map<FeatureExtractor, Promise<LoadedExtractor>>();
+
+async function ensureCompareExtractor(key: FeatureExtractor): Promise<LoadedExtractor> {
+  const resolved = resolveFeatureExtractor(key);
+  if (activeExtractor?.key === resolved) return activeExtractor;
+  let pending = compareExtractors.get(resolved);
+  if (!pending) {
+    pending = loadExtractor(resolved).catch((err) => {
+      // A failed download must not stay cached as a rejected promise, or every
+      // later frame would fail with it.
+      compareExtractors.delete(resolved);
+      throw err;
+    });
+    compareExtractors.set(resolved, pending);
+  }
+  return pending;
+}
+
+/** Free everything {@link embedForCompare} loaded, but never the shared extractor. */
+export async function disposeCompareExtractors(): Promise<void> {
+  const pending = [...compareExtractors.values()];
+  compareExtractors.clear();
+  for (const p of pending) {
+    try {
+      const loaded = await p;
+      if (loaded !== activeExtractor) loaded.dispose();
+    } catch {
+      /* never loaded */
+    }
+  }
+}
+
+/**
+ * Embedding of `source`, cropped to `roi` and run through `extractor`. Two
+ * models that agree on both share one embedding — which is what makes comparing
+ * three models cost barely more than running one. Caller disposes the tensor.
+ */
+export async function embedForCompare(
+  source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement,
+  roi: Roi | null | undefined,
+  extractor: FeatureExtractor
+): Promise<any> {
+  const tf = await import('@tensorflow/tfjs');
+  const loaded = await ensureCompareExtractor(extractor);
+  const canvas = document.createElement('canvas');
+  drawWithRoi(source, roi, canvas, MODEL_INPUT);
+  const pixels = tf.browser.fromPixels(canvas);
+  try {
+    return tf.tidy(() => tf.squeeze(loaded.infer(pixels, true)));
+  } finally {
+    pixels.dispose();
+  }
 }
 
 export async function processZipFile(file: File): Promise<{ images: string[]; detectedClass?: string; files?: string[] }> {
@@ -1156,11 +1400,31 @@ export async function scoreStoredExamples(): Promise<{
   rows: { trueIndex: number; probs: number[] }[];
 }> {
   const classifier = get(classifierModel);
+  if (!classifier) throw new Error('Model not ready');
+  const proj = get(currentProject);
+  const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
+  return scoreExamplesWith(active, classifier);
+}
+
+/**
+ * The same scoring against an explicitly given model and classifier head.
+ *
+ * The confusion cache uses this with a head of its own, loaded from the model's
+ * artifacts: a run started for one model would otherwise silently continue with
+ * whatever classifier the app loads next, and mix two models' predictions into
+ * one matrix.
+ */
+export async function scoreExamplesWith(
+  model: TrainedModel | null,
+  classifier: any
+): Promise<{
+  classes: string[];
+  rows: { trueIndex: number; probs: number[] }[];
+}> {
   const ex = get(examples);
   if (!classifier) throw new Error('Model not ready');
 
-  const proj = get(currentProject);
-  const active = proj?.modelHistory.find((m) => m.id === proj.currentModelId) ?? null;
+  const active = model;
   const classesList = active?.classes?.length ? active.classes : get(classes);
 
   const roi = active?.roi ?? null;
@@ -1188,18 +1452,4 @@ export async function scoreStoredExamples(): Promise<{
   return { classes: classesList, rows };
 }
 
-export async function calculateConfusionMatrix() {
-  const { classes: classesList, rows } = await scoreStoredExamples();
-  const n = classesList.length;
-  const matrix: number[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
-  for (const row of rows) {
-    let maxIndex = 0;
-    let maxProb = 0;
-    for (let k = 0; k < row.probs.length; k++) {
-      if (row.probs[k] > maxProb) { maxProb = row.probs[k]; maxIndex = k; }
-    }
-    matrix[row.trueIndex][maxIndex]++;
-  }
-  return { matrix, classes: classesList };
-}
 

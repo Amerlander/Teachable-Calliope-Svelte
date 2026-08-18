@@ -447,7 +447,7 @@
                   <span class="opt-label">
                     Feature-Extraktor
                     <InfoTooltip
-                      text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. v3 Large ist der Standard und trifft am genauesten, v1 und v2 sind die bewährten Vorgänger, v3 Small und Lite laufen am schnellsten auf schwacher Hardware."
+                      text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. v3 Large ist der Standard, v4 Medium trifft am genauesten (dafür 32 MB Download), v4 Small ist der beste Kompromiss aus Größe und Genauigkeit, v3 Small und Lite laufen am schnellsten auf schwacher Hardware."
                     />
                   </span>
                   <select
@@ -457,6 +457,8 @@
                     <option value="mobilenet-v3-large">MobileNet v3 Large (α=1.0, ~16 MB, Standard)</option>
                     <option value="mobilenet-v1">MobileNet v1 (α=1.0, ~16 MB, bewährt)</option>
                     <option value="mobilenet-v2">MobileNet v2 (α=1.0, ~14 MB)</option>
+                    <option value="mobilenet-v4-medium">MobileNet v4 Medium (~32 MB, am genauesten)</option>
+                    <option value="mobilenet-v4-small">MobileNet v4 Small (~10 MB, genau und klein)</option>
                     <option value="mobilenet-v3-small">MobileNet v3 Small (α=1.0, ~6 MB, schnell)</option>
                     <option value="mobilenet-v1-lite">MobileNet v1 Lite (α=0.5, ~5 MB, schneller)</option>
                   </select>

@@ -37,6 +37,8 @@ export type FeatureExtractor =
   | 'mobilenet-v2'
   | 'mobilenet-v3-small'
   | 'mobilenet-v3-large'
+  | 'mobilenet-v4-small'
+  | 'mobilenet-v4-medium'
   | 'mobilenet-v1-lite';
 
 // Extractors that used to be offered but were served through tfhub.dev, which now
@@ -56,6 +58,8 @@ const SUPPORTED_FEATURE_EXTRACTORS: FeatureExtractor[] = [
   'mobilenet-v2',
   'mobilenet-v3-small',
   'mobilenet-v3-large',
+  'mobilenet-v4-small',
+  'mobilenet-v4-medium',
   'mobilenet-v1-lite'
 ];
 

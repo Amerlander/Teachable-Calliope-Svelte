@@ -19,6 +19,24 @@
       "sha256": "2769bdfb5759eb57aaa20afb795f2586df8b90e4b69d6e23fe804de7ba4f8e41"
     },
     {
+      "dir": "mobilenet-v3-small",
+      "note": "MobileNet v3 Small, alpha 1.0, 224px — feature extractor (graph model, feature vector is the default output \"Identity\")",
+      "source": "https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1/model.json?tfjs-format=file",
+      "retrieved": "2026-08-18",
+      "shardsMerged": 2,
+      "bytes": 6211315,
+      "sha256": "c04af99f5bc3aeead221217edca6c2933f86a155fd69b1864212eef50a0ccd7c"
+    },
+    {
+      "dir": "mobilenet-v3-large",
+      "note": "MobileNet v3 Large, alpha 1.0, 224px — feature extractor (graph model, feature vector is the default output \"Identity\")",
+      "source": "https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_large_100_224/feature_vector/5/default/1/model.json?tfjs-format=file",
+      "retrieved": "2026-08-18",
+      "shardsMerged": 4,
+      "bytes": 16943792,
+      "sha256": "1fe5c4bc9357013e3ff96e3fb9c4c0930f5d6399b2ab10b6431c222879551cab"
+    },
+    {
       "dir": "mobilenet-v1-lite",
       "note": "MobileNet v1, alpha 0.5, 224px — feature extractor (Keras layers model, truncated at conv_pw_13_relu)",
       "source": "https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.50_224/model.json",
@@ -35,6 +53,28 @@
       "shardsMerged": 2,
       "bytes": 4808148,
       "sha256": "bf97bc10d9c8a11200b0190ed64ce039b6252f1aff7cb552aca99b3d191c2f34"
+    },
+    {
+      "dir": "mobilenet-v4-small",
+      "note": "MobileNet v4 Conv Small, 224px — feature extractor. Converted from the pinned ONNX export of timm/mobilenetv4_conv_small.e2400_r224_in1k: classifier cut off at the pooled feature vector, then onnx2tf -> tensorflowjs_converter. Expects ImageNet mean/std normalised input.",
+      "source": "https://huggingface.co/onnx-community/mobilenetv4_conv_small.e2400_r224_in1k/resolve/3ba07f12712fa58fd6b3d661f9909c9e332c5005/onnx/model.onnx",
+      "retrieved": "2026-08-18",
+      "shardsMerged": 3,
+      "bytes": 9997990,
+      "sha256": "bc0e85b6be74018d402a4491f72984f660e754ecafa8a675f3e8db8deafad2d5",
+      "conversion": "onnx.utils.extract_model -> onnx2tf -cotof -> tensorflowjs_converter (scripts/convert-mobilenet-v4.py)",
+      "preprocess": "ImageNet mean/std on 0..1 pixels"
+    },
+    {
+      "dir": "mobilenet-v4-medium",
+      "note": "MobileNet v4 Conv Medium, 224px — feature extractor. Converted from the pinned ONNX export of timm/mobilenetv4_conv_medium.e500_r224_in1k: classifier cut off at the pooled feature vector, then onnx2tf -> tensorflowjs_converter. Expects ImageNet mean/std normalised input.",
+      "source": "https://huggingface.co/onnx-community/mobilenetv4_conv_medium.e500_r224_in1k/resolve/dc8d9ef543f3c84172e9ec8c4ce50c7edab85224/onnx/model.onnx",
+      "retrieved": "2026-08-18",
+      "shardsMerged": 9,
+      "bytes": 33728449,
+      "sha256": "db78557f41caeefa7b2158a25fa78cfe60785ec38f92b6892a8cb1db8a67adb7",
+      "conversion": "onnx.utils.extract_model -> onnx2tf -cotof -> tensorflowjs_converter (scripts/convert-mobilenet-v4.py)",
+      "preprocess": "ImageNet mean/std on 0..1 pixels"
     }
   ]
 }

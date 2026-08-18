@@ -7,8 +7,15 @@ were concatenated into a single .bin per model and the `weightsManifest` in each
 model.json was rewritten to point at it. Numerical output is bit-identical to the
 upstream files.
 
+MobileNet v4 is the one exception: it was never published as a TensorFlow.js model, so
+those two directories hold a conversion of the ONNX export of the original timm
+weights, not a repack. The graph is numerically equivalent to that export — the
+classifier head was cut off, nothing was retrained or quantised. See
+docs/mobilenet-v4-conversion.md, scripts/convert-mobilenet-v4.py for the conversion and
+scripts/verify-mobilenet-v4.mjs for the check that keeps it honest.
+
 See PROVENANCE.json for the exact source URL, retrieval date and SHA-256 of every
-file, and scripts/vendor-models.mjs for the script that produced them.
+file, and scripts/vendor-models.mjs for the script that downloaded them.
 
 Why these are vendored rather than fetched at runtime: the upstream host
 tfhub.dev now redirects to kaggle.com, and that redirect chain does not answer
@@ -19,6 +26,7 @@ application run in filtered school networks and offline.
 -----------------------------------------------------------------------
 MobileNet v1 (mobilenet-v1, mobilenet-v1-lite)
 MobileNet v2 (mobilenet-v2)
+MobileNet v3 (mobilenet-v3-small, mobilenet-v3-large)
 MoveNet SinglePose Lightning (movenet-singlepose-lightning)
 
 Copyright The TensorFlow Authors. All rights reserved.
@@ -34,8 +42,22 @@ under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 
+-----------------------------------------------------------------------
+MobileNet v4 (mobilenet-v4-small, mobilenet-v4-medium)
+
+Weights by Google, taken from the timm checkpoints
+timm/mobilenetv4_conv_small.e2400_r224_in1k and
+timm/mobilenetv4_conv_medium.e500_r224_in1k via the ONNX exports published by
+onnx-community, and converted to TensorFlow.js here.
+
+Licensed under the Apache License, Version 2.0, as above.
+
+-----------------------------------------------------------------------
 MobileNet architectures are described in:
   Howard et al., "MobileNets: Efficient Convolutional Neural Networks for Mobile
   Vision Applications", arXiv:1704.04861
   Sandler et al., "MobileNetV2: Inverted Residuals and Linear Bottlenecks",
   arXiv:1801.04381
+  Howard et al., "Searching for MobileNetV3", arXiv:1905.02244
+  Qin et al., "MobileNetV4 — Universal Models for the Mobile Ecosystem",
+  arXiv:2404.10518

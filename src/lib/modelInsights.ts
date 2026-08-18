@@ -60,6 +60,8 @@ export const EXTRACTOR_LABELS: Record<string, string> = {
   'mobilenet-v2': 'MobileNet v2 (α=1.0)',
   'mobilenet-v3-small': 'MobileNet v3 Small (α=1.0)',
   'mobilenet-v3-large': 'MobileNet v3 Large (α=1.0)',
+  'mobilenet-v4-small': 'MobileNet v4 Conv Small',
+  'mobilenet-v4-medium': 'MobileNet v4 Conv Medium',
   'mobilenet-v1-lite': 'MobileNet v1 Lite (α=0.5)'
 };
 
