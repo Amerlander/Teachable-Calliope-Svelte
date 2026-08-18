@@ -27,25 +27,36 @@
     loadPoseDetector,
     captureFrameFromVideo,
     capturePoseFrameFromVideo,
-    downloadClassImages
+    downloadClassImages,
+    CAPTURE_SHORT,
+    MODEL_INPUT
   } from '$lib/machine';
   import { selectedCameraId } from '$lib/stores/camera';
   import { showNotification } from '$lib/stores/notifications';
   import Button from '$lib/components/ui/Button.svelte';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
+  import DeleteConfirmDialog, {
+    type DeleteTarget
+  } from '$lib/components/DeleteConfirmDialog.svelte';
   import {
     isTesting,
     isTraining,
     workspaceTab,
     modelTabView,
-    draftRoi,
-    roiEditing
+    draftRoi
   } from '$lib/stores/app';
-  import { DEFAULT_ROI, mirrorRoi, roiSizeLabel } from '$lib/roi';
+  import {
+    defaultRoi,
+    mirrorRoi,
+    roiSizeLabel,
+    roiCropStyle,
+    roiPixelSize,
+    squareRoi,
+    type RoiHandle
+  } from '$lib/roi';
   import RoiOverlay from '$lib/components/RoiOverlay.svelte';
   import type { Roi } from '$lib/stores/projects';
-  import ModelStats from '$lib/components/training/ModelStats.svelte';
   import ModelCharts from '$lib/components/training/ModelCharts.svelte';
   import ModelDetailsModal from '$lib/components/training/ModelDetailsModal.svelte';
   import TrainingProgress from '$lib/components/training/TrainingProgress.svelte';
@@ -53,17 +64,20 @@
     activeModel,
     currentProject,
     resetModelClassRanges,
-    setModelClassRange
+    setModelClassRange,
+    setModelSmoothing
   } from '$lib/stores/projects';
   import {
     streamClassProbabilities,
     streamPoseKeypoints,
-    smoothingWindow,
     type CurrentDetection
   } from '$lib/stores/streaming';
   import {
     CLASS_THRESHOLD,
+    MAX_SMOOTHING,
     MIN_RANGE_SPAN,
+    MIN_SMOOTHING,
+    normalizeSmoothing,
     rangeFor,
     rawTriggerPoint,
     type ClassRange
@@ -88,10 +102,13 @@
   // The mapping windows belong to the model being tested, so they follow the
   // model selection rather than the project's live state.
   const ranges = $derived($activeModel?.classRanges ?? {});
+  const smoothing = $derived(normalizeSmoothing($activeModel?.smoothing));
   // The selected model's own region — shown while testing so it is visible what
   // the model is looking at, and never editable there.
   const currentModelRoi = $derived($activeModel?.roi ?? null);
   let videoAspect = $state(4 / 3);
+  /** True once the camera has reported its real aspect, not the 4:3 assumption. */
+  let aspectKnown = $state(false);
   // Every score below is the mapped one, decided in streamClassProbabilities:
   // it maps each class through its window, applies the fixed threshold and picks
   // the winner. Nothing here recomputes that.
@@ -125,11 +142,17 @@
     await initSharedCamera(get(videoRefs), get(selectedCameraId) ?? undefined);
     const capture = webcamPrepEl ?? webcamEl;
     if (capture) {
-      capture.addEventListener('loadedmetadata', () => {
-        if (capture.videoWidth && capture.videoHeight) {
-          videoAspect = capture.videoWidth / capture.videoHeight;
-        }
-      });
+      // Read it now *and* on the event: by the time this runs the stream may
+      // already have its metadata, in which case loadedmetadata has been and
+      // gone — and the default region cannot be squared without the aspect.
+      const readAspect = () => {
+        if (!capture.videoWidth || !capture.videoHeight) return;
+        videoAspect = capture.videoWidth / capture.videoHeight;
+        aspectKnown = true;
+      };
+      readAspect();
+      // Fires again after a camera switch, so the aspect follows the new device.
+      capture.addEventListener('loadedmetadata', readAspect);
     }
     cameraReady = true;
   });
@@ -245,38 +268,71 @@
   }
 
   // ---------- Region editor (prep mode) ----------
-  // `draftRoi` is the source of truth and holds camera-frame coordinates:
-  // null = whole image, which is where every project starts. The feed is shown
-  // mirrored, so the box is edited in mirrored coordinates and converted on the
-  // way in and out — see $lib/roi.
+  // `draftRoi` is the source of truth and holds camera-frame coordinates. The
+  // feed is shown mirrored, so the box is edited in mirrored coordinates and
+  // converted on the way in and out — see $lib/roi.
+  //
+  // A null draft means "this project has not picked a region yet" rather than
+  // "whole image": the box is always on screen, so it always has a value, and an
+  // unpicked project falls back to the largest centred square. Old models that
+  // were trained on the full frame keep working — inference reads the region off
+  // the model, and a null there still means the whole frame.
   let roiContainer: HTMLDivElement | null = $state(null);
 
-  /** The draft box as it appears on the mirrored feed. */
-  const editRoi = $derived($draftRoi ? mirrorRoi($draftRoi) : null);
+  /** The region in use, filled in for a project that has not picked one. */
+  const shownRoi = $derived($draftRoi ?? defaultRoi(videoAspect));
+
+  /** The box as it appears on the mirrored feed. */
+  const editRoi = $derived(mirrorRoi(shownRoi));
+
+  /**
+   * What training will actually crop to. Pose projects have no region editor, so
+   * there the draft is taken as-is — including the null that means whole frame.
+   */
+  const effectiveRoi = $derived(isPose ? $draftRoi : shownRoi);
+
+  /**
+   * Pixel size of the region inside a stored capture. The hover preview is shown
+   * at exactly this size (capped to the video area by CSS), so the crop is never
+   * upscaled past the detail it actually holds. Pose frames are rendered square;
+   * camera frames keep the camera's aspect.
+   */
+  const previewCrop = $derived(
+    roiPixelSize(effectiveRoi, isPose ? 1 : videoAspect, CAPTURE_SHORT)
+  );
+
+  /**
+   * True once the region holds fewer pixels than the model's input, so the crop
+   * gets upscaled on the way in. Worth saying, not worth forbidding: training and
+   * inference upscale identically, and a small region still beats a full frame in
+   * which the subject is a handful of pixels among mostly background.
+   */
+  const roiBelowInput = $derived(Math.min(previewCrop.w, previewCrop.h) < MODEL_INPUT);
 
   function commitEditRoi(displayRoi: Roi) {
     draftRoi.set(mirrorRoi(displayRoi));
   }
 
-  // The default box is centred, so it needs no mirroring to start from.
-  function defineRoi() {
-    draftRoi.set({ ...DEFAULT_ROI });
-    roiEditing.set(true);
+  /** Back to the largest centred square — the one reset there is. */
+  function resetRoi() {
+    draftRoi.set(defaultRoi(videoAspect));
   }
 
-  /** Back to the whole image — the one reset there is. */
-  function useFullFrame() {
-    draftRoi.set(null);
-    roiEditing.set(false);
-  }
-
-  // Editing belongs to the prep view; leaving it must not leave handles behind
-  // on a view where the region is read-only.
+  // Write the fallback through once the camera has reported its real aspect, so
+  // training gets the region the user has been looking at all along instead of
+  // the null it never chose. Until then `shownRoi` covers the display.
+  //
+  // Waiting for the aspect and not merely for `cameraReady` matters: that flag is
+  // set before the stream's metadata arrives, so committing then would pin the
+  // region to a square derived from the assumed 4:3 — which on a 16:9 camera is
+  // not a square at all, the one thing this is here to avoid.
   $effect(() => {
-    if (mode !== 'prep' && $roiEditing) roiEditing.set(false);
+    if (mode === 'prep' && !isPose && aspectKnown && !$draftRoi) {
+      draftRoi.set(defaultRoi(videoAspect));
+    }
   });
 
-  type DragMode = 'move' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+  type DragMode = RoiHandle;
   let drag: null | {
     mode: DragMode;
     startX: number;
@@ -350,7 +406,10 @@
         break;
       }
     }
-    commitEditRoi(r);
+    // Square by default so the region reaches the model undistorted, free while
+    // Shift is held — a wide gesture strip or a tall full-body box is a fair ask,
+    // and either way training and inference squash the same region the same way.
+    commitEditRoi(e.shiftKey ? r : squareRoi(r, drag.startRoi, drag.mode, videoAspect, min));
   }
 
   function onPointerUp(e: PointerEvent) {
@@ -360,10 +419,12 @@
     }
   }
 
-  // ---------- Mapping editor (raw-value track under every class) ----------
-  // One switch for the whole list rather than a control per row: the windows are
-  // usually set in one pass, and the raw values only need to be on screen while
-  // that is happening.
+  // ---------- Tuning mode („Anpassen“) ----------
+  // Holds the two controls that change how the model's output is read rather than
+  // the model itself: the per-class windows on the value axis, and smoothing on
+  // the time axis. One switch for both, because at rest neither belongs on screen
+  // — and one switch for the whole list rather than one per row, since the windows
+  // are set in a single pass.
   let mappingEdit = $state(false);
   let autoCalibrating = $state(false);
   let autoCalibrateNote = $state<string | null>(null);
@@ -715,16 +776,29 @@
     if (e.key === 'Escape' && selectedIdx.size) clearSelection();
   }
 
+  /** What the confirm dialog is currently asking about; null keeps it closed. */
+  let pendingDelete = $state<DeleteTarget | null>(null);
+
   function confirmClear(cls: string) {
-    if (!confirm(`"${cls}" leeren?`)) return;
-    clearClass(cls);
-    if (selectionClass === cls) clearSelection();
+    pendingDelete = { kind: 'class', name: cls, clear: true };
   }
 
   function confirmDelete(cls: string) {
-    if (!confirm(`"${cls}" löschen?`)) return;
-    removeClass(cls);
-    if (selectionClass === cls) clearSelection();
+    pendingDelete = { kind: 'class', name: cls };
+  }
+
+  /**
+   * Runs whatever the dialog was asking about. The target is cleared first so
+   * the preview — which reads the live example store — is gone before the data
+   * behind it is.
+   */
+  function runDelete() {
+    const t = pendingDelete;
+    pendingDelete = null;
+    if (t?.kind !== 'class') return;
+    if (t.clear) clearClass(t.name);
+    else removeClass(t.name);
+    if (selectionClass === t.name) clearSelection();
   }
 
 </script>
@@ -842,9 +916,17 @@
                   {$predictionClasses.length} Klassen{prediction && fps ? ` · ${fps} Hz` : ''}
                 </span>
                 <button class="mi-link" onclick={() => (mappingEdit = !mappingEdit)}>
-                  {mappingEdit ? 'Fertig' : 'Bereiche'}
+                  {mappingEdit ? 'Fertig' : 'Anpassen'}
                 </button>
               </div>
+
+              {#if mappingEdit}
+                <p class="mi-tune-intro">
+                  <strong>Empfindlichkeit</strong> — die Griffe legen fest, welcher
+                  Wert des Modells als 0 % und welcher als 100 % angezeigt wird.
+                  Erkannt wird ab {Math.round(CLASS_THRESHOLD * 100)}%.
+                </p>
+              {/if}
               {#each $predictionClasses as cls (cls)}
                 {@const count = $activeModel
                   ? ($activeModel.exampleCounts?.[cls] ?? 0)
@@ -927,11 +1009,6 @@
 
               {#if mappingEdit}
                 <div class="mi-map-actions">
-                  <span class="mi-map-hint">
-                    Die Griffe legen fest, welcher Wert des Modells als 0 % und
-                    welcher als 100 % angezeigt wird. Erkannt wird ab
-                    {Math.round(CLASS_THRESHOLD * 100)}%.
-                  </span>
                   <div class="mi-map-buttons">
                     <button onclick={runAutoCalibrate} disabled={autoCalibrating}>
                       {autoCalibrating ? 'Messe…' : 'Aus Beispielen bestimmen'}
@@ -944,18 +1021,25 @@
                     <span class="mi-map-note">{autoCalibrateNote}</span>
                   {/if}
                 </div>
-              {/if}
 
-              {#if prediction}
-                <label for="smoothing-slider" class="mi-smoothing">
-                  <span>Glättung <strong>{$smoothingWindow}</strong></span>
+                <!-- The other half of the mode: not per class and not on the
+                     value axis, so it gets its own name and sits apart from the
+                     class rows. -->
+                <label for="smoothing-slider" class="mi-tune-row">
+                  <span class="mi-tune-label">
+                    <strong>Glättung</strong> — Median über die letzten
+                    {smoothing} Vorhersagen
+                  </span>
                   <input
                     id="smoothing-slider"
                     type="range"
-                    min="1"
-                    max="20"
+                    min={MIN_SMOOTHING}
+                    max={MAX_SMOOTHING}
                     step="1"
-                    bind:value={$smoothingWindow}
+                    value={smoothing}
+                    disabled={!$activeModel}
+                    oninput={(e) =>
+                      setModelSmoothing($activeModel?.id, Number(e.currentTarget.value))}
                   />
                 </label>
               {/if}
@@ -968,8 +1052,6 @@
               <ModelCharts />
             </div>
           </div>
-
-          <ModelStats model={$activeModel} />
         {:else}
           <div class="mi-empty">
             Wähle links ein Modell aus oder trainiere ein neues, um es hier zu testen.
@@ -999,64 +1081,61 @@
         </div>
       {/if}
 
-      <!-- Hover preview: the thumb under the cursor, blown up over the video. -->
+      <!-- Hover preview: the thumb under the cursor, blown up over the video.
+           Cropped to the region, so what you inspect is what the model gets. -->
       {#if previewSrc}
         <div class="thumb-preview" aria-hidden="true">
-          <img src={previewSrc} alt="" />
+          <div
+            class="crop preview-crop"
+            style="width: {previewCrop.w}px; aspect-ratio: {previewCrop.w} / {previewCrop.h};"
+          >
+            <img src={previewSrc} alt="" style={roiCropStyle(effectiveRoi)} />
+          </div>
         </div>
       {/if}
 
-      <!-- The region for the next model is defined here, in the camera: there is
-           nowhere else it could be judged. Everything about it is one control
-           set — define it, drag it, or go back to the whole image. -->
+      <!-- The region for the next model lives in the camera, always drawn and
+           always draggable: there is nowhere else it could be judged, and a mode
+           to enter and leave only hid what the model is about to be fed. -->
       {#if !isPose}
-        {#if $roiEditing && editRoi}
-          <div class="roi-container editing" style="aspect-ratio: {videoAspect};" bind:this={roiContainer}>
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <div
-              class="roi-rect"
-              role="region"
-              aria-label="Trainingsbereich"
-              style="left:{editRoi.x * 100}%; top:{editRoi.y * 100}%; width:{editRoi.w * 100}%; height:{editRoi.h * 100}%;"
-              onpointerdown={(e) => onPointerDown('move', e)}
-              onpointermove={onPointerMove}
-              onpointerup={onPointerUp}
-              onpointercancel={onPointerUp}
-            >
-              {#each ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as h (h)}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <span
-                  class="handle {h}"
-                  onpointerdown={(e) => onPointerDown(h as DragMode, e)}
-                  onpointermove={onPointerMove}
-                  onpointerup={onPointerUp}
-                  onpointercancel={onPointerUp}
-                ></span>
-              {/each}
-            </div>
+        <div class="roi-container" style="aspect-ratio: {videoAspect};" bind:this={roiContainer}>
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div
+            class="roi-rect"
+            role="region"
+            aria-label="Trainingsbereich"
+            style="left:{editRoi.x * 100}%; top:{editRoi.y * 100}%; width:{editRoi.w * 100}%; height:{editRoi.h * 100}%;"
+            onpointerdown={(e) => onPointerDown('move', e)}
+            onpointermove={onPointerMove}
+            onpointerup={onPointerUp}
+            onpointercancel={onPointerUp}
+          >
+            {#each ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as h (h)}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <span
+                class="handle {h}"
+                onpointerdown={(e) => onPointerDown(h as DragMode, e)}
+                onpointermove={onPointerMove}
+                onpointerup={onPointerUp}
+                onpointercancel={onPointerUp}
+              ></span>
+            {/each}
           </div>
-        {:else if $draftRoi}
-          <RoiOverlay roi={$draftRoi} aspect={videoAspect} title="Bereich für das nächste Modell" />
-        {/if}
+        </div>
 
         <div class="roi-actions">
-          {#if $roiEditing}
-            <button type="button" class="roi-btn primary" onclick={() => roiEditing.set(false)}>
-              Fertig
-            </button>
-            <button type="button" class="roi-btn" onclick={useFullFrame}>Ganzes Bild</button>
-            {#if $draftRoi}
-              <span class="roi-readout">{roiSizeLabel($draftRoi)}</span>
-            {/if}
-          {:else if $draftRoi}
-            <button type="button" class="roi-btn" onclick={() => roiEditing.set(true)}>
-              Bereich ändern
-            </button>
-            <button type="button" class="roi-btn" onclick={useFullFrame}>Ganzes Bild</button>
-            <span class="roi-readout">Bereich {roiSizeLabel($draftRoi)}</span>
-          {:else}
-            <button type="button" class="roi-btn" onclick={defineRoi}>Bereich festlegen</button>
+          <button type="button" class="roi-btn" onclick={resetRoi}>Bereich zurücksetzen</button>
+          <span class="roi-readout">
+            {roiSizeLabel(shownRoi)} · {previewCrop.w}×{previewCrop.h} px
+          </span>
+          <!-- Not a warning: the crop is upscaled, which training and testing do
+               alike. Only worth knowing while sizing the box. -->
+          {#if roiBelowInput}
+            <span class="roi-note" title="Kleiner als die Modellauflösung von {MODEL_INPUT} px">
+              wird hochskaliert
+            </span>
           {/if}
+          <span class="roi-note">Shift = frei formen</span>
         </div>
       {/if}
     </div>
@@ -1152,7 +1231,9 @@
                     onpointerenter={() => onThumbPointerEnter(cls, i, ex.data)}
                     onkeydown={(e) => onThumbKey(cls, i, e)}
                   >
-                    <img src={ex.data} alt="" draggable="false" />
+                    <div class="crop">
+                      <img src={ex.data} alt="" draggable="false" style={roiCropStyle(effectiveRoi)} />
+                    </div>
                     <span class="thumb-badge" aria-hidden="true">
                       {selectionClass === cls && selectedIdx.has(i) ? '✓' : '✕'}
                     </span>
@@ -1311,6 +1392,12 @@
 
 <ModelDetailsModal bind:isOpen={detailsOpen} />
 
+<DeleteConfirmDialog
+  target={pendingDelete}
+  onconfirm={runDelete}
+  oncancel={() => (pendingDelete = null)}
+/>
+
 <style lang="scss">
   // Nothing in the column has a frame anymore, so it also has no gaps: the video
   // starts at the pane's top edge and the band below it meets it flush.
@@ -1338,8 +1425,8 @@
   }
   .model-info {
     // Takes what it needs, gives space back to the video when it gets tight.
-    // It now carries the classes, the curves and the facts, so it may claim more
-    // room than the plain stats block did — and scrolls once it hits the cap.
+    // It carries the classes and the curves — the run's numbers live in the
+    // details modal — and scrolls once it hits the cap.
     flex: 0 1 auto;
     max-height: 62%;
     overflow-y: auto;
@@ -1564,6 +1651,32 @@
       .mi-map-now { color: rgb(var(--md-on-surface)); }
     }
   }
+  // The two halves of the tuning mode name themselves, so the switch above can
+  // stay generic: this one introduces the per-class tracks that follow.
+  .mi-tune-intro {
+    margin: 2px 0 4px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: rgb(var(--md-on-surface-variant));
+    strong { color: rgb(var(--md-on-surface)); }
+  }
+  .mi-tune-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 10px;
+    color: rgb(var(--md-on-surface-variant));
+    .mi-tune-label {
+      flex: 0 1 auto;
+      strong { color: rgb(var(--md-on-surface)); }
+    }
+    input[type='range'] {
+      flex: 1 1 60px;
+      min-width: 60px;
+      accent-color: rgb(var(--md-primary));
+    }
+  }
   .mi-map-actions {
     display: flex;
     flex-direction: column;
@@ -1586,22 +1699,6 @@
       cursor: pointer;
       &:hover:not(:disabled) { color: rgb(var(--md-on-surface)); }
       &:disabled { opacity: 0.5; cursor: default; }
-    }
-  }
-  .mi-smoothing {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    font-size: 10px;
-    color: rgb(var(--md-on-surface-variant));
-    strong {
-      color: rgb(var(--md-on-surface));
-      font-variant-numeric: tabular-nums;
-    }
-    input[type='range'] {
-      flex: 1;
-      accent-color: rgb(var(--md-primary));
     }
   }
   .mi-empty {
@@ -1701,6 +1798,17 @@
     padding: 3px 8px;
     border-radius: 999px;
     backdrop-filter: blur(6px);
+    white-space: nowrap;
+  }
+  // Quieter than the readout: these state a consequence, not a measurement.
+  .roi-note {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.75);
+    background: rgba(0, 0, 0, 0.4);
+    padding: 3px 8px;
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+    white-space: nowrap;
   }
   .prep-classes {
     flex: 1;
@@ -1785,6 +1893,27 @@
     gap: 6px;
     min-width: 0;
   }
+  // Window onto the region of a stored capture: the image is positioned by
+  // roiCropStyle() so that only the region shows. The flip lives here rather
+  // than on the image because mirroring the image would slide the window over
+  // to the opposite side of the frame — see $lib/roi. It also has to sit on the
+  // box and not on .stack-item, whose transform is already spoken for by the
+  // hover pop-out.
+  .crop {
+    position: relative;
+    overflow: hidden;
+    background: #000;
+    transform: scaleX(-1);
+    // Purely a viewport: every gesture on a thumb (click-delete, drag-select) is
+    // handled by .stack-item, and pointerenter only reaches it from a descendant
+    // if nothing in between claims the event.
+    pointer-events: none;
+    img {
+      position: absolute;
+      display: block;
+      max-width: none;
+    }
+  }
   .thumb-stack {
     flex: 1;
     min-width: 0;
@@ -1838,13 +1967,12 @@
     // Drag-select must not start a text/image selection.
     user-select: none;
     -webkit-user-select: none;
-    img {
+    .crop {
       width: 100%;
       height: 100%;
-      object-fit: cover;
       border-radius: 2px;
-      display: block;
-      pointer-events: none;
+    }
+    img {
       transition: filter 0.15s ease;
     }
   }
@@ -1945,12 +2073,13 @@
     background: rgba(0, 0, 0, 0.72);
     backdrop-filter: blur(6px);
     pointer-events: none;
-    img {
-      // width/height stay unset so the image keeps its own proportions — the
-      // frames are stored at the camera's aspect ratio, not squashed to a square.
+    // Sized in pixels from previewCrop, so the region shows at its own
+    // resolution instead of being blown up past the detail it holds. The caps
+    // keep it inside the video on small panels or wide regions.
+    .preview-crop {
+      box-sizing: border-box;
       max-width: 94%;
       max-height: 94%;
-      object-fit: contain;
       border-radius: var(--md-radius-md);
       box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
       border: 2px solid rgba(255, 255, 255, 0.35);

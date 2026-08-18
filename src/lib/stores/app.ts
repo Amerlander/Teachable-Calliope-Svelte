@@ -69,16 +69,18 @@ export type ModelTabView = 'model' | 'new';
 export const modelTabView = persisted<ModelTabView>('teachable-model-tab-view', 'new');
 
 /**
- * The region the next training run will use, in camera-frame coordinates
- * (see $lib/roi); null means the whole image. It is set in the camera panel and
- * kept for the session so a second run can use the same framing. Once a run
- * finishes, the region it used belongs to that model and is read-only there —
- * this draft only ever describes the *next* model.
+ * The region the next training run will use, in camera-frame coordinates (see
+ * $lib/roi). It is set in the camera panel, where the box is always on screen
+ * rather than behind an edit mode, and kept for the session so a second run can
+ * use the same framing. Once a run finishes, the region it used belongs to that
+ * model and is read-only there — this draft only ever describes the *next* model.
+ *
+ * null means "not picked yet", not "whole image": the camera panel fills it in
+ * with the largest centred square as soon as it knows the camera's aspect. On a
+ * *model* (see TrainedModel.roi) a null still does mean the whole frame, which is
+ * what models trained before regions existed carry.
  */
 export const draftRoi = writable<Roi | null>(null);
-
-// --- When true, the camera shows the draft ROI with drag handles ---
-export const roiEditing = writable(false);
 
 // --- Training phase indicator: what's happening right now ---
 export type TrainPhase = 'idle' | 'preparing' | 'training' | 'done' | 'error';

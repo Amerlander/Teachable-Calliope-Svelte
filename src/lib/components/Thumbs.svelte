@@ -1,6 +1,8 @@
 <script lang="ts">
   import VirtualList from 'svelte-tiny-virtual-list';
   import { examples, activeClass } from '$lib/stores';
+  import { draftRoi } from '$lib/stores/app';
+  import { roiCropStyle } from '$lib/roi';
 
   const THUMB_SIZE = 64;
   const GAP = 6;
@@ -35,7 +37,9 @@
       <div slot="item" let:index let:style {style}>
         <div class="row" style="--cols: {columns}; --thumb: {THUMB_SIZE}px; --gap: {GAP}px;">
           {#each rawImages.slice(index * columns, (index + 1) * columns) as e}
-            <img class="thumb" src={e.data} alt="Beispielbild" />
+            <div class="thumb">
+              <img src={e.data} alt="Beispielbild" style={roiCropStyle($draftRoi)} />
+            </div>
           {/each}
         </div>
       </div>
@@ -63,11 +67,20 @@
     gap: var(--gap);
     padding: 0 var(--gap);
   }
+  // Cropped to the region the next model trains on, and mirrored to match the
+  // camera. The flip belongs on the box, not the image — see $lib/roi.
   .thumb {
+    position: relative;
+    overflow: hidden;
     width: var(--thumb);
     height: var(--thumb);
-    object-fit: cover;
     border-radius: 4px;
-    display: block;
+    background: #000;
+    transform: scaleX(-1);
+    img {
+      position: absolute;
+      display: block;
+      max-width: none;
+    }
   }
 </style>

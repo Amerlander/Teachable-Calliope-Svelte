@@ -29,7 +29,7 @@ import {
   type AugmentationSettings
 } from './stores/projects';
 import type { ModelMetadata } from './stores';
-import { normalizeRange, type ClassRange } from './calibration';
+import { normalizeRange, normalizeSmoothing, type ClassRange } from './calibration';
 
 // We will dynamically import TensorFlow and other libs on the client side
 
@@ -467,14 +467,36 @@ export function setLastPoseCanvas(canvas: HTMLCanvasElement | null) {
   lastPoseCanvas = canvas;
 }
 
-/** Capture a skeleton-only frame (for training thumbnails in pose mode). */
+/**
+ * Short side of a stored capture, in pixels. Comfortably above the model's 224²
+ * input on purpose: a region of interest only covering a third of the frame
+ * would otherwise be *upscaled* into the input, and the training crop — plus the
+ * zoom augmentation on top of it — would be working from a handful of pixels.
+ *
+ * The region is deliberately not floored to 224 px in return. Upscaling a small
+ * crop degrades gently, because training and inference run the same crop through
+ * the same drawWithRoi; forbidding it would rule out picking out a small object,
+ * which is the whole point of having a region. Headroom here is the cheaper fix.
+ */
+export const CAPTURE_SHORT = 720;
+
+/** Side of the square the model is fed, and the width a region stops gaining detail at. */
+export const MODEL_INPUT = 224;
+
+/**
+ * Capture a skeleton-only frame (for training thumbnails in pose mode).
+ * Rendered at CAPTURE_SHORT like a camera capture, for the same reason: a region
+ * of interest crops into this image too, and line art thins out badly when it is
+ * upscaled. PNG stays — this is flat-coloured line work on black, where JPEG
+ * would only add ringing around every bone.
+ */
 export async function capturePoseFrameFromVideo(video: HTMLVideoElement): Promise<string | null> {
   if (!video.videoWidth || !video.videoHeight) return null;
   const pose = await estimatePose(video);
   const canvas = document.createElement('canvas');
-  canvas.width = 224;
-  canvas.height = 224;
-  drawPoseSkeleton(canvas, pose, video.videoWidth, video.videoHeight, { size: 224 });
+  canvas.width = CAPTURE_SHORT;
+  canvas.height = CAPTURE_SHORT;
+  drawPoseSkeleton(canvas, pose, video.videoWidth, video.videoHeight, { size: CAPTURE_SHORT });
   return canvas.toDataURL('image/png');
 }
 
@@ -492,8 +514,13 @@ export const init = initApp;
  * Squashing the frame into a square here would only show up as distorted
  * thumbnails and previews — training squashes every example to 224² anyway
  * (see drawWithRoi), so the pixels the model ends up seeing are the same.
+ *
+ * JPEG, not PNG: these are camera frames, and storing sensor noise losslessly
+ * costs roughly an order of magnitude in bytes for detail no model will use.
+ * Pose captures stay PNG — see capturePoseFrameFromVideo, where the image is
+ * flat-coloured line art on black and JPEG would only add ringing.
  */
-export function captureFrameFromVideo(video: HTMLVideoElement, short = 224) {
+export function captureFrameFromVideo(video: HTMLVideoElement, short = CAPTURE_SHORT) {
   const vw = video.videoWidth || short;
   const vh = video.videoHeight || short;
   const scale = short / Math.min(vw, vh);
@@ -502,7 +529,7 @@ export function captureFrameFromVideo(video: HTMLVideoElement, short = 224) {
   canvas.height = Math.max(1, Math.round(vh * scale));
   const ctx = canvas.getContext('2d')!;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/png');
+  return canvas.toDataURL('image/jpeg', 0.9);
 }
 
 export async function prepareDatasetForTraining(
@@ -628,7 +655,11 @@ export async function trainModel(
       onEpochEnd: (e: number, logs: any) => {
         const acc = (logs && (logs.acc ?? logs.accuracy)) ?? 0;
         const loss = (logs && (logs.loss ?? 0)) ?? 0;
-        appendTrainingEpoch(e + 1, acc, loss);
+        // Only present when validationSplit > 0; the store keeps the series out
+        // of the history entirely when they are missing.
+        const valAcc = logs ? (logs.val_acc ?? logs.val_accuracy) : undefined;
+        const valLoss = logs ? logs.val_loss : undefined;
+        appendTrainingEpoch(e + 1, acc, loss, valAcc, valLoss);
         onEpochEnd?.(e, logs);
         if (earlyStopLoss > 0 && loss < earlyStopLoss) {
           (model as any).stopTraining = true;
@@ -760,6 +791,15 @@ export async function processZipFile(file: File): Promise<{ images: string[]; de
   return { images: imageFiles, detectedClass, files: Object.keys(zipContent.files) };
 }
 
+/**
+ * File extension matching a data URL's own encoding. Captures are JPEG and pose
+ * frames are PNG, so a hard-coded ".png" would hand out files whose name lies
+ * about their contents — which some training tools take at face value.
+ */
+function dataUrlExtension(dataUrl: string): string {
+  return /^data:image\/(png|webp|gif)[;,]/.exec(dataUrl)?.[1] ?? 'jpg';
+}
+
 export async function downloadClassImages(className: string, images: { data: string }[]) {
   const JSZip = (await import('jszip')).default;
   const saveAs = (await import('file-saver')).saveAs;
@@ -767,7 +807,8 @@ export async function downloadClassImages(className: string, images: { data: str
   const folder = zip.folder(className)!;
   for (let i = 0; i < images.length; i++) {
     const base64 = images[i].data.split(',')[1];
-    folder.file(`${className}_${i + 1}.png`, base64, { base64: true });
+    const ext = dataUrlExtension(images[i].data);
+    folder.file(`${className}_${i + 1}.${ext}`, base64, { base64: true });
   }
   folder.file('metadata.json', JSON.stringify({ className, imageCount: images.length, date: new Date().toISOString() }, null, 2));
   const content = await zip.generateAsync({ type: 'blob' });
@@ -784,7 +825,8 @@ export async function downloadAllClassImages(allExamples: Record<string, { data:
     const imgs = allExamples[className];
     for (let i = 0; i < imgs.length; i++) {
       const base64 = imgs[i].data.split(',')[1];
-      folder.file(`${className}_${i + 1}.png`, base64, { base64: true });
+      const ext = dataUrlExtension(imgs[i].data);
+      folder.file(`${className}_${i + 1}.${ext}`, base64, { base64: true });
       totalImages++;
     }
     folder.file('metadata.json', JSON.stringify({ className, imageCount: imgs.length, date: new Date().toISOString() }, null, 2));
@@ -810,6 +852,8 @@ type ModelZipMetadata = ModelMetadata & {
   mode?: ProjectMode;
   /** Per-class calibration windows — see TrainedModel.classRanges. */
   classRanges?: Record<string, ClassRange>;
+  /** Frames the rolling median smooths over — see TrainedModel.smoothing. */
+  smoothing?: number;
 };
 
 const MODEL_ZIP_FORMAT = 2;
@@ -836,7 +880,8 @@ export async function exportModelToZip(model: TrainedModel): Promise<void> {
     // it — an exported model reads the same in another project as it does here.
     ...(model.classRanges && Object.keys(model.classRanges).length
       ? { classRanges: model.classRanges }
-      : {})
+      : {}),
+    ...(model.smoothing !== undefined ? { smoothing: model.smoothing } : {})
   };
   zip.file('metadata.json', JSON.stringify(meta, null, 2));
   zip.file(
@@ -866,6 +911,7 @@ export type ModelZipContents = {
   featureExtractor?: FeatureExtractor;
   mode?: ProjectMode;
   classRanges?: Record<string, ClassRange>;
+  smoothing?: number;
   /** The loaded classifier, ready to hand to `classifierModel`. */
   model: any;
 };
@@ -927,6 +973,7 @@ export async function readModelZip(file: File): Promise<ModelZipContents> {
     // Only windows for classes the model actually outputs; anything else in the
     // ZIP's metadata would sit in the map unused.
     classRanges: sanitizeClassRanges(meta.classRanges, classes),
+    ...(meta.smoothing !== undefined ? { smoothing: normalizeSmoothing(meta.smoothing) } : {}),
     model
   };
 }
@@ -969,7 +1016,8 @@ export async function importModelFromZip(file: File): Promise<string | null> {
     roi: contents.roi,
     featureExtractor: contents.featureExtractor,
     mode: contents.mode,
-    classRanges: contents.classRanges
+    classRanges: contents.classRanges,
+    smoothing: contents.smoothing
   });
   classifierModel.set(contents.model);
   return id;
