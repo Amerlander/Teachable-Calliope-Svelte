@@ -24,6 +24,9 @@
   import ClassItem from './ClassItem.svelte';
   import Thumbs from '$lib/components/Thumbs.svelte';
   import ImportDialog from '$lib/components/ImportDialog.svelte';
+  import DeleteConfirmDialog, {
+    type DeleteTarget
+  } from '$lib/components/DeleteConfirmDialog.svelte';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
   import Button from '$lib/components/ui/Button.svelte';
@@ -39,6 +42,9 @@
 
   let filesInputEl: HTMLInputElement = $state()!;
   let importAllEl: HTMLInputElement = $state()!;
+
+  /** What the confirm dialog is currently asking about; null keeps it closed. */
+  let pendingDelete = $state<DeleteTarget | null>(null);
 
   const hasEnoughForTraining = $derived($classes.length >= 3);
 
@@ -165,12 +171,24 @@
     importDetectedClass = null;
   }
 
-  function clearAllClasses() {
-    if (!confirm('Alle aufgenommenen Bilder aus allen Klassen löschen?')) return;
-    updateProject((p) => {
-      for (const c of p.classes) p.examples[c] = [];
-    });
-    showNotification('Alle Bilder gelöscht', { type: 'success' });
+  /**
+   * Runs whatever the dialog was asking about. The target is cleared first so
+   * the preview — which reads the live example store — is gone before the data
+   * behind it is.
+   */
+  function runDelete() {
+    const t = pendingDelete;
+    pendingDelete = null;
+    if (!t) return;
+    if (t.kind === 'all-classes') {
+      updateProject((p) => {
+        for (const c of p.classes) p.examples[c] = [];
+      });
+      showNotification('Alle Bilder gelöscht', { type: 'success' });
+    } else if (t.kind === 'class') {
+      if (t.clear) clearClass(t.name);
+      else removeClass(t.name);
+    }
   }
 
   function rawExamples() {
@@ -197,7 +215,7 @@
             <DropdownItem onclick={() => importAllEl?.click()}>
               Bilder importieren
             </DropdownItem>
-            <DropdownItem onclick={clearAllClasses}>
+            <DropdownItem onclick={() => (pendingDelete = { kind: 'all-classes' })}>
               Alle Klassen leeren
             </DropdownItem>
           {/snippet}
@@ -281,7 +299,7 @@
             <DropdownItem
               onclick={() => {
                 const active = get(activeClass);
-                if (active && confirm(`"${active}" leeren?`)) clearClass(active);
+                if (active) pendingDelete = { kind: 'class', name: active, clear: true };
               }}
             >
               Klasse leeren
@@ -289,7 +307,7 @@
             <DropdownItem
               onclick={() => {
                 const active = get(activeClass);
-                if (active && confirm(`"${active}" löschen?`)) removeClass(active);
+                if (active) pendingDelete = { kind: 'class', name: active };
               }}
             >
               Klasse löschen
@@ -336,6 +354,12 @@
   detectedClass={importDetectedClass}
   on:confirm={onImportConfirm}
   on:cancel={onImportCancel}
+/>
+
+<DeleteConfirmDialog
+  target={pendingDelete}
+  onconfirm={runDelete}
+  oncancel={() => (pendingDelete = null)}
 />
 
 <style lang="scss">

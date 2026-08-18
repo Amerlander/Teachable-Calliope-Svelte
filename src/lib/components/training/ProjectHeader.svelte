@@ -14,6 +14,9 @@
   import { classifierModel } from '$lib/stores';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
+  import DeleteConfirmDialog, {
+    type DeleteTarget
+  } from '$lib/components/DeleteConfirmDialog.svelte';
   import { goto } from '$app/navigation';
 
   let editing = $state(false);
@@ -79,11 +82,34 @@
     goto(`/`);
   }
 
-  async function onDelete() {
-    if (!$currentProject) return;
-    if (!confirm(`Projekt "${$currentProject.name}" wirklich löschen?`)) return;
+  /** The project the confirm dialog is asking about; null keeps it closed. */
+  let pendingDelete = $state<DeleteTarget | null>(null);
+
+  function onDelete() {
+    const p = $currentProject;
+    if (!p) return;
+    // The dialog previews a project the same way the start screen lists one, so
+    // it takes the summary shape rather than the whole loaded project.
+    pendingDelete = {
+      kind: 'project',
+      project: {
+        id: p.id,
+        name: p.name,
+        mode: p.mode,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        classCount: p.classes.length,
+        hasModel: !!p.modelArtifacts
+      }
+    };
+  }
+
+  async function runDelete() {
+    const t = pendingDelete;
+    pendingDelete = null;
+    if (t?.kind !== 'project') return;
     classifierModel.set(null);
-    await deleteProject($currentProject.id);
+    await deleteProject(t.project.id);
     showNotification('Projekt gelöscht', { type: 'success' });
   }
 </script>
@@ -136,6 +162,12 @@
     />
   </header>
 {/if}
+
+<DeleteConfirmDialog
+  target={pendingDelete}
+  onconfirm={runDelete}
+  oncancel={() => (pendingDelete = null)}
+/>
 
 <style lang="scss">
   .project-header {

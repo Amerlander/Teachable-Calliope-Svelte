@@ -7,7 +7,8 @@
     refreshProjectList,
     loadProject,
     deleteProject,
-    type ProjectMode
+    type ProjectMode,
+    type ProjectSummary
   } from '$lib/stores/projects';
   import {
     newProject,
@@ -19,6 +20,9 @@
   import { showNotification } from '$lib/stores/notifications';
   import { classifierModel } from '$lib/stores';
   import NewProjectDialog from './NewProjectDialog.svelte';
+  import DeleteConfirmDialog, {
+    type DeleteTarget
+  } from '$lib/components/DeleteConfirmDialog.svelte';
 
   let importProjectEl: HTMLInputElement;
   let importModelEl: HTMLInputElement;
@@ -88,12 +92,21 @@
     }
   }
 
-  async function onDelete(id: string, name: string) {
-    if (!confirm(`Projekt "${name}" wirklich löschen?`)) return;
+  /** The project the confirm dialog is asking about; null keeps it closed. */
+  let pendingDelete = $state<DeleteTarget | null>(null);
+
+  function onDelete(project: ProjectSummary) {
+    pendingDelete = { kind: 'project', project };
+  }
+
+  async function runDelete() {
+    const t = pendingDelete;
+    pendingDelete = null;
+    if (t?.kind !== 'project') return;
     // Deleting the project that is currently open also has to drop its loaded
     // classifier — `deleteProject` only clears the store entry.
-    if ($currentProject?.id === id) classifierModel.set(null);
-    await deleteProject(id);
+    if ($currentProject?.id === t.project.id) classifierModel.set(null);
+    await deleteProject(t.project.id);
     showNotification('Projekt gelöscht', { type: 'success' });
   }
 
@@ -109,6 +122,12 @@
 </script>
 
 <NewProjectDialog bind:isOpen={dialogOpen} onsubmit={onDialogSubmit} />
+
+<DeleteConfirmDialog
+  target={pendingDelete}
+  onconfirm={runDelete}
+  oncancel={() => (pendingDelete = null)}
+/>
 
 <div class="start-screen">
   <div class="hero">
@@ -181,7 +200,7 @@
               </button>
               <button
                 class="row-btn danger"
-                onclick={() => onDelete(prj.id, prj.name)}
+                onclick={() => onDelete(prj)}
                 title="Projekt löschen"
                 aria-label="Projekt {prj.name} löschen"
               >
