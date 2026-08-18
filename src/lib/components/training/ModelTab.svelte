@@ -9,6 +9,7 @@
   import type { TrainingOptions } from '$lib/stores';
   import {
     activeModel,
+    availableModels,
     currentProject,
     deleteTrainedModel,
     getModelById,
@@ -22,7 +23,8 @@
     draftRoi,
     trainPhase,
     trainEpoch,
-    trainTotalEpochs
+    trainTotalEpochs,
+    trainProgress
   } from '$lib/stores/app';
   import { trainModel, exportModelToZip } from '$lib/machine';
   import { activateModel, importModelFile, modelLabel } from '$lib/models';
@@ -32,6 +34,9 @@
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
   import InfoTooltip from '$lib/components/ui/InfoTooltip.svelte';
   import Button from '$lib/components/ui/Button.svelte';
+  import DeleteConfirmDialog, {
+    type DeleteTarget
+  } from '$lib/components/DeleteConfirmDialog.svelte';
   import ModelHistory from './ModelHistory.svelte';
 
   let loadModelEl: HTMLInputElement = $state()!;
@@ -39,7 +44,6 @@
   // Same gate as the classes sidebar CTA that leads here — kept in one place so
   // the button and the hint can't drift apart from the CTA's condition.
   const readiness = $derived($trainingReadiness);
-  const hasArtifacts = $derived(!!$classifierModel);
   // Export and delete need a model entry to act on, which an in-memory-only
   // classifier isn't — every model now comes from the list.
   const hasSelectedModel = $derived(!!$activeModel);
@@ -48,9 +52,25 @@
   modelTabView.set(get(classifierModel) ? 'model' : 'new');
   let newModelName = $state('');
 
-  // Composing a new model: the name row, the options and the train button form
-  // one block, and nothing in the model list counts as selected.
+  // Composing a new model: name, options and the train button form one entry at
+  // the top of the list, and nothing in the list below counts as selected.
   const isNewView = $derived($modelTabView === 'new' && !$isTraining);
+
+  // The column the list lives in. A finished run becomes its first entry, so
+  // after training the top is where the user has to be looking.
+  let listScrollEl: HTMLDivElement | undefined = $state();
+
+  function startNewModel() {
+    if (get(isTraining)) return;
+    modelTabView.set('new');
+    listScrollEl?.scrollTo({ top: 0 });
+  }
+
+  // Only offered once a model exists: with an empty list there is nothing to
+  // fall back to, so the composer stays open.
+  function closeNewModel() {
+    modelTabView.set('model');
+  }
 
   async function doTrain() {
     const gate = get(trainingReadiness);
@@ -96,6 +116,7 @@
       // training (see machine.ts) — nothing to attach after the fact.
       newModelName = '';
       modelTabView.set('model');
+      listScrollEl?.scrollTo({ top: 0 });
       // A run with new classes can't be programmed with any existing program,
       // so it brings its own starter along. Previous programs stay untouched
       // and keep running on the models they were built for.
@@ -152,11 +173,19 @@
     input.value = '';
   }
 
-  async function onDeleteModel() {
+  /** The model the confirm dialog is asking about; null keeps it closed. */
+  let pendingDelete = $state<DeleteTarget | null>(null);
+
+  function onDeleteModel() {
     const model = $activeModel;
-    if (!model) return;
-    if (!confirm(`Modell „${modelLabel(model)}“ löschen?`)) return;
-    deleteTrainedModel(model.id);
+    if (model) pendingDelete = { kind: 'model', model };
+  }
+
+  async function runDelete() {
+    const t = pendingDelete;
+    pendingDelete = null;
+    if (t?.kind !== 'model') return;
+    deleteTrainedModel(t.model.id);
     // Programs that used it were moved to a fitting model (or left model-less)
     // by the store; here we only have to bring the runtime classifier in line
     // with whatever is selected now.
@@ -187,10 +216,14 @@
 </script>
 
 <div class="model-tab">
-  <!-- Models list (top, like classes) -->
-  <div class="section">
-    <div class="row-between">
-      <span class="section-label">Modelle</span>
+  <div class="head">
+    <span class="section-label">Modelle</span>
+    <div class="head-actions">
+      <!-- Sits above the list because that is where its result appears: the run
+           being composed, and afterwards its model, are the first entry. -->
+      <button type="button" class="add-btn" onclick={startNewModel} disabled={$isTraining}>
+        <span aria-hidden="true">+</span> Neues Modell
+      </button>
       <Dropdown placement="bottom-end">
         {#snippet trigger()}
           <Button variant="ghost" size="small" aria-label="Modell-Aktionen" title="Mehr Aktionen">⋯</Button>
@@ -215,390 +248,456 @@
         onchange={onImportModelChange}
       />
     </div>
+  </div>
+
+  <!-- The column scrolls as one, so the run being composed or trained stays part
+       of the same list its model joins when it is done. -->
+  <div class="list-scroll" bind:this={listScrollEl}>
+    {#if $isTraining}
+      <!-- Holds the spot the finished run will take, so the list never looks
+           idle mid-training. The full progress, curves included, is under the
+           video — this only says that something is happening here. -->
+      <div class="entry-row training-entry">
+        <div class="main">
+          <div class="title">
+            <span class="title-text">{newModelName.trim() || 'Neues Modell'}</span>
+            <span class="chip">trainiert…</span>
+          </div>
+          <div class="meta">
+            <span>
+              {$trainPhase === 'preparing'
+                ? 'Bilder werden vorbereitet'
+                : `Epoche ${$trainEpoch} / ${$trainTotalEpochs}`}
+            </span>
+            {#if $trainPhase !== 'preparing'}
+              <span>·</span>
+              <span>{$trainProgress} %</span>
+            {/if}
+          </div>
+          <div class="train-bar" class:indeterminate={$trainPhase === 'preparing'}>
+            <div
+              class="train-bar-fill"
+              style={$trainPhase === 'preparing' ? '' : `width:${$trainProgress}%`}
+            ></div>
+          </div>
+          <div class="classes">Fortschritt und Kurven siehst du unter dem Video.</div>
+        </div>
+      </div>
+    {:else if isNewView}
+      <section class="entry-row composer">
+        <div class="composer-head">
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            class="composer-name"
+            type="text"
+            placeholder="Neues Modell (Name)"
+            bind:value={newModelName}
+            onkeydown={(e) => e.key === 'Enter' && readiness.ready && !$isTraining && doTrain()}
+            autofocus
+          />
+          {#if $availableModels.length}
+            <button
+              type="button"
+              class="composer-close"
+              onclick={closeNewModel}
+              title="Abbrechen"
+              aria-label="Abbrechen"
+            >×</button>
+          {/if}
+        </div>
+        <div class="composer-body">
+          <h3>Trainings-Optionen</h3>
+          <div class="opt-grid">
+            <label class="opt">
+              <span class="opt-label">
+                Epochen
+                <InfoTooltip
+                  text="Wie oft die gesamten Trainingsdaten durchlaufen werden. Mehr Epochen = genauer, aber langsamer. 30 ist ein guter Startwert."
+                />
+              </span>
+              <input
+                type="number"
+                min="1"
+                max="500"
+                value={$trainingOptions.epochs}
+                onchange={(e) => updateOpt('epochs', +((e.target as HTMLInputElement).value))}
+              />
+            </label>
+
+            <label class="opt">
+              <span class="opt-label">
+                Batch-Größe
+                <InfoTooltip
+                  text="Wie viele Beispiele gleichzeitig durchs Modell laufen. Größer = schneller, aber mehr Speicherbedarf."
+                />
+              </span>
+              <input
+                type="number"
+                min="1"
+                max="128"
+                value={$trainingOptions.batchSize}
+                onchange={(e) => updateOpt('batchSize', +((e.target as HTMLInputElement).value))}
+              />
+            </label>
+
+            <label class="opt">
+              <span class="opt-label">
+                Lernrate
+                <InfoTooltip
+                  text="Wie stark das Modell bei jedem Schritt angepasst wird. Kleiner = stabiler, aber langsamer. 0.001 ist Standard."
+                />
+              </span>
+              <input
+                type="number"
+                min="0.00001"
+                max="1"
+                step="0.0001"
+                value={$trainingOptions.learningRate}
+                onchange={(e) => updateOpt('learningRate', +((e.target as HTMLInputElement).value))}
+              />
+            </label>
+
+            <label class="opt">
+              <span class="opt-label">
+                Hidden Units
+                <InfoTooltip
+                  text="Anzahl der Neuronen in der versteckten Schicht. Mehr = komplexere Muster lernbar, aber Überanpassungs­risiko."
+                />
+              </span>
+              <input
+                type="number"
+                min="2"
+                max="512"
+                value={$trainingOptions.hiddenUnits}
+                onchange={(e) => updateOpt('hiddenUnits', +((e.target as HTMLInputElement).value))}
+              />
+            </label>
+          </div>
+
+          <details class="advanced">
+            <summary>Erweiterte Optionen</summary>
+            <div class="opt-grid">
+              {#if !isPose}
+                <label class="opt">
+                  <span class="opt-label">
+                    Feature-Extraktor
+                    <InfoTooltip
+                      text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. v1 ist der bewährte Standard, v2 etwas genauer bei ähnlicher Größe, Lite am schnellsten auf schwacher Hardware."
+                    />
+                  </span>
+                  <select
+                    value={$trainingOptions.featureExtractor}
+                    onchange={(e) => updateOpt('featureExtractor', (e.target as HTMLSelectElement).value as any)}
+                  >
+                    <option value="mobilenet-v1">MobileNet v1 (α=1.0, ~16 MB, Standard)</option>
+                    <option value="mobilenet-v2">MobileNet v2 (α=1.0, ~14 MB, genauer)</option>
+                    <option value="mobilenet-v1-lite">MobileNet v1 Lite (α=0.5, ~5 MB, schneller)</option>
+                  </select>
+                </label>
+              {/if}
+
+              <label class="opt">
+                <span class="opt-label">
+                  Optimierer
+                  <InfoTooltip
+                    text="Algorithmus, der die Gewichte des Modells anpasst. Adam funktioniert für die meisten Fälle. SGD ist robuster für große Datensätze, RMSProp für rauschige."
+                  />
+                </span>
+                <select
+                  value={$trainingOptions.optimizer}
+                  onchange={(e) => updateOpt('optimizer', (e.target as HTMLSelectElement).value as any)}
+                >
+                  <option value="adam">Adam</option>
+                  <option value="sgd">SGD</option>
+                  <option value="rmsprop">RMSProp</option>
+                </select>
+              </label>
+
+              <label class="opt">
+                <span class="opt-label">
+                  Dropout
+                  <InfoTooltip
+                    text="Anteil der Neuronen, die beim Training zufällig deaktiviert werden. Reduziert Überanpassung. 0 = aus, 0.5 = aggressiv."
+                  />
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="0.9"
+                  step="0.05"
+                  value={$trainingOptions.dropout}
+                  onchange={(e) => updateOpt('dropout', +((e.target as HTMLInputElement).value))}
+                />
+              </label>
+
+              <label class="opt">
+                <span class="opt-label">
+                  Validierungs-Split
+                  <InfoTooltip
+                    text="Anteil der Bilder, die als Validierungsdaten zurückgehalten werden (0 – 0.5). Zeigt, wie gut das Modell auf ungesehenen Bildern funktioniert."
+                  />
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="0.5"
+                  step="0.05"
+                  value={$trainingOptions.validationSplit}
+                  onchange={(e) => updateOpt('validationSplit', +((e.target as HTMLInputElement).value))}
+                />
+              </label>
+
+              <label class="opt">
+                <span class="opt-label">
+                  Stop-Loss
+                  <InfoTooltip
+                    text="Frühzeitiger Abbruch: Training stoppt, sobald der Trainings-Loss unter diesen Wert fällt. 0 = kein frühzeitiger Abbruch."
+                  />
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.005"
+                  value={$trainingOptions.earlyStopLoss}
+                  onchange={(e) => updateOpt('earlyStopLoss', +((e.target as HTMLInputElement).value))}
+                />
+              </label>
+
+              {#if !isPose}
+              <div class="opt aug-opt">
+                <span class="opt-label">
+                  Daten-Augmentierung
+                  <InfoTooltip
+                    text="Erzeugt zufällig gespiegelte, gedrehte, heller/dunkler und leicht gezoomte Varianten deiner Bilder, damit das Modell robuster wird."
+                  />
+                </span>
+                <div class="aug-row">
+                  <select
+                    value={$trainingOptions.augmentation ? 'on' : 'off'}
+                    onchange={(e) => updateOpt('augmentation', (e.target as HTMLSelectElement).value === 'on')}
+                  >
+                    <option value="off">Aus</option>
+                    <option value="on">An</option>
+                  </select>
+                  <button
+                    type="button"
+                    class="aug-settings-btn"
+                    disabled={!$trainingOptions.augmentation}
+                    onclick={() => (augSettingsOpen = !augSettingsOpen)}
+                    aria-label="Augmentierung konfigurieren"
+                    title="Augmentierung konfigurieren"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="3"/>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09c0 .66.39 1.25 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.26.61.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.39-1.51 1z"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              {/if}
+            </div>
+
+            {#if !isPose && augSettingsOpen && $trainingOptions.augmentation}
+              {@const a = $trainingOptions.augmentationSettings}
+              <div class="aug-settings">
+                <div class="aug-settings-head">Augmentierungs-Details</div>
+                <div class="opt-grid">
+                  <label class="opt">
+                    <span class="opt-label">Horizontal spiegeln</span>
+                    <select
+                      value={a.horizontalFlip ? 'on' : 'off'}
+                      onchange={(e) => updateAug('horizontalFlip', (e.target as HTMLSelectElement).value === 'on')}
+                    >
+                      <option value="off">Aus</option>
+                      <option value="on">An</option>
+                    </select>
+                  </label>
+                  <label class="opt">
+                    <span class="opt-label">Rotation (±°)</span>
+                    <input
+                      type="number" min="0" max="45" step="1"
+                      value={a.rotationDegrees}
+                      onchange={(e) => updateAug('rotationDegrees', +((e.target as HTMLInputElement).value))}
+                    />
+                  </label>
+                  <label class="opt">
+                    <span class="opt-label">Helligkeit (±)</span>
+                    <input
+                      type="number" min="0" max="0.5" step="0.05"
+                      value={a.brightnessJitter}
+                      onchange={(e) => updateAug('brightnessJitter', +((e.target as HTMLInputElement).value))}
+                    />
+                  </label>
+                  <label class="opt">
+                    <span class="opt-label">Zoom-Jitter (±)</span>
+                    <input
+                      type="number" min="0" max="0.5" step="0.05"
+                      value={a.zoomJitter}
+                      onchange={(e) => updateAug('zoomJitter', +((e.target as HTMLInputElement).value))}
+                    />
+                  </label>
+                  <label class="opt">
+                    <span class="opt-label">Extra-Kopien pro Bild</span>
+                    <input
+                      type="number" min="0" max="6" step="1"
+                      value={a.multiplier}
+                      onchange={(e) => updateAug('multiplier', +((e.target as HTMLInputElement).value))}
+                    />
+                  </label>
+                </div>
+              </div>
+            {/if}
+          </details>
+          <div class="train-row">
+            <Button class="train-btn" fullWidth disabled={!readiness.ready} onclick={doTrain}>
+              Trainieren
+            </Button>
+          </div>
+          {#if readiness.hint}
+            <div class="hint">{readiness.hint}</div>
+          {/if}
+        </div>
+      </section>
+    {/if}
 
     <ModelHistory
       highlightActive={$modelTabView === 'model'}
-      onselect={() => (modelTabView.set('model'))}
+      onselect={() => modelTabView.set('model')}
     />
-
-    <!-- "Neues Modell" row: names the run. While it is the selected view it
-         loses its bottom edge and fuses with the options card below, so name,
-         options and the train button read as one block. -->
-    <div class="new-model-head" class:selected={isNewView}>
-      <input
-        class="new-model-name"
-        type="text"
-        placeholder="Neues Modell (Name)"
-        bind:value={newModelName}
-        onfocus={() => (modelTabView.set('new'))}
-        onkeydown={(e) => e.key === 'Enter' && readiness.ready && !$isTraining && doTrain()}
-      />
-    </div>
-  </div>
-
-  {#if !isNewView}
-    <hr />
-  {/if}
-
-  <div class="tab-body">
-  <!-- Body: depends on view / training state. Everything about a run — its
-       progress and afterwards its evaluation — is shown under the video, so the
-       sidebar only points there and otherwise stays the model chooser. -->
-  {#if $isTraining}
-    <div class="empty">
-      {$trainPhase === 'preparing' ? 'Vorbereitung läuft' : 'Training läuft'} — den Fortschritt
-      siehst du unter dem Video.
-    </div>
-  {:else if $modelTabView === 'model'}
-    {#if hasArtifacts}
-      <div class="empty">Klassen, Auswertung und Kennzahlen dieses Modells stehen unter dem Video.</div>
-    {:else}
-      <div class="empty">Wähle ein Modell aus der Liste oder trainiere ein neues.</div>
-    {/if}
-  {:else}
-    <section class="card new-model-card">
-      <h3>Trainings-Optionen</h3>
-      <div class="opt-grid">
-        <label class="opt">
-          <span class="opt-label">
-            Epochen
-            <InfoTooltip
-              text="Wie oft die gesamten Trainingsdaten durchlaufen werden. Mehr Epochen = genauer, aber langsamer. 30 ist ein guter Startwert."
-            />
-          </span>
-          <input
-            type="number"
-            min="1"
-            max="500"
-            value={$trainingOptions.epochs}
-            onchange={(e) => updateOpt('epochs', +((e.target as HTMLInputElement).value))}
-          />
-        </label>
-
-        <label class="opt">
-          <span class="opt-label">
-            Batch-Größe
-            <InfoTooltip
-              text="Wie viele Beispiele gleichzeitig durchs Modell laufen. Größer = schneller, aber mehr Speicherbedarf."
-            />
-          </span>
-          <input
-            type="number"
-            min="1"
-            max="128"
-            value={$trainingOptions.batchSize}
-            onchange={(e) => updateOpt('batchSize', +((e.target as HTMLInputElement).value))}
-          />
-        </label>
-
-        <label class="opt">
-          <span class="opt-label">
-            Lernrate
-            <InfoTooltip
-              text="Wie stark das Modell bei jedem Schritt angepasst wird. Kleiner = stabiler, aber langsamer. 0.001 ist Standard."
-            />
-          </span>
-          <input
-            type="number"
-            min="0.00001"
-            max="1"
-            step="0.0001"
-            value={$trainingOptions.learningRate}
-            onchange={(e) => updateOpt('learningRate', +((e.target as HTMLInputElement).value))}
-          />
-        </label>
-
-        <label class="opt">
-          <span class="opt-label">
-            Hidden Units
-            <InfoTooltip
-              text="Anzahl der Neuronen in der versteckten Schicht. Mehr = komplexere Muster lernbar, aber Überanpassungs­risiko."
-            />
-          </span>
-          <input
-            type="number"
-            min="2"
-            max="512"
-            value={$trainingOptions.hiddenUnits}
-            onchange={(e) => updateOpt('hiddenUnits', +((e.target as HTMLInputElement).value))}
-          />
-        </label>
-      </div>
-
-      <details class="advanced">
-        <summary>Erweiterte Optionen</summary>
-        <div class="opt-grid">
-          {#if !isPose}
-            <label class="opt">
-              <span class="opt-label">
-                Feature-Extraktor
-                <InfoTooltip
-                  text="Basis-CNN, das Bilder in Merkmalsvektoren umwandelt. v1 ist der bewährte Standard, v2 etwas genauer bei ähnlicher Größe, Lite am schnellsten auf schwacher Hardware."
-                />
-              </span>
-              <select
-                value={$trainingOptions.featureExtractor}
-                onchange={(e) => updateOpt('featureExtractor', (e.target as HTMLSelectElement).value as any)}
-              >
-                <option value="mobilenet-v1">MobileNet v1 (α=1.0, ~16 MB, Standard)</option>
-                <option value="mobilenet-v2">MobileNet v2 (α=1.0, ~14 MB, genauer)</option>
-                <option value="mobilenet-v1-lite">MobileNet v1 Lite (α=0.5, ~5 MB, schneller)</option>
-              </select>
-            </label>
-          {/if}
-
-          <label class="opt">
-            <span class="opt-label">
-              Optimierer
-              <InfoTooltip
-                text="Algorithmus, der die Gewichte des Modells anpasst. Adam funktioniert für die meisten Fälle. SGD ist robuster für große Datensätze, RMSProp für rauschige."
-              />
-            </span>
-            <select
-              value={$trainingOptions.optimizer}
-              onchange={(e) => updateOpt('optimizer', (e.target as HTMLSelectElement).value as any)}
-            >
-              <option value="adam">Adam</option>
-              <option value="sgd">SGD</option>
-              <option value="rmsprop">RMSProp</option>
-            </select>
-          </label>
-
-          <label class="opt">
-            <span class="opt-label">
-              Dropout
-              <InfoTooltip
-                text="Anteil der Neuronen, die beim Training zufällig deaktiviert werden. Reduziert Überanpassung. 0 = aus, 0.5 = aggressiv."
-              />
-            </span>
-            <input
-              type="number"
-              min="0"
-              max="0.9"
-              step="0.05"
-              value={$trainingOptions.dropout}
-              onchange={(e) => updateOpt('dropout', +((e.target as HTMLInputElement).value))}
-            />
-          </label>
-
-          <label class="opt">
-            <span class="opt-label">
-              Validierungs-Split
-              <InfoTooltip
-                text="Anteil der Bilder, die als Validierungsdaten zurückgehalten werden (0 – 0.5). Zeigt, wie gut das Modell auf ungesehenen Bildern funktioniert."
-              />
-            </span>
-            <input
-              type="number"
-              min="0"
-              max="0.5"
-              step="0.05"
-              value={$trainingOptions.validationSplit}
-              onchange={(e) => updateOpt('validationSplit', +((e.target as HTMLInputElement).value))}
-            />
-          </label>
-
-          <label class="opt">
-            <span class="opt-label">
-              Stop-Loss
-              <InfoTooltip
-                text="Frühzeitiger Abbruch: Training stoppt, sobald der Trainings-Loss unter diesen Wert fällt. 0 = kein frühzeitiger Abbruch."
-              />
-            </span>
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.005"
-              value={$trainingOptions.earlyStopLoss}
-              onchange={(e) => updateOpt('earlyStopLoss', +((e.target as HTMLInputElement).value))}
-            />
-          </label>
-
-          {#if !isPose}
-          <div class="opt aug-opt">
-            <span class="opt-label">
-              Daten-Augmentierung
-              <InfoTooltip
-                text="Erzeugt zufällig gespiegelte, gedrehte, heller/dunkler und leicht gezoomte Varianten deiner Bilder, damit das Modell robuster wird."
-              />
-            </span>
-            <div class="aug-row">
-              <select
-                value={$trainingOptions.augmentation ? 'on' : 'off'}
-                onchange={(e) => updateOpt('augmentation', (e.target as HTMLSelectElement).value === 'on')}
-              >
-                <option value="off">Aus</option>
-                <option value="on">An</option>
-              </select>
-              <button
-                type="button"
-                class="aug-settings-btn"
-                disabled={!$trainingOptions.augmentation}
-                onclick={() => (augSettingsOpen = !augSettingsOpen)}
-                aria-label="Augmentierung konfigurieren"
-                title="Augmentierung konfigurieren"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09c0 .66.39 1.25 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.26.61.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.39-1.51 1z"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-          {/if}
-        </div>
-
-        {#if !isPose && augSettingsOpen && $trainingOptions.augmentation}
-          {@const a = $trainingOptions.augmentationSettings}
-          <div class="aug-settings">
-            <div class="aug-settings-head">Augmentierungs-Details</div>
-            <div class="opt-grid">
-              <label class="opt">
-                <span class="opt-label">Horizontal spiegeln</span>
-                <select
-                  value={a.horizontalFlip ? 'on' : 'off'}
-                  onchange={(e) => updateAug('horizontalFlip', (e.target as HTMLSelectElement).value === 'on')}
-                >
-                  <option value="off">Aus</option>
-                  <option value="on">An</option>
-                </select>
-              </label>
-              <label class="opt">
-                <span class="opt-label">Rotation (±°)</span>
-                <input
-                  type="number" min="0" max="45" step="1"
-                  value={a.rotationDegrees}
-                  onchange={(e) => updateAug('rotationDegrees', +((e.target as HTMLInputElement).value))}
-                />
-              </label>
-              <label class="opt">
-                <span class="opt-label">Helligkeit (±)</span>
-                <input
-                  type="number" min="0" max="0.5" step="0.05"
-                  value={a.brightnessJitter}
-                  onchange={(e) => updateAug('brightnessJitter', +((e.target as HTMLInputElement).value))}
-                />
-              </label>
-              <label class="opt">
-                <span class="opt-label">Zoom-Jitter (±)</span>
-                <input
-                  type="number" min="0" max="0.5" step="0.05"
-                  value={a.zoomJitter}
-                  onchange={(e) => updateAug('zoomJitter', +((e.target as HTMLInputElement).value))}
-                />
-              </label>
-              <label class="opt">
-                <span class="opt-label">Extra-Kopien pro Bild</span>
-                <input
-                  type="number" min="0" max="6" step="1"
-                  value={a.multiplier}
-                  onchange={(e) => updateAug('multiplier', +((e.target as HTMLInputElement).value))}
-                />
-              </label>
-            </div>
-          </div>
-        {/if}
-      </details>
-
-      <div class="train-row">
-        <Button class="train-btn" fullWidth disabled={!readiness.ready} onclick={doTrain}>
-          Trainieren
-        </Button>
-      </div>
-      {#if readiness.hint}
-        <div class="hint">{readiness.hint}</div>
-      {/if}
-    </section>
-  {/if}
   </div>
 </div>
 
+<DeleteConfirmDialog
+  target={pendingDelete}
+  onconfirm={runDelete}
+  oncancel={() => (pendingDelete = null)}
+/>
+
 <style lang="scss">
-  // The whole tab scrolls as one, so the name row and the options card below it
-  // can never drift apart while scrolling.
+  // The rows here are the same cards the program list is built from — see
+  // src/lib/styles/_lists.scss.
+  @use '../../styles/lists' as *;
+
+  // Head stays put, the list below takes whatever height is left: this sidebar
+  // is the model list, not a form with a list on top of it.
   .model-tab {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    padding-right: 4px;
   }
-  .tab-body {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .row-between {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 6px;
-  }
-  .section {
-    display: flex;
-    flex-direction: column;
+  .head {
+    @include entry-head;
     flex-shrink: 0;
   }
-  .section-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: rgb(var(--md-on-surface-variant));
-    margin-bottom: 4px;
-  }
-  hr {
-    border: none;
-    border-top: 1px solid rgba(var(--md-outline-variant), 0.5);
-    margin: 12px 0;
-  }
-  .new-model-head {
+  .head-actions {
     display: flex;
     align-items: center;
-    padding: 4px;
-    margin-top: 6px;
-    border: 1px dashed rgba(var(--md-outline), 0.7);
-    border-radius: var(--md-radius-md);
-    background: transparent;
-    transition: background 0.15s, border-color 0.15s;
+    gap: 6px;
+  }
+  .add-btn { @include entry-add-btn; }
+  .list-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 4px;
+  }
+
+  .entry-row { @include entry-row; }
+  // Neither of the two rows above the list is a choice, so nothing in them
+  // reacts to being pointed at.
+  .main { @include entry-main; cursor: default; }
+  .title { @include entry-title; }
+  .title-text { @include entry-title-text; }
+  .chip { @include entry-chip; }
+  .meta { @include entry-meta; }
+  .classes { @include entry-classes; }
+
+  .training-entry {
+    border-color: rgb(var(--md-primary));
+    background: rgba(var(--md-primary-container), 0.5);
     &:hover {
-      border-color: rgb(var(--md-primary));
-    }
-    // Selected: drop the bottom edge so the options card below continues the
-    // same box instead of looking like a separate card.
-    &.selected {
-      border-style: solid;
-      border-color: rgb(var(--md-primary));
-      background: rgba(var(--md-primary-container), 0.3);
-      border-bottom: none;
-      border-bottom-left-radius: 0;
-      border-bottom-right-radius: 0;
+      background: rgba(var(--md-primary-container), 0.5);
+      box-shadow: none;
     }
   }
-  .new-model-name {
+  .train-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(var(--md-on-surface), 0.12);
+    overflow: hidden;
+  }
+  .train-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: rgb(var(--md-primary));
+    transition: width 0.3s;
+  }
+  // Before the first epoch there is no percentage to show, so the bar sweeps
+  // instead of standing at zero.
+  .train-bar.indeterminate .train-bar-fill {
+    width: 40%;
+    animation: train-sweep 1.4s ease-in-out infinite;
+  }
+  @keyframes train-sweep {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+  }
+
+  // The same card as an entry, opened up: the name the run will be saved under,
+  // then everything it needs, then the button that starts it.
+  .composer {
+    border-color: rgb(var(--md-primary));
+    background: rgba(var(--md-primary-container), 0.3);
+    &:hover { box-shadow: none; }
+  }
+  .composer-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px 0 10px;
+  }
+  .composer-name {
     flex: 1;
     min-width: 0;
     border: none;
     background: transparent;
-    padding: 6px 8px;
+    padding: 6px 0;
     font: inherit;
     font-weight: 600;
     color: rgb(var(--md-on-surface));
     &:focus {
       outline: none;
       border: none;
-      padding: 6px 8px;
     }
   }
-  // Lower half of the same block: same surface, no top edge, square top corners.
-  .card.new-model-card {
-    border: 1px solid rgb(var(--md-primary));
-    border-top: none;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-    background: rgba(var(--md-primary-container), 0.3);
+  .composer-close {
+    width: 24px;
+    height: 24px;
+    min-height: unset;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    color: rgb(var(--md-on-surface-variant));
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    &:hover {
+      background: rgba(var(--md-on-surface), 0.08);
+      color: rgb(var(--md-on-surface));
+    }
+  }
+  .composer-body {
+    padding: 6px 12px 12px;
     h3 {
+      margin: 0 0 10px;
       font-size: 12px;
       font-weight: 600;
       text-transform: uppercase;
@@ -679,24 +778,6 @@
       font-weight: 600;
       color: rgb(var(--md-on-surface));
       margin-bottom: 8px;
-    }
-  }
-  .empty {
-    padding: 16px;
-    text-align: center;
-    font-size: 13px;
-    color: rgb(var(--md-on-surface-variant));
-    font-style: italic;
-  }
-  .card {
-    background: rgba(var(--md-surface-variant), 0.25);
-    border-radius: var(--md-radius-md);
-    padding: 14px;
-    h3 {
-      margin: 0 0 10px;
-      font-size: 14px;
-      font-weight: 600;
-      color: rgb(var(--md-on-surface));
     }
   }
   .opt-grid {

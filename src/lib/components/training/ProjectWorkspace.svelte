@@ -13,9 +13,12 @@
 <style lang="scss">
   // The pane itself has no padding anymore (its content runs to the edges), so
   // the column brings the breathing room its text needs.
+  // Fills the pane rather than its content: the model list inside takes the
+  // height that is left over, so it has to know how much that is.
   .workspace {
     display: flex;
     flex-direction: column;
+    flex: 1;
     min-height: 0;
     padding: 12px;
   }

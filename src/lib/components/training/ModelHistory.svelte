@@ -7,10 +7,12 @@
   } from '$lib/stores/projects';
   import { exportModelToZip } from '$lib/machine';
   import { activateModel } from '$lib/models';
-  import { roiSizeLabel } from '$lib/roi';
   import { showNotification } from '$lib/stores/notifications';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
+  import DeleteConfirmDialog, {
+    type DeleteTarget
+  } from '$lib/components/DeleteConfirmDialog.svelte';
 
   // `highlightActive` is off while the sidebar is composing a new model: nothing
   // in the list is the subject of the view then, so nothing should look selected.
@@ -23,23 +25,13 @@
     highlightActive ? ($currentProject?.currentModelId ?? null) : null
   );
 
-  // One list of models for the whole app — trained runs and imported ZIPs, in the
-  // store's order: oldest first, so a new run appears at the bottom.
-  const models = $derived($availableModels);
+  // One list of models for the whole app — trained runs and imported ZIPs. The
+  // store keeps them oldest first; the list shows the newest at the top, where
+  // the run that just finished is the one being looked for.
+  const models = $derived([...$availableModels].reverse());
 
   let editingId = $state<string | null>(null);
   let draft = $state('');
-
-  // The list scrolls once it is long enough, and the entry that matters most —
-  // the run that just finished — is now the last one. So follow the end of the
-  // list whenever it grows; renaming or deleting leaves the scroll alone.
-  let listEl: HTMLUListElement | undefined = $state();
-  let seenCount = 0;
-  $effect(() => {
-    const count = models.length;
-    if (listEl && count > seenCount) listEl.scrollTop = listEl.scrollHeight;
-    seenCount = count;
-  });
 
   function startEdit(id: string, currentLabel: string | undefined, e?: Event) {
     e?.stopPropagation();
@@ -84,9 +76,19 @@
     }
   }
 
+  /** The run the confirm dialog is asking about; null keeps it closed. */
+  let pendingDelete = $state<DeleteTarget | null>(null);
+
   function onDelete(id: string) {
-    if (!confirm('Dieses Modell löschen?')) return;
-    deleteTrainedModel(id);
+    const model = models.find((m) => m.id === id);
+    if (model) pendingDelete = { kind: 'model', model };
+  }
+
+  function runDelete() {
+    const t = pendingDelete;
+    pendingDelete = null;
+    if (t?.kind !== 'model') return;
+    deleteTrainedModel(t.model.id);
     showNotification('Modell gelöscht', { type: 'success' });
   }
 
@@ -103,7 +105,7 @@
 </script>
 
 {#if models.length}
-  <ul class="entry-list" bind:this={listEl}>
+  <ul class="entry-list">
     {#each models as run (run.id)}
       {@const acc = accuracyOf(run.history.epochs, run.history.accuracy)}
       <li class="entry-row" class:active={run.id === currentId}>
@@ -148,8 +150,9 @@
                 <span class="chip muted">importiert</span>
               {/if}
             </div>
-            <!-- What this model is: its own classes and the region it looks at,
-                 both read straight off the model. -->
+            <!-- What the run achieved, then how it was set up. Two single
+                 lines rather than one wrapping one: the settings are what tells
+                 two runs over the same classes apart. -->
             <div class="meta">
               {#if run.source === 'imported'}
                 <span>{run.classes.length} Klassen</span>
@@ -162,18 +165,23 @@
                 <span>·</span>
                 <span>{Object.values(run.exampleCounts).reduce((a, b) => a + b, 0)} Bilder</span>
               {/if}
-              <span class="roi-badge" title={run.roi ? `Trainiert im Bildbereich ${roiSizeLabel(run.roi)}` : 'Trainiert mit dem ganzen Bild'}>
-                {run.roi ? `Bereich ${roiSizeLabel(run.roi)}` : 'Ganzes Bild'}
-              </span>
             </div>
-            <div class="classes" title={run.classes.join(', ')}>{run.classes.join(' · ')}</div>
+            {#if run.source !== 'imported'}
+              <div class="meta settings">
+                <span>Lernrate {run.options.learningRate}</span>
+                <span>·</span>
+                <span>Batch {run.options.batchSize}</span>
+                <span>·</span>
+                <span>{run.options.hiddenUnits} Units</span>
+              </div>
+            {/if}
           </div>
           <Dropdown placement="bottom-end">
             {#snippet trigger()}
               <button type="button" class="menu" aria-label="Aktionen" title="Mehr">⋯</button>
             {/snippet}
             {#snippet children()}
-              <DropdownItem onclick={() => onLoad(run.id)}>Dieses Modell laden</DropdownItem>
+              <!-- No "load" entry: clicking the row is what loads a model. -->
               <DropdownItem onclick={() => startEdit(run.id, run.label)}>Umbenennen</DropdownItem>
               <DropdownItem onclick={() => onExport(run.id)}>Exportieren</DropdownItem>
               <DropdownItem onclick={() => onDelete(run.id)}>Löschen</DropdownItem>
@@ -187,11 +195,17 @@
   <div class="empty">Noch kein Training durchgeführt.</div>
 {/if}
 
+<DeleteConfirmDialog
+  target={pendingDelete}
+  onconfirm={runDelete}
+  oncancel={() => (pendingDelete = null)}
+/>
+
 <style lang="scss">
   // Shared with the program list in Programmieren — see src/lib/styles/_lists.scss.
   @use '../../styles/lists' as *;
 
-  .entry-list { @include entry-list(260px); }
+  .entry-list { @include entry-list; }
   .entry-row { @include entry-row; }
   .row-top { @include entry-row-top; }
   .main { @include entry-main; }
@@ -200,7 +214,6 @@
   .title-edit { @include entry-title-edit; }
   .edit-btn { @include entry-edit-btn; }
   .chip { @include entry-chip; }
-  .classes { @include entry-classes; }
   .menu { @include entry-menu-btn; }
   .empty { @include entry-empty; }
 
@@ -212,10 +225,18 @@
 
   .meta {
     @include entry-meta;
+    // Both fact lines stay on one line each: wrapping them back into a block
+    // is what made the rows look cluttered.
+    flex-wrap: nowrap;
+    overflow: hidden;
     .acc {
       color: rgb(var(--md-primary));
       font-weight: 600;
     }
-    .roi-badge { @include entry-badge; }
+    &.settings {
+      font-size: 11px;
+      opacity: 0.85;
+      font-variant-numeric: tabular-nums;
+    }
   }
 </style>
