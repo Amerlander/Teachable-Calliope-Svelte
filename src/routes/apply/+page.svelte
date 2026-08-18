@@ -12,9 +12,7 @@
   import { setVideoRef, mobilenetModel, classifierModel, predictionClasses } from '$lib/stores';
   import { selectedCameraId } from '$lib/stores/camera';
   import { activeModel, availableModels, currentProject } from '$lib/stores/projects';
-  import { activateModel, ensureActiveModelLoaded, modelLabel } from '$lib/models';
-  import { showNotification } from '$lib/stores/notifications';
-  import ModelPicker from '$lib/components/ModelPicker.svelte';
+  import { ensureActiveModelLoaded, modelLabel } from '$lib/models';
   import NoModelNotice from '$lib/components/NoModelNotice.svelte';
   import RoiOverlay from '$lib/components/RoiOverlay.svelte';
   import {
@@ -40,17 +38,6 @@
   const modelReady = $derived(!!$classifierModel && !!$mobilenetModel);
   const det = $derived($currentDetection);
 
-  // Anwenden is the one view where every model is on offer: it runs a model, it
-  // isn't bound to a program's class list.
-  async function pickModel(id: string) {
-    try {
-      const model = await activateModel(id);
-      resetStreamState();
-      if (model) showNotification(`Modell „${modelLabel(model)}“ aktiv`, { type: 'success' });
-    } catch (err) {
-      showNotification('Fehler beim Laden: ' + (err as Error).message, { type: 'error' });
-    }
-  }
   // Matches what the streaming gate accepts, so the HUD can't claim a live
   // board while the lines go nowhere (mini 2 linked flash-only). `flashing` is
   // kept because a transport can briefly leave 'connected' during the transfer's
@@ -145,16 +132,13 @@
       <RoiOverlay roi={$activeModel?.roi} aspect={videoAspect} />
     {/if}
 
-    <!-- Model chooser: every model of the project is selectable here. -->
-    {#if $availableModels.length}
+    <!-- Which model is running is chosen in the header now — one place for the
+         whole app, since nothing else is bound to a model any more. Only its
+         name is repeated here, over the picture it is classifying. -->
+    {#if $activeModel}
       <div class="hud hud-model">
         <span class="hud-model-caption">Modell</span>
-        <ModelPicker
-          models={$availableModels}
-          selectedId={$activeModel?.id ?? null}
-          onselect={pickModel}
-          placeholder="Modell wählen"
-        />
+        <span class="hud-model-name">{modelLabel($activeModel)}</span>
       </div>
     {/if}
 
@@ -295,6 +279,9 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: rgba(255, 255, 255, 0.7);
+  }
+  .hud-model-name {
+    font-weight: 500;
   }
 
   .hud-conn {

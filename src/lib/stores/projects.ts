@@ -1,11 +1,19 @@
 import { writable, derived, get } from 'svelte/store';
 import { idbPut, idbGet, idbGetAll, idbDelete, STORES } from '$lib/db';
-import { normalizeRange, type ClassRange } from '$lib/calibration';
+import { normalizeRange, normalizeSmoothing, type ClassRange } from '$lib/calibration';
+import { withIndexedClassRefs } from '$lib/makecode/programFiles';
 
 export type TrainingHistory = {
   epochs: number[];
   accuracy: number[];
   loss: number[];
+  /**
+   * The same two series measured on the held-back images, recorded only when the
+   * run had `validationSplit > 0`. Absent on runs trained before this was kept
+   * and on imported models, so every reader has to treat them as optional.
+   */
+  valAccuracy?: number[];
+  valLoss?: number[];
 };
 
 export type ModelMetadata = {
@@ -24,22 +32,30 @@ export type ModelArtifacts = {
   weightData: ArrayBuffer;
 };
 
-export type FeatureExtractor = 'mobilenet-v1' | 'mobilenet-v2' | 'mobilenet-v1-lite';
+export type FeatureExtractor =
+  | 'mobilenet-v1'
+  | 'mobilenet-v2'
+  | 'mobilenet-v3-small'
+  | 'mobilenet-v3-large'
+  | 'mobilenet-v1-lite';
 
 // Extractors that used to be offered but were served through tfhub.dev, which now
 // redirects to Kaggle and no longer answers browser fetches (CORS/403). Old projects
 // may still reference them, so map each onto a supported extractor. 'mobilenet-v2-lite'
 // maps to 'mobilenet-v2' because both produce a 1280-dim embedding, which keeps
-// already-trained classifier heads loadable.
+// already-trained classifier heads loadable. 'mobilenet-v3-small' is no longer listed
+// here: it is served from our own origin now, and it is the same tfhub feature vector
+// that was offered back then, so old projects get the extractor they were trained with.
 const LEGACY_FEATURE_EXTRACTORS: Record<string, FeatureExtractor> = {
   'mobilenet-v2-lite': 'mobilenet-v2',
-  'mobilenet-v3-small': 'mobilenet-v1',
   'efficientnet-lite0': 'mobilenet-v1'
 };
 
 const SUPPORTED_FEATURE_EXTRACTORS: FeatureExtractor[] = [
   'mobilenet-v1',
   'mobilenet-v2',
+  'mobilenet-v3-small',
+  'mobilenet-v3-large',
   'mobilenet-v1-lite'
 ];
 
@@ -91,7 +107,10 @@ export const DEFAULT_TRAINING_OPTIONS: TrainingOptions = {
   hiddenUnits: 64,
   augmentation: true,
   augmentationSettings: { ...DEFAULT_AUGMENTATION },
-  featureExtractor: 'mobilenet-v1',
+  // Only new projects start here. Everything loaded or imported goes through
+  // resolveFeatureExtractor(), whose fallback stays 'mobilenet-v1' so a project
+  // saved before this default existed keeps the extractor it was trained with.
+  featureExtractor: 'mobilenet-v3-large',
   optimizer: 'adam',
   dropout: 0.2,
   validationSplit: 0.15,
@@ -128,6 +147,27 @@ export type TrainedModel = {
   /** Trained here, or brought in from a model ZIP. */
   source: 'trained' | 'imported';
   /**
+   * How many samples each set held: `train` counts the augmented copies, and
+   * `validation` counts the images that were held back (one sample each, their
+   * copies are dropped — see prepareDatasetForTraining). Absent on imported
+   * models and on runs from before this was recorded.
+   */
+  sampleCounts?: { train: number; validation: number };
+  /**
+   * The confusion matrix, kept because computing it means running every example
+   * image through the model again. `key` is a fingerprint of the images it was
+   * measured on (see confusion.ts): it no longer matches once examples are
+   * added, removed or replaced, and the matrix is then recomputed.
+   */
+  confusion?: {
+    matrix: number[][];
+    classes: string[];
+    key: string;
+    computedAt: number;
+    /** Examples scored, so an empty result can be told from a stale one. */
+    samples: number;
+  };
+  /**
    * Per-class output calibration, keyed by class label: which raw probability
    * reads as 0 % and which as 100 %. It belongs to the model because it
    * describes that model's output distribution — retraining shifts the
@@ -135,12 +175,25 @@ export type TrainedModel = {
    * Absent or missing entries mean the neutral window (mapped = raw).
    */
   classRanges?: Record<string, ClassRange>;
+  /**
+   * Frames the rolling median smooths over before the windows are applied. Sits
+   * on the model for the same reason the windows do: a twitchy model needs more
+   * of it than a steady one, and the setting should not quietly reset on reload.
+   */
+  smoothing?: number;
 };
 
 /**
  * A saved MakeCode program within a Teachable project. Carries the full
  * MakeCode file map (`text`) so we can push it back into the editor on reload
  * or when the user switches between programs in the sidebar.
+ *
+ * It says nothing about models. Its blocks address classes by index — the same
+ * index the wire protocol uses — so any model can drive any program, and the
+ * class names the blocks show come from whichever model is loaded (see
+ * `importProgramFiles`). What used to live here as `modelId` / `classes` /
+ * `mode` was a binding to one model that only existed to keep label-derived
+ * block identifiers resolving.
  */
 export type MakeCodeProgram = {
   id: string;
@@ -151,21 +204,6 @@ export type MakeCodeProgram = {
   files: Record<string, string>;
   /** Optional MakeCodeProject header carried over from workspace save. */
   header?: unknown;
-  /**
-   * The model this program is programmed against. Opening the program loads
-   * that model, and it can be swapped for any other model with the same class
-   * list (see {@link modelsForProgram}) — the program's blocks stay valid
-   * because the embedded extension is generated from exactly these classes.
-   */
-  modelId: string | null;
-  /**
-   * The class list baked into the program's `autogenerated.ts`, in wire order:
-   * class ids are 1-based indices into it. A model can only take this
-   * program's place when its own class list matches.
-   */
-  classes: string[];
-  /** Mode the embedded extension was generated for. */
-  mode: ProjectMode;
 };
 
 export type Project = {
@@ -257,82 +295,44 @@ function hydrate(p: Project): Project {
       source: m.source ?? 'trained'
     };
   });
-  // Programs used to carry a `{ classes, thresholds, mode }` snapshot compared
-  // against the project to flag them "outdated". They now name their model
-  // instead: the class list stays (it is what the embedded extension knows), the
-  // thresholds snapshot is dropped — the class scale lives on the model and is
-  // applied in the app, so nothing about it can invalidate a program.
+  // Programs used to be bound to one model: a `classes` list (once
+  // `classesSnapshot`), a `mode`, a `modelId`, and a thresholds snapshot before
+  // that. All of it is gone — a program runs on any model now. The class list
+  // has one last job on the way out: its order is what the old, label-derived
+  // block identifiers were built from, so it is what lets them be rewritten to
+  // the index-based names the generator emits today.
   p.makeCodePrograms = p.makeCodePrograms.map((prog) => {
     const legacy = prog as MakeCodeProgram & {
+      classes?: string[];
       classesSnapshot?: string[];
+      mode?: ProjectMode;
       modeSnapshot?: ProjectMode;
+      modelId?: string | null;
       thresholdsSnapshot?: Record<string, number>;
     };
-    const classes = prog.classes ?? legacy.classesSnapshot ?? [];
-    const progMode = prog.mode ?? legacy.modeSnapshot ?? mode;
+    const classes = legacy.classes ?? legacy.classesSnapshot ?? [];
     const next: MakeCodeProgram = {
       id: prog.id,
       name: prog.name,
       createdAt: prog.createdAt,
       updatedAt: prog.updatedAt,
-      files: prog.files,
-      header: prog.header,
-      // No model was recorded before; adopt the newest one that fits so the
-      // program keeps working instead of showing up as model-less.
-      modelId:
-        prog.modelId ??
-        newestModelFor(p.modelHistory, classes, progMode)?.id ??
-        null,
-      classes,
-      mode: progMode
+      files: classes.length ? withIndexedClassRefs(prog.files, classes) : prog.files,
+      header: prog.header
     };
     return next;
   });
   return p;
 }
 
-/** True when two class lists hold the same labels in the same order. */
-export function classListsMatch(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function newestModelFor(
-  models: TrainedModel[],
-  classes: string[],
-  mode: ProjectMode
-): TrainedModel | null {
-  if (!classes.length) return null;
-  return (
-    [...models]
-      .filter((m) => m.mode === mode && classListsMatch(m.classes ?? [], classes))
-      .sort((a, b) => b.trainedAt - a.trainedAt)[0] ?? null
-  );
-}
-
 function genProgramId(): string {
   return `pgm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-/**
- * Add a new MakeCode program to the current project and make it active. The
- * model it was generated against is recorded with it, together with the class
- * list and mode that model brought — those are what the program's embedded
- * extension knows, and what limits which other models can replace it later.
- */
+/** Add a new MakeCode program to the current project and make it active. */
 export function addMakeCodeProgram(init: {
   name?: string;
   files: Record<string, string>;
   header?: unknown;
-  /**
-   * The model the program is built for. May be null only for a program the
-   * editor produced on its own before any model existed — it then has no
-   * classes to offer and stays unbound until one is trained.
-   */
-  model: TrainedModel | null;
 }): MakeCodeProgram | null {
   const p = get(currentProject);
   if (!p) return null;
@@ -344,9 +344,6 @@ export function addMakeCodeProgram(init: {
     updatedAt: now,
     files: init.files,
     header: init.header,
-    modelId: init.model?.id ?? null,
-    classes: init.model ? [...init.model.classes] : [],
-    mode: init.model?.mode ?? p.mode ?? 'image',
   };
   updateProject((proj) => {
     if (!proj.makeCodePrograms) proj.makeCodePrograms = [];
@@ -408,40 +405,6 @@ export function getCurrentMakeCodeProgram(): MakeCodeProgram | null {
   return (p.makeCodePrograms ?? []).find((x) => x.id === p.currentProgramId) ?? null;
 }
 
-/**
- * Models a program can run on: same classes in the same order, same mode. Its
- * blocks address classes by 1-based index into that list, so anything else
- * would silently map a block onto a different class. Training with new classes
- * therefore needs a new program — there is nothing to migrate.
- */
-export function modelsForProgram(
-  program: MakeCodeProgram,
-  models?: TrainedModel[]
-): TrainedModel[] {
-  // Callers in markup pass the list explicitly so the result recomputes when a
-  // model is trained, imported or deleted.
-  const all = models ?? get(currentProject)?.modelHistory ?? [];
-  return all
-    .filter((m) => m.mode === program.mode && classListsMatch(m.classes ?? [], program.classes))
-    .sort((a, b) => a.trainedAt - b.trainedAt);
-}
-
-/** Point a program at another model. Rejected when the classes don't line up. */
-export function setProgramModel(programId: string, modelId: string): TrainedModel | null {
-  const p = get(currentProject);
-  if (!p) return null;
-  const program = (p.makeCodePrograms ?? []).find((x) => x.id === programId);
-  const model = (p.modelHistory ?? []).find((m) => m.id === modelId);
-  if (!program || !model) return null;
-  if (!classListsMatch(model.classes ?? [], program.classes)) return null;
-  updateProject((proj) => {
-    proj.makeCodePrograms = (proj.makeCodePrograms ?? []).map((x) =>
-      x.id === programId ? { ...x, modelId, updatedAt: Date.now() } : x
-    );
-  });
-  return model;
-}
-
 export function getModelById(id: string | null | undefined): TrainedModel | null {
   if (!id) return null;
   const p = get(currentProject);
@@ -477,6 +440,30 @@ export function setModelClassRanges(
   for (const [cls, r] of Object.entries(ranges)) next[cls] = normalizeRange(r);
   updateProject((p) => {
     p.modelHistory = p.modelHistory.map((m) => (m.id === modelId ? { ...m, classRanges: next } : m));
+  });
+}
+
+/**
+ * Store a freshly measured confusion matrix on its model. Written from the
+ * background run in confusion.ts, which is why it takes an id rather than the
+ * model: the run may finish after the view that started it is gone.
+ */
+export function setModelConfusion(
+  modelId: string | null | undefined,
+  confusion: NonNullable<TrainedModel['confusion']>
+): void {
+  if (!modelId) return;
+  updateProject((p) => {
+    p.modelHistory = p.modelHistory.map((m) => (m.id === modelId ? { ...m, confusion } : m));
+  });
+}
+
+/** How many frames a model's rolling median smooths over. */
+export function setModelSmoothing(modelId: string | null | undefined, frames: number): void {
+  if (!modelId) return;
+  const next = normalizeSmoothing(frames);
+  updateProject((p) => {
+    p.modelHistory = p.modelHistory.map((m) => (m.id === modelId ? { ...m, smoothing: next } : m));
   });
 }
 
@@ -643,7 +630,12 @@ export function recordTrainedModel(
   options: TrainingOptions,
   classes: string[],
   exampleCounts: Record<string, number>,
-  extras?: { roi?: Roi; featureExtractor?: FeatureExtractor; mode?: ProjectMode }
+  extras?: {
+    roi?: Roi;
+    featureExtractor?: FeatureExtractor;
+    mode?: ProjectMode;
+    sampleCounts?: { train: number; validation: number };
+  }
 ): string | null {
   return appendModel({
     id: genModelId(),
@@ -657,7 +649,8 @@ export function recordTrainedModel(
     mode: extras?.mode ?? get(currentProject)?.mode ?? 'image',
     source: 'trained',
     ...(extras?.roi ? { roi: extras.roi } : {}),
-    ...(extras?.featureExtractor ? { featureExtractor: extras.featureExtractor } : {})
+    ...(extras?.featureExtractor ? { featureExtractor: extras.featureExtractor } : {}),
+    ...(extras?.sampleCounts ? { sampleCounts: extras.sampleCounts } : {})
   });
 }
 
@@ -676,6 +669,7 @@ export function recordImportedModel(init: {
   featureExtractor?: FeatureExtractor;
   mode?: ProjectMode;
   classRanges?: Record<string, ClassRange>;
+  smoothing?: number;
 }): string | null {
   const exampleCounts: Record<string, number> = {};
   for (const c of init.classes) exampleCounts[c] = 0;
@@ -693,6 +687,7 @@ export function recordImportedModel(init: {
     source: 'imported',
     ...(init.roi ? { roi: init.roi } : {}),
     ...(init.classRanges ? { classRanges: init.classRanges } : {}),
+    ...(init.smoothing !== undefined ? { smoothing: normalizeSmoothing(init.smoothing) } : {}),
     featureExtractor: resolveFeatureExtractor(init.featureExtractor)
   });
 }
@@ -715,13 +710,8 @@ export function setCurrentModel(id: string): TrainedModel | null {
 export function deleteTrainedModel(id: string): void {
   updateProject((p) => {
     p.modelHistory = p.modelHistory.filter((m) => m.id !== id);
-    // Programs that ran on it move to the newest model that still fits their
-    // classes, or end up model-less and say so on their card.
-    p.makeCodePrograms = (p.makeCodePrograms ?? []).map((prog) =>
-      prog.modelId === id
-        ? { ...prog, modelId: newestModelFor(p.modelHistory, prog.classes, prog.mode)?.id ?? null }
-        : prog
-    );
+    // Programs are unaffected: none of them names a model, so there is nothing
+    // to re-point. What changes for them is only which model is selected below.
     if (p.currentModelId === id) {
       const last = p.modelHistory[p.modelHistory.length - 1];
       if (last) {

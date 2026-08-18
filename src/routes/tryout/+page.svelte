@@ -30,14 +30,19 @@
     setTransferProgram,
   } from '@calliope-edu/mini-connection-widget';
   import { currentLang } from '$lib/stores/app';
-  import { currentProject, getCurrentMakeCodeProgram } from '$lib/stores/projects';
+  import {
+    currentProject,
+    getCurrentMakeCodeProgram,
+    type MakeCodeProgram,
+  } from '$lib/stores/projects';
   import { activeModel, availableModels } from '$lib/stores/projects';
-  import { createProgramForModel, loadProgramModel } from '$lib/programs';
-  import { ensureActiveModelLoaded } from '$lib/models';
+  import { classGap, createProgramForModel, hasClassGap } from '$lib/programs';
+  import { activateModel, ensureActiveModelLoaded, modelLabel } from '$lib/models';
   import { showNotification } from '$lib/stores/notifications';
   import TryoutCamera from '$lib/components/tryout/TryoutCamera.svelte';
   import TryoutDetailPanel from '$lib/components/tryout/TryoutDetailPanel.svelte';
   import ProgramList from '$lib/components/tryout/ProgramList.svelte';
+  import ProgramClassGapDialog from '$lib/components/tryout/ProgramClassGapDialog.svelte';
 
   let iframeEl: HTMLIFrameElement | undefined = $state();
   // Read once: the MakeCode iframe cannot change its language without a reload,
@@ -80,6 +85,33 @@
     void switchMakeCodeLang(mode);
   }
 
+  // ---- Class slots the loaded model doesn't fill ----
+  // A program runs on any model, so there is nothing to reconcile on mount. The
+  // one thing worth saying out loud is that some of its blocks can't fire: the
+  // program addresses more class slots than the model has classes. Raised once,
+  // for the program that is open when the view mounts.
+  let gapProgram: MakeCodeProgram | null = $state(null);
+
+  const gap = $derived(gapProgram ? classGap(gapProgram, $activeModel) : null);
+  /** Models that would fill every slot the program uses, newest first. */
+  const gapCandidates = $derived(
+    gap
+      ? [...$availableModels]
+          .filter((m) => m.classes.length >= gap.used && m.id !== $activeModel?.id)
+          .sort((a, b) => b.trainedAt - a.trainedAt)
+      : [],
+  );
+
+  async function pickGapModel(modelId: string) {
+    gapProgram = null;
+    try {
+      const model = await activateModel(modelId);
+      if (model) showNotification(`Modell „${modelLabel(model)}“ geladen`, { type: 'success' });
+    } catch (err) {
+      showNotification('Fehler beim Laden: ' + (err as Error).message, { type: 'error' });
+    }
+  }
+
   // ---- Share ----
   // The editor runs with hidemenu=1, so pxt's own share entry is hidden and the
   // toolbar button is the only way to publish a program.
@@ -115,26 +147,36 @@
     setMakecodeIframe(iframeEl ?? null);
 
     // Decide what to open in MakeCode:
-    //   1. The project's active saved program → reload it, together with the
-    //      model it is programmed against, so the prediction that reaches the
-    //      board comes from that program's model.
-    //   2. No program yet but a model to program against → generate a starter
-    //      for it, which becomes program 1 and is persisted from then on.
+    //   1. The project's active saved program → reload it. Its class blocks are
+    //      relabelled from the model that is selected; which model that is was
+    //      decided wherever models are picked, not here.
+    //   2. No program yet but a model to generate one from → generate a starter,
+    //      which becomes program 1 and is persisted from then on.
     //   3. No model at all → nothing to generate blocks from; the program list
     //      shows the way to train or import one.
     const active = getCurrentMakeCodeProgram();
-    if (active) {
-      importProgramFiles(active.files, active.header);
-      void loadProgramModel(active).then((m) => {
-        if (!m) void ensureActiveModelLoaded();
-      });
-    } else {
-      const model = get(activeModel) ?? get(availableModels).at(-1) ?? null;
-      if (model) {
-        createProgramForModel(model);
-        void ensureActiveModelLoaded();
+    // The model comes up first, in both cases: the class names a program's blocks
+    // show are generated from it, so anything reaching the editor before it is
+    // loaded would have every block labelled as not being in the model. A project
+    // that has models but no selection yet gets its newest one.
+    const picked = get(activeModel);
+    const model = picked ?? get(availableModels).at(-1) ?? null;
+    const ready = !model
+      ? Promise.resolve(null)
+      : picked?.id === model.id
+        ? ensureActiveModelLoaded()
+        : activateModel(model.id);
+    // A model that fails to load must not keep the program off the screen.
+    void ready.catch(() => null).then((loaded) => {
+      if (active) {
+        importProgramFiles(active.files, active.header);
+        // Blocks beyond what the model can classify stay in the program and stay
+        // harmless. Said once here, because it is easy to miss otherwise.
+        if (hasClassGap(active, loaded)) gapProgram = active;
+      } else if (loaded) {
+        createProgramForModel(loaded);
       }
-    }
+    });
 
     const unsubDownload = onMakeCodeDownload(({ name, hex }) => {
       void flashCalliope(hex, name || p.name || 'project');
@@ -161,11 +203,21 @@
     <Splitpanes theme="modern-theme">
       <Pane size={36} minSize={24} maxSize={60}>
         <div class="panel camera-panel">
-          <div class="camera-scroll">
-            <ProgramList />
-            <TryoutCamera />
-            <TryoutDetailPanel />
-          </div>
+          <!-- The program list is the subject of this column, so it gets its own
+               section with the same black bar between it and the camera. How the
+               two share the height is the user's call: a long list of programs
+               and a big preview both have their moments. -->
+          <Splitpanes horizontal theme="modern-theme">
+            <Pane size={45} minSize={15}>
+              <ProgramList />
+            </Pane>
+            <Pane size={55} minSize={20}>
+              <div class="camera-scroll">
+                <TryoutCamera />
+                <TryoutDetailPanel />
+              </div>
+            </Pane>
+          </Splitpanes>
         </div>
       </Pane>
       <Pane size={64}>
@@ -199,6 +251,16 @@
     </Splitpanes>
   {/if}
 </div>
+
+<ProgramClassGapDialog
+  open={!!gapProgram}
+  programName={gapProgram?.name ?? ''}
+  used={gap?.used ?? 0}
+  available={gap?.available ?? 0}
+  candidates={gapCandidates}
+  onpick={(id) => void pickGapModel(id)}
+  onclose={() => (gapProgram = null)}
+/>
 
 <MakeCodeShareModal
   open={shareOpen}
@@ -234,9 +296,17 @@
     padding: 0;
     display: flex;
     flex-direction: column;
+
+    // The nested splitter column is this pane's only content, so it takes the
+    // whole height it is given.
+    > :global(.splitpanes) {
+      flex: 1;
+      min-height: 0;
+    }
   }
   .camera-scroll {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
   }
   .editor-panel {

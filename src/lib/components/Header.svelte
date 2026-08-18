@@ -4,22 +4,18 @@
   import Dropdown from './ui/Dropdown.svelte';
   import DropdownItem from './ui/DropdownItem.svelte';
   import { ConnectButton } from '@calliope-edu/mini-connection-widget';
-  import { showLanguageOverlay, showAIInfoOverlay } from '$lib/stores/app';
+  import { showLanguageOverlay, showCameraOverlay, showAIInfoOverlay } from '$lib/stores/app';
   import {
+    activeModel,
+    availableModels,
     currentProject,
     closeCurrentProject,
     renameCurrentProject
   } from '$lib/stores/projects';
+  import { activateModel, modelLabel } from '$lib/models';
   import { exportCurrentProject } from '$lib/projects-io';
   import { showNotification } from '$lib/stores/notifications';
   import { classifierModel } from '$lib/stores';
-  import {
-    cameras,
-    cameraLabel,
-    refreshCameras,
-    selectedCameraId,
-    switchCamera
-  } from '$lib/stores/camera';
 
   let settingsOpen = $state(false);
   let editingName = $state(false);
@@ -42,21 +38,20 @@
     ['/training', '/tryout', '/apply'].some((p) => $page.url.pathname.startsWith(p))
   );
 
-  // The camera picker used to sit in each view; it lives here now so there is one
-  // place to change the camera from. It only makes sense where a live feed is on
-  // screen, and only when there is something to choose between.
-  const currentCameraId = $derived($selectedCameraId ?? $cameras[0]?.deviceId ?? '');
-  const showCameraPicker = $derived(onProjectView && $cameras.length > 1);
+  // Newest first. `availableModels` runs oldest-first, the way the history in
+  // Trainieren reads; a menu is picked from the top, so it is reversed here.
+  const headerModels = $derived([...$availableModels].reverse());
 
-  // Devices come and go, so the list is re-read every time the menu opens rather
-  // than once at startup.
-  $effect(() => {
-    if (settingsOpen) void refreshCameras();
-  });
-
-  async function pickCamera(deviceId: string) {
-    if (!deviceId || deviceId === currentCameraId) return;
-    await switchCamera(deviceId);
+  async function pickModel(id: string) {
+    if (id === $activeModel?.id) return;
+    try {
+      // Loads the weights, and re-labels the open program's class blocks if
+      // Programmieren is the view we are on.
+      const model = await activateModel(id);
+      if (model) showNotification(`Modell „${modelLabel(model)}“ geladen`, { type: 'success' });
+    } catch (err) {
+      showNotification('Fehler beim Laden: ' + (err as Error).message, { type: 'error' });
+    }
   }
 
   function navTo(view: string) { goto(`/${view}`); }
@@ -64,6 +59,15 @@
   function openLanguage() {
     settingsOpen = false;
     showLanguageOverlay.set(true);
+  }
+  // Always offered, on every view. The picker used to be an inline list that
+  // hid itself whenever the browser reported fewer than two devices — which is
+  // exactly what a missing permission looks like, so the one control that could
+  // have fixed it was the one that disappeared. The overlay asks for the camera
+  // itself, so outside the feed views this sets the device for the next start.
+  function openCamera() {
+    settingsOpen = false;
+    showCameraOverlay.set(true);
   }
   function openAIInfo() {
     settingsOpen = false;
@@ -158,6 +162,57 @@
     </nav>
 
     <div class="header-right">
+      <!-- Which model is loaded, and the one place to change it. It used to be
+           asked once per view — a picker in Anwenden, one per program card in
+           Programmieren — but nothing is bound to a model any more: the classes
+           a program's blocks show come from whichever one is loaded. So it is a
+           single app-wide setting, and it belongs where the other ones are. -->
+      {#if $currentProject && onProjectView && $availableModels.length}
+        <Dropdown placement="bottom-end" minWidth="260px">
+          {#snippet trigger()}
+            <button
+              class="model-btn"
+              class:empty={!$activeModel}
+              title={$activeModel ? `Modell: ${modelLabel($activeModel)}` : 'Kein Modell geladen'}
+            >
+              <span class="model-caption">Modell</span>
+              <span class="model-name">
+                {$activeModel ? modelLabel($activeModel) : 'keines'}
+              </span>
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <path
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M6 9.5 12 15.5 18 9.5"
+                />
+              </svg>
+            </button>
+          {/snippet}
+          {#snippet children()}
+            <!-- Newest first, the direction the model list in Trainieren runs in. -->
+            {#each headerModels as model (model.id)}
+              <DropdownItem
+                selected={model.id === $activeModel?.id}
+                onselected={() => pickModel(model.id)}
+                title={modelLabel(model)}
+              >
+                <span class="model-option">
+                  <span class="option-name">{modelLabel(model)}</span>
+                  <span class="option-meta">
+                    {model.classes.length} Klassen
+                    {#if model.mode === 'pose'}· Pose{/if}
+                    {#if model.source === 'imported'}· importiert{/if}
+                  </span>
+                </span>
+              </DropdownItem>
+            {/each}
+          {/snippet}
+        </Dropdown>
+      {/if}
+
       <!-- Icon variant, as campus uses: a status-coloured circle with the
            Calliope logo instead of the labelled pill. It morphs into a short
            pill while transferring (percent, or a spinner for the
@@ -176,25 +231,9 @@
         {#snippet children()}
           {#if $currentProject}
             <DropdownItem onclick={onExport}>Projekt herunterladen</DropdownItem>
-          {/if}
-          {#if showCameraPicker}
-            {#if $currentProject}
-              <div class="menu-sep" role="separator"></div>
-            {/if}
-            <div class="menu-label" id="settings-camera-label">Kamera</div>
-            <div class="camera-group" role="group" aria-labelledby="settings-camera-label">
-              {#each $cameras as cam, i (cam.deviceId)}
-                <DropdownItem
-                  selected={cam.deviceId === currentCameraId}
-                  onselected={() => pickCamera(cam.deviceId)}
-                  title={cameraLabel(cam, i)}
-                >
-                  {cameraLabel(cam, i)}
-                </DropdownItem>
-              {/each}
-            </div>
             <div class="menu-sep" role="separator"></div>
           {/if}
+          <DropdownItem onclick={openCamera}>Kamera</DropdownItem>
           <DropdownItem onclick={openLanguage}>Sprachen</DropdownItem>
           <DropdownItem onclick={openAIInfo}>KI-Hinweise</DropdownItem>
         {/snippet}
@@ -288,6 +327,62 @@
     color: #fff;
     max-width: 240px;
   }
+  // Field-shaped rather than button-shaped, like the model picker in Anwenden
+  // was: a caption, the value, a chevron. On the dark bar that means a hairline
+  // outline instead of a border.
+  .model-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 280px;
+    padding: 5px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 20px;
+    background: rgba(0, 0, 0, 0.18);
+    color: rgba(255, 255, 255, 0.93);
+    font: inherit;
+    font-size: 13px;
+    min-height: unset;
+    box-shadow: none;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+    svg { opacity: 0.7; flex-shrink: 0; }
+    &:hover svg { opacity: 1; }
+    &.empty .model-name { font-style: italic; opacity: 0.75; }
+  }
+  .model-caption {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+    flex-shrink: 0;
+  }
+  .model-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  // Menu items are dark on white (see DropdownItem), so these follow that scale
+  // rather than the header's.
+  .model-option {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .option-name { font-weight: 500; }
+  .option-meta {
+    font-size: 11px;
+    color: hsl(210, 4%, 40%);
+  }
+
   .settings-btn {
     padding: 8px 18px;
     border-radius: 20px;
@@ -302,34 +397,21 @@
     &:hover { background-color: rgba(250, 250, 250, 0.6); color: black; }
   }
 
-  // Grouping inside the settings menu. The menu itself is white with dark 14px
-  // items (see DropdownItem), so these follow the same px metrics.
-  .menu-label {
-    padding: 8px 16px 4px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: hsl(210, 4%, 45%);
-  }
+  // Separates the project action from the app-wide settings below it. The menu is
+  // white with dark 14px items (see DropdownItem), so this follows those metrics.
   .menu-sep {
     height: 1px;
     margin: 4px 0;
     background: hsl(156, 12%, 90%);
-  }
-  // Device labels can be long ("HD Pro Webcam C920 (046d:082d)"); clamp them so
-  // one verbose camera can't stretch the whole menu.
-  .camera-group :global(.dropdown-item) {
-    display: block;
-    max-width: 280px;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   @media (max-width: 900px) {
     .header-left { gap: 10px; }
     .brand-link { gap: 10px; }
     .header-title { font-size: 15px; }
+    // The value alone still reads as the model; the caption is what goes first.
+    .model-caption { display: none; }
+    .model-btn { max-width: 180px; }
   }
 
   @media (max-width: 720px) {

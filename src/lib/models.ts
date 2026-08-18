@@ -8,7 +8,9 @@
 
 import { get } from 'svelte/store';
 import { importModelFromZip, loadClassifierFromArtifacts, scoreStoredExamples } from '$lib/machine';
+import { reimportCurrentProgram } from '$lib/makecode';
 import { classifierModel } from '$lib/stores';
+import { resetStreamState } from '$lib/stores/streaming';
 import { rangesFromScores, type ClassRange } from '$lib/calibration';
 import {
   activeModel,
@@ -32,6 +34,13 @@ export async function activateModel(id: string): Promise<TrainedModel | null> {
   if (!model) return null;
   await loadClassifierFromArtifacts(model.artifacts);
   loadedModelId = id;
+  // Whatever the previous model last detected says nothing about this one, and
+  // the smoothing window is measured on its output distribution.
+  resetStreamState();
+  // The open program's class blocks are named after the loaded model, so a model
+  // change is also a relabelling. Only Programmieren has an editor mounted;
+  // everywhere else this does nothing.
+  reimportCurrentProgram();
   return model;
 }
 

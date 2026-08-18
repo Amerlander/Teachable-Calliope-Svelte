@@ -1,88 +1,80 @@
 /**
- * Creating, opening and re-pointing MakeCode programs.
+ * Creating and opening MakeCode programs.
  *
- * A program is always programmed against one model: the blocks it offers are
- * generated from that model's classes, and its class ids are indices into that
- * list. So generating a program, remembering which model it belongs to, and
- * loading that model are one operation — they happen together after training,
- * from the program list, and when Programmieren opens. That sequence lives here
- * so the three callers can't drift apart on what a program is bound to.
+ * A program used to belong to one model: its blocks were generated from that
+ * model's classes and addressed them by label-derived identifiers, so opening a
+ * program also meant loading its model, and pointing it at another one was only
+ * allowed within the same class list. None of that holds now. Class identity is
+ * the class index (see makecode/names.ts), the wire protocol was index-based all
+ * along, and the class names a program shows are rewritten from whichever model
+ * is loaded when it opens. So a program is just files, the model is chosen where
+ * models are chosen, and what is left here is generating a starter and opening a
+ * saved one.
  */
 
 import { get } from 'svelte/store';
 import { generateProject, importProgramFiles } from '$lib/makecode';
-import { activateModel } from '$lib/models';
+import { highestClassIndex } from '$lib/makecode/programFiles';
 import {
   addMakeCodeProgram,
   currentProject,
-  getModelById,
   selectMakeCodeProgram,
-  setProgramModel,
   type MakeCodeProgram,
   type TrainedModel
 } from '$lib/stores/projects';
 
 /**
- * Freshly generated program files for `model`. Nothing about the class scale is
- * baked in: the app maps and thresholds the scores and sends the detected class,
- * so a program keeps working when the mapping is retuned or its model swapped.
- */
-function filesForModel(model: TrainedModel) {
-  const project = get(currentProject);
-  return generateProject({
-    name: project?.name || 'Teachable Project',
-    mode: model.mode,
-    classes: [...model.classes]
-  });
-}
-
-/**
- * Generate a starter program for `model`, store it, and open it in the editor.
- * The new program becomes the project's active one.
+ * Generate a starter program from `model`'s classes, store it, and open it in
+ * the editor. The new program becomes the project's active one. Nothing about
+ * the model is kept: the classes only decide how many blocks the starter comes
+ * with and what they are called to begin with.
  */
 export function createProgramForModel(
   model: TrainedModel,
   opts?: { name?: string }
 ): MakeCodeProgram | null {
-  const generated = filesForModel(model);
+  const project = get(currentProject);
+  const generated = generateProject({
+    name: project?.name || 'Teachable Project',
+    mode: model.mode,
+    classes: [...model.classes]
+  });
   const program = addMakeCodeProgram({
     name: opts?.name,
     files: (generated.text ?? {}) as Record<string, string>,
-    header: generated.header,
-    model
+    header: generated.header
   });
   if (program) importProgramFiles(program.files, program.header);
   return program;
 }
 
 /**
- * Open a saved program: push its files into the editor and load the model it
- * runs on, so the live prediction feeding the board is that program's model.
- * Its files are never regenerated — what the student built stays untouched.
+ * Open a saved program: push its files into the editor, with the generated
+ * class list rewritten from the model that is loaded. What the student built —
+ * `main.blocks` and `main.ts` — is never touched.
  */
-export async function openProgram(program: MakeCodeProgram): Promise<TrainedModel | null> {
+export function openProgram(program: MakeCodeProgram): void {
   selectMakeCodeProgram(program.id);
   importProgramFiles(program.files, program.header);
-  return loadProgramModel(program);
-}
-
-/** Load the model a program runs on, if it still has one. */
-export async function loadProgramModel(program: MakeCodeProgram): Promise<TrainedModel | null> {
-  if (!program.modelId || !getModelById(program.modelId)) return null;
-  return activateModel(program.modelId);
 }
 
 /**
- * Swap the model a program runs on. Only models with the same classes are
- * accepted (see `modelsForProgram`), so the program's blocks keep meaning what
- * they meant — this is the "retrain and use the better run" path, not a way to
- * bend a program onto a different class set.
+ * How many class slots a program's blocks use, and how many the model has. The
+ * blocks stay valid either way — a slot the model doesn't fill simply never
+ * fires — so this is what a hint is built from, not a rule.
  */
-export async function switchProgramModel(
-  programId: string,
-  modelId: string
-): Promise<TrainedModel | null> {
-  const model = setProgramModel(programId, modelId);
-  if (!model) return null;
-  return activateModel(model.id);
+export function classGap(
+  program: MakeCodeProgram,
+  model: TrainedModel | null
+): { used: number; available: number } {
+  return {
+    used: highestClassIndex(program.files),
+    available: model?.classes.length ?? 0
+  };
+}
+
+/** True when the program addresses class slots the loaded model doesn't have. */
+export function hasClassGap(program: MakeCodeProgram, model: TrainedModel | null): boolean {
+  const { used, available } = classGap(program, model);
+  return used > available;
 }
