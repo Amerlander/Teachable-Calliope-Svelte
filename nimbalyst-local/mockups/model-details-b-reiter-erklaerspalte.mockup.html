@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Modell-Details — Variante B: Reiter + Erklär-Spalte</title>
+<style>
+  :root {
+    --md-primary: 0,0,0;
+    --md-on-primary: 255,255,255;
+    --md-surface: 255,255,255;
+    --md-on-surface: 28,27,31;
+    --md-surface-variant: 232,234,237;
+    --md-on-surface-variant: 70,70,79;
+    --md-outline-variant: 202,204,211;
+    --md-radius-sm: 8px;
+    --md-radius-md: 12px;
+    --md-radius-lg: 16px;
+    --md-radius-xl: 28px;
+    --md-font: 'Inter', system-ui, -apple-system, sans-serif;
+    --brand: #98F600;
+    --cyan: #42C9CB;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--md-font); color: rgb(var(--md-on-surface));
+    background: #2b2c2e; min-height: 100vh;
+    display: flex; align-items: flex-start; justify-content: center; padding: 30px 16px 24px;
+  }
+  .variant-tag {
+    position: fixed; top: 9px; left: 14px; z-index: 5;
+    font-size: 11px; letter-spacing: .6px; text-transform: uppercase;
+    color: rgba(255,255,255,.6); font-weight: 600;
+  }
+  .modal {
+    width: 95%; max-width: 1200px; height: 88vh; min-height: 660px;
+    background: rgb(var(--md-surface)); border-radius: var(--md-radius-xl);
+    box-shadow: 0 4px 8px 3px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.3);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-header { display: flex; align-items: flex-start; gap: 12px; padding: 18px 24px 12px; }
+  .modal-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  .head-sub {
+    margin-top: 3px; font-size: 12px; color: rgb(var(--md-on-surface-variant));
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
+    padding: 2px 7px; border-radius: 99px; background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary));
+  }
+  .chip.muted { background: rgba(0,0,0,.10); color: rgb(var(--md-on-surface-variant)); }
+  .chip.expert { background: var(--brand); color: #000; }
+  .close-btn {
+    margin-left: auto; width: 40px; height: 40px; border: none; background: transparent;
+    font-size: 26px; line-height: 1; border-radius: 50%; cursor: pointer; color: rgb(var(--md-on-surface-variant));
+  }
+
+  /* ---------- three columns: nav | data | explanation rail ---------- */
+  .body-3col {
+    flex: 1; min-height: 0; display: grid;
+    grid-template-columns: 194px 1fr 312px;
+  }
+  .nav {
+    border-right: 1px solid rgb(var(--md-outline-variant));
+    padding: 8px 10px 14px 20px; overflow-y: auto;
+  }
+  .nav-group {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600;
+    color: rgb(var(--md-on-surface-variant)); margin: 14px 0 6px 8px;
+  }
+  .nav-group:first-child { margin-top: 4px; }
+  .nav-group .chip.expert { margin-left: 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+    padding: 8px 10px; margin-bottom: 2px; border: none;
+    border-radius: var(--md-radius-sm); background: transparent; color: rgb(var(--md-on-surface));
+  }
+  .nav-item:hover { background: rgba(var(--md-surface-variant), .7); }
+  .nav-item.active { background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); font-weight: 600; }
+  .nav-item .n-count {
+    margin-left: auto; font-size: 11px; color: rgb(var(--md-on-surface-variant)); font-variant-numeric: tabular-nums;
+  }
+  .nav-item.active .n-count { color: rgba(255,255,255,.7); }
+
+  .data { overflow-y: auto; padding: 14px 20px 20px; }
+  .rail {
+    border-left: 1px solid rgb(var(--md-outline-variant));
+    background: rgba(var(--md-surface-variant), .35);
+    padding: 14px 18px 20px; overflow-y: auto;
+  }
+  .rail h4 {
+    margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+    color: rgb(var(--md-on-surface-variant));
+  }
+  .rail-block { margin-bottom: 18px; }
+  .rail-block h5 { margin: 0 0 4px; font-size: 12.5px; font-weight: 600; }
+  .rail-block p { margin: 0 0 7px; font-size: 12px; line-height: 1.55; color: rgb(var(--md-on-surface-variant)); }
+  .rail-block p:last-child { margin-bottom: 0; }
+  .rail-block strong { color: rgb(var(--md-on-surface)); }
+  .rail-tip {
+    background: rgb(var(--md-surface)); border-left: 3px solid var(--cyan);
+    border-radius: var(--md-radius-sm); padding: 9px 11px; font-size: 12px; line-height: 1.5;
+    color: rgb(var(--md-on-surface-variant));
+  }
+
+  .pane-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+  .pane-head h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  .pane-head .hint { font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); margin-left: auto; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+  .kpi {
+    background: rgba(var(--md-surface-variant), .45); border-radius: var(--md-radius-md);
+    padding: 9px 12px;
+  }
+  .kpi .k-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: rgb(var(--md-on-surface-variant)); }
+  .kpi .k-value { font-size: 24px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .kpi .k-value.good { color: #4CAF50; }
+  .kpi .k-sub { font-size: 11px; color: rgb(var(--md-on-surface-variant)); }
+
+  .card {
+    background: rgba(var(--md-surface-variant), .3);
+    border-radius: var(--md-radius-md); padding: 10px 12px; margin-bottom: 14px;
+  }
+  .card-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600;
+    color: rgb(var(--md-on-surface-variant));
+  }
+  .tabs { display: flex; gap: 4px; margin-left: auto; }
+  .tab {
+    font: inherit; font-size: 11px; font-weight: 600; padding: 4px 10px; cursor: pointer;
+    border-radius: 99px; border: none; background: transparent; color: rgb(var(--md-on-surface-variant));
+    text-transform: none; letter-spacing: 0;
+  }
+  .tab.active { background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); }
+  .chart-legend { display: flex; gap: 14px; font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+  .cls-row {
+    display: grid; grid-template-columns: 1fr 116px 52px 48px; gap: 10px; align-items: center;
+    padding: 8px 2px; border-bottom: 1px solid rgba(202,204,211,.45); font-size: 13px;
+  }
+  .cls-row:last-child { border-bottom: none; }
+  .cls-row .nm { font-weight: 600; }
+  .bar { height: 6px; border-radius: 99px; background: rgba(28,27,31,.09); overflow: hidden; }
+  .bar > span { display: block; height: 100%; border-radius: 99px; background: var(--cyan); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pct { text-align: right; font-size: 12px; color: rgb(var(--md-on-surface-variant)); font-variant-numeric: tabular-nums; }
+  .warn-pill { font-size: 10px; font-weight: 600; color: #8a5b00; background: #FFF3CD; border-radius: 99px; padding: 1px 6px; margin-left: 6px; }
+
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .fact { background: rgb(var(--md-surface)); border: 1px solid rgba(202,204,211,.7); border-radius: var(--md-radius-sm); padding: 8px 10px; }
+  .fact .f-label { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); }
+  .fact .f-value { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .modal-footer {
+    padding: 12px 24px; border-top: 1px solid rgb(var(--md-outline-variant));
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 9px 18px; border-radius: 99px;
+    border: none; cursor: pointer; background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary));
+  }
+  .btn.ghost { background: transparent; color: rgb(var(--md-on-surface)); border: 1px solid rgb(var(--md-outline-variant)); }
+</style>
+</head>
+<body>
+<div class="variant-tag">Variante B — Reiter links, Daten mittig, Erklär-Spalte rechts (folgt dem Reiter)</div>
+<div class="modal">
+  <div class="modal-header">
+    <div>
+      <h2>Modell-Details</h2>
+      <div class="head-sub">
+        <span>Obst v3</span><span>·</span><span>Projekt „Obst erkennen“</span><span>·</span>
+        <span>trainiert am 17.08.2026, 14:32</span>
+        <span class="chip">aktiv</span>
+        <span class="chip muted">Objekt</span>
+      </div>
+    </div>
+    <button class="close-btn">&times;</button>
+  </div>
+
+  <div class="body-3col">
+    <!-- NAV: the expert areas are their own group instead of being hidden -->
+    <nav class="nav">
+      <div class="nav-group">Modell</div>
+      <button class="nav-item active">Überblick</button>
+      <button class="nav-item">Klassen <span class="n-count">3</span></button>
+      <button class="nav-item">Einstellungen</button>
+
+      <div class="nav-group">Experten <span class="chip expert">für Profis</span></div>
+      <button class="nav-item">Architektur</button>
+      <button class="nav-item">Verlauf pro Epoche <span class="n-count">30</span></button>
+      <button class="nav-item">Verwechslungen</button>
+      <button class="nav-item">Rohdaten &amp; Export</button>
+    </nav>
+
+    <!-- DATA -->
+    <div class="data">
+      <div class="pane-head">
+        <h3>Überblick</h3>
+        <span class="hint">30 von 30 Epochen · 135 Bilder · Bildbereich 224 × 224</span>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="k-label">Genauigkeit</div><div class="k-value good">96,3 %</div><div class="k-sub">Training</div></div>
+        <div class="kpi"><div class="k-label">Verlust</div><div class="k-value">0,0412</div><div class="k-sub">von 1,08 gefallen</div></div>
+        <div class="kpi"><div class="k-label">Klassen</div><div class="k-value">3</div><div class="k-sub">Apfel · Banane · Nichts</div></div>
+        <div class="kpi"><div class="k-label">Beispiele</div><div class="k-value">135</div><div class="k-sub">Ø 45 pro Klasse</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          Trainingsverlauf
+          <div class="tabs">
+            <button class="tab active">Kurven</button>
+            <button class="tab">Verwechslungen</button>
+          </div>
+        </div>
+        <div class="chart-legend" style="margin-bottom:2px">
+          <span><i class="dot" style="background:#4CAF50"></i>Genauigkeit</span>
+          <span><i class="dot" style="background:#F44336"></i>Verlust</span>
+        </div>
+        <svg viewBox="0 0 600 210" width="100%" height="210" role="img" aria-label="Genauigkeit und Verlust pro Epoche">
+          <g stroke="rgba(0,0,0,.08)" stroke-width="1">
+            <line x1="42" y1="16" x2="580" y2="16"/><line x1="42" y1="56" x2="580" y2="56"/>
+            <line x1="42" y1="96" x2="580" y2="96"/><line x1="42" y1="136" x2="580" y2="136"/>
+            <line x1="42" y1="172" x2="580" y2="172"/>
+          </g>
+          <g font-size="9" fill="#4CAF50" text-anchor="end">
+            <text x="36" y="20">100%</text><text x="36" y="100">50%</text><text x="36" y="175">0%</text>
+          </g>
+          <g font-size="9" fill="#F44336" text-anchor="start">
+            <text x="586" y="20">1,2</text><text x="586" y="100">0,6</text><text x="586" y="175">0</text>
+          </g>
+          <polyline fill="none" stroke="#4CAF50" stroke-width="2.2" stroke-linejoin="round"
+            points="42,156 60,120 78,101 96,86 114,75 132,66 150,60 168,53 186,48 204,44 222,41 240,39 258,37 276,34 294,32 312,31 330,30 348,28 366,27 384,26 402,25 420,25 438,24 456,23 474,23 492,22 510,22 528,21 546,21 564,20 580,20"/>
+          <polyline fill="none" stroke="#F44336" stroke-width="2.2" stroke-linejoin="round"
+            points="42,24 60,55 78,77 96,93 114,106 132,117 150,126 168,133 186,139 204,144 222,148 240,152 258,154 276,157 294,158 312,160 330,161 348,162 366,163 384,164 402,165 420,166 438,166 456,167 474,167 492,168 510,168 528,169 546,169 564,169 580,170"/>
+          <g font-size="9" fill="#46464F" text-anchor="middle">
+            <text x="42" y="190">1</text><text x="222" y="190">10</text><text x="402" y="190">20</text><text x="580" y="190">30</text>
+            <text x="311" y="205">Epoche</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Klassen dieses Modells</div>
+        <div class="cls-row">
+          <div class="nm">Apfel</div><div class="bar"><span style="width:76%"></span></div><div class="num">42</div><div class="pct">31,1 %</div>
+        </div>
+        <div class="cls-row">
+          <div class="nm">Banane <span class="warn-pill">wenig</span></div><div class="bar"><span style="width:69%"></span></div><div class="num">38</div><div class="pct">28,1 %</div>
+        </div>
+        <div class="cls-row">
+          <div class="nm">Nichts</div><div class="bar"><span style="width:100%"></span></div><div class="num">55</div><div class="pct">40,7 %</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Kurzfassung der Einstellungen</div>
+        <div class="facts">
+          <div class="fact"><div class="f-label">Epochen</div><div class="f-value">30</div></div>
+          <div class="fact"><div class="f-label">Lernrate</div><div class="f-value">0,001</div></div>
+          <div class="fact"><div class="f-label">Batch-Größe</div><div class="f-value">16</div></div>
+          <div class="fact"><div class="f-label">Hidden Units</div><div class="f-value">100</div></div>
+          <div class="fact"><div class="f-label">Augmentierung</div><div class="f-value">An</div></div>
+          <div class="fact"><div class="f-label">Validierung</div><div class="f-value">15 %</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RAIL: explanation always visible next to the numbers it belongs to -->
+    <aside class="rail">
+      <h4>Dazu wissen</h4>
+
+      <div class="rail-block">
+        <h5>Genauigkeit 96,3 %</h5>
+        <p>
+          Gezählt werden nur die Bilder, die du selbst aufgenommen hast. Ein hoher Wert
+          ist <strong>kein Beleg</strong>, dass das Modell auch bei neuen Bildern richtig
+          liegt.
+        </p>
+      </div>
+
+      <div class="rail-block">
+        <h5>Verlust 0,0412</h5>
+        <p>
+          Abstand zwischen Vorhersage und richtiger Antwort. Er soll fallen — steigt er
+          am Ende wieder, ist das Modell überangepasst.
+        </p>
+      </div>
+
+      <div class="rail-block">
+        <h5>Die Kurven</h5>
+        <p>
+          Grün flacht ab Epoche 12 ab: ab dort lernt das Modell kaum noch dazu, mehr
+          Epochen bringen wenig.
+        </p>
+      </div>
+
+      <div class="rail-block">
+        <h5>Klassen-Verteilung</h5>
+        <p>
+          „Banane“ hat rund ein Drittel weniger Bilder als „Nichts“ und wird deshalb
+          tendenziell schlechter erkannt. <strong>30 Bilder pro Klasse</strong> sind ein
+          guter Start, bei ähnlichen Klassen lieber 100 und mehr.
+        </p>
+      </div>
+
+      <div class="rail-tip">
+        <strong>Nächster Schritt:</strong> 15–20 weitere Banane-Bilder aufnehmen — in
+        anderer Position und bei anderem Licht — und neu trainieren. Das bringt mehr als
+        jede geänderte Einstellung.
+      </div>
+    </aside>
+  </div>
+
+  <div class="modal-footer">
+    <span style="font-size:11.5px;color:rgb(var(--md-on-surface-variant))">
+      Modell-ID m_8f3a21 · 3 Programme nutzen dieses Modell
+    </span>
+    <div style="display:flex;gap:10px">
+      <button class="btn ghost">Exportieren</button>
+      <button class="btn">Schließen</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

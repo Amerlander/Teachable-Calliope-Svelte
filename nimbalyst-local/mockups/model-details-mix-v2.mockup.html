@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Modell-Details — Mix v2: alle Reiter, monochrom</title>
+<style>
+  :root {
+    --md-primary: 0,0,0;
+    --md-on-primary: 255,255,255;
+    --md-surface: 255,255,255;
+    --md-on-surface: 28,27,31;
+    --md-surface-variant: 232,234,237;
+    --md-on-surface-variant: 70,70,79;
+    --md-outline-variant: 202,204,211;
+    --md-radius-sm: 8px;
+    --md-radius-md: 12px;
+    --md-radius-lg: 16px;
+    --md-radius-xl: 28px;
+    --md-font: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--md-font); color: rgb(var(--md-on-surface));
+    background: #2b2c2e; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; gap: 28px;
+    padding: 34px 16px 44px;
+  }
+  .variant-tag {
+    position: fixed; top: 9px; left: 14px; z-index: 30;
+    font-size: 11px; letter-spacing: .6px; text-transform: uppercase;
+    color: rgba(255,255,255,.6); font-weight: 600;
+  }
+  .stage-label {
+    width: 95%; max-width: 1200px; margin-bottom: -16px;
+    font-size: 11px; letter-spacing: .6px; text-transform: uppercase; font-weight: 600;
+    color: rgba(255,255,255,.55);
+  }
+
+  /* ===================== modal shell (Modal size="fullscreen") ===================== */
+  .modal {
+    width: 95%; max-width: 1200px;
+    background: rgb(var(--md-surface)); border-radius: var(--md-radius-xl);
+    box-shadow: 0 4px 8px 3px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.3);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-header { display: flex; align-items: flex-start; gap: 12px; padding: 18px 24px 12px; }
+  .modal-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  .head-sub {
+    margin-top: 3px; font-size: 12px; color: rgb(var(--md-on-surface-variant));
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
+    padding: 2px 7px; border-radius: 99px; background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary));
+  }
+  .chip.muted { background: rgba(28,27,31,.10); color: rgb(var(--md-on-surface-variant)); }
+  .close-btn {
+    margin-left: auto; width: 40px; height: 40px; border: none; background: transparent;
+    font-size: 26px; line-height: 1; border-radius: 50%; cursor: pointer; color: rgb(var(--md-on-surface-variant));
+  }
+  .modal-footer {
+    padding: 12px 24px; border-top: 1px solid rgb(var(--md-outline-variant));
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  .foot-note { font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); }
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 9px 18px; border-radius: 99px;
+    border: none; cursor: pointer; background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary));
+  }
+  .btn.ghost { background: transparent; color: rgb(var(--md-on-surface)); border: 1px solid rgb(var(--md-outline-variant)); }
+  .btn.small { font-size: 12px; padding: 6px 13px; }
+
+  /* ===================== three columns ===================== */
+  .body-3col { display: grid; grid-template-columns: 196px 1fr 322px; min-height: 0; }
+  .nav { border-right: 1px solid rgb(var(--md-outline-variant)); padding: 6px 10px 16px 20px; }
+  .nav-group {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600;
+    color: rgb(var(--md-on-surface-variant)); margin: 15px 0 6px 8px;
+  }
+  .nav-group:first-child { margin-top: 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 7px; width: 100%;
+    font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+    padding: 8px 10px; margin-bottom: 2px; border: none;
+    border-radius: var(--md-radius-sm); background: transparent; color: rgb(var(--md-on-surface));
+  }
+  .nav-item:hover { background: rgba(var(--md-surface-variant), .7); }
+  .nav-item.active { background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); font-weight: 600; }
+  .nav-item .n-count { margin-left: auto; font-size: 11px; color: rgb(var(--md-on-surface-variant)); font-variant-numeric: tabular-nums; }
+  .nav-item.active .n-count { color: rgba(255,255,255,.72); }
+  /* attention marker without colour: filled black circle with an exclamation */
+  .n-mark {
+    width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+    background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary));
+    font-size: 9px; font-weight: 700; line-height: 14px; text-align: center;
+  }
+  .nav-item.active .n-mark { background: rgb(var(--md-on-primary)); color: rgb(var(--md-primary)); }
+
+  .data { padding: 14px 20px 20px; position: relative; min-width: 0; }
+  .pane-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+  .pane-head h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  .pane-head .hint { font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); margin-left: auto; }
+
+  /* ---- info "?" (mirrors ui/InfoTooltip.svelte) ---- */
+  .info { display: inline-flex; align-items: center; margin-left: 6px; position: relative; }
+  .info .q {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%;
+    background: rgb(var(--md-surface-variant)); color: rgb(var(--md-on-surface-variant));
+    font-size: 10px; font-weight: 700; line-height: 1; cursor: help;
+  }
+  .info.open .q { background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); }
+  .tip-card {
+    position: absolute; top: 20px; left: -8px; z-index: 12; width: 264px;
+    background: rgb(var(--md-surface)); border-radius: var(--md-radius-md);
+    box-shadow: 0 4px 8px 3px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.3);
+    padding: 10px 14px; text-transform: none; letter-spacing: 0;
+  }
+  .tip-card .t-title { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .tip-card .t-body { display: block; font-size: 12px; line-height: 1.45; color: rgb(var(--md-on-surface-variant)); }
+
+  /* ---- KPI tiles ---- */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .kpi { background: rgba(var(--md-surface-variant), .5); border-radius: var(--md-radius-md); padding: 9px 12px; }
+  .kpi .k-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+    color: rgb(var(--md-on-surface-variant)); display: flex; align-items: center;
+  }
+  .kpi .k-value { font-size: 24px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .kpi .k-sub { font-size: 11px; color: rgb(var(--md-on-surface-variant)); }
+
+  .card { background: rgba(var(--md-surface-variant), .32); border-radius: var(--md-radius-md); padding: 10px 12px; margin-bottom: 12px; }
+  .card.plain { background: transparent; border: 1px solid rgb(var(--md-outline-variant)); }
+  .card-head {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600;
+    color: rgb(var(--md-on-surface-variant));
+  }
+  .card-head .hint { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; }
+  .tabs { display: flex; gap: 4px; margin-left: auto; }
+  .tab {
+    font: inherit; font-size: 11px; font-weight: 600; padding: 4px 10px; cursor: pointer;
+    border-radius: 99px; border: none; background: transparent; color: rgb(var(--md-on-surface-variant));
+    text-transform: none; letter-spacing: 0;
+  }
+  .tab.active { background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); }
+  .chart-legend { display: flex; gap: 14px; font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+  /* ---- rows and tables ---- */
+  .row-list { display: flex; flex-direction: column; }
+  .r {
+    display: grid; align-items: center; gap: 10px; font-size: 13px;
+    padding: 8px 2px; border-bottom: 1px solid rgba(202,204,211,.55);
+  }
+  .r:last-child { border-bottom: none; }
+  .r.cls { grid-template-columns: 1fr 112px 44px 50px; }
+  .r.cls-wide { grid-template-columns: 1fr 150px 52px 54px 74px 96px; }
+  .r .nm { font-weight: 600; display: flex; align-items: center; }
+  .bar { height: 6px; border-radius: 99px; background: rgba(28,27,31,.10); overflow: hidden; }
+  .bar > span { display: block; height: 100%; border-radius: 99px; background: rgba(28,27,31,.55); }
+  .bar > span.weak { background: rgba(28,27,31,.28); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sub { text-align: right; font-size: 12px; color: rgb(var(--md-on-surface-variant)); font-variant-numeric: tabular-nums; }
+  /* neutral pill instead of a coloured one */
+  .pill {
+    font-size: 10px; font-weight: 600; letter-spacing: .2px; margin-left: 7px;
+    padding: 1px 7px; border-radius: 99px; white-space: nowrap; flex-shrink: 0;
+    background: rgba(28,27,31,.09); color: rgb(var(--md-on-surface-variant));
+  }
+  .pill.strong { background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); }
+  .thumbs { display: flex; gap: 3px; }
+  .thumb { width: 26px; height: 26px; border-radius: 5px; background: rgba(28,27,31,.14); }
+  .thumb:nth-child(2) { background: rgba(28,27,31,.2); }
+  .thumb:nth-child(3) { background: rgba(28,27,31,.11); }
+  .link {
+    font: inherit; font-size: 12px; font-weight: 600; color: rgb(var(--md-on-surface));
+    background: transparent; border: none; padding: 0; cursor: pointer; text-decoration: underline;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid rgba(202,204,211,.55); vertical-align: top; }
+  th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); font-weight: 600; }
+  td { font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  .scroll-table { max-height: 300px; overflow-y: auto; border-radius: var(--md-radius-sm); background: rgba(var(--md-surface-variant), .32); }
+  .scroll-table.short { max-height: 190px; }
+
+  /* ---- settings / facts ---- */
+  .opt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; }
+  .opt {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    padding: 8px 10px; border-radius: var(--md-radius-sm); background: rgba(var(--md-surface-variant), .45);
+  }
+  .opt .o-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+    color: rgb(var(--md-on-surface-variant)); display: flex; align-items: center;
+  }
+  .opt .o-value { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sub-block { margin-top: 10px; padding: 10px 12px; border: 1px solid rgb(var(--md-outline-variant)); border-radius: var(--md-radius-sm); }
+  .sub-h { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); font-weight: 600; margin-bottom: 8px; }
+
+  /* ---- layer diagram ---- */
+  .layers { display: flex; flex-direction: column; gap: 6px; }
+  .layer {
+    display: grid; grid-template-columns: 20px 1fr auto auto; gap: 10px; align-items: center;
+    padding: 8px 11px; border-radius: var(--md-radius-sm);
+    background: rgba(var(--md-surface-variant), .45); font-size: 12.5px;
+  }
+  .layer.frozen { background: transparent; border: 1px dashed rgb(var(--md-outline-variant)); }
+  .layer .l-idx { font-size: 10px; color: rgb(var(--md-on-surface-variant)); font-variant-numeric: tabular-nums; }
+  .layer .l-name { font-weight: 600; }
+  .layer .l-shape { font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); font-variant-numeric: tabular-nums; }
+  .layer .l-params { font-size: 11.5px; font-variant-numeric: tabular-nums; min-width: 74px; text-align: right; }
+
+  /* ---- confusion matrix, greyscale ---- */
+  .cm { display: grid; grid-template-columns: 78px repeat(3, 1fr); gap: 3px; font-size: 11.5px; }
+  .cm > div { padding: 9px 4px; text-align: center; border-radius: 4px; font-variant-numeric: tabular-nums; }
+  .cm .hd { color: rgb(var(--md-on-surface-variant)); font-weight: 600; }
+  .cm .rl { color: rgb(var(--md-on-surface-variant)); font-weight: 600; text-align: right; padding-right: 8px; }
+  .g0 { background: rgba(28,27,31,.035); color: rgb(var(--md-on-surface-variant)); }
+  .g1 { background: rgba(28,27,31,.10); }
+  .g2 { background: rgba(28,27,31,.22); }
+  .g5 { background: rgba(28,27,31,.80); color: #fff; font-weight: 700; }
+  .cm-axis { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); margin: 0 0 6px 78px; }
+
+  /* ---- raw data ---- */
+  pre {
+    margin: 0; padding: 12px 14px; border-radius: var(--md-radius-sm);
+    background: rgba(var(--md-surface-variant), .45);
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11.5px; line-height: 1.5; color: rgb(var(--md-on-surface));
+    overflow-x: auto;
+  }
+  .export-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+  /* ===================== right column ===================== */
+  .rail {
+    border-left: 1px solid rgb(var(--md-outline-variant));
+    background: rgba(var(--md-surface-variant), .35);
+    padding: 14px 18px 20px; min-width: 0;
+  }
+  .rail-h {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600;
+    color: rgb(var(--md-on-surface-variant)); margin: 0 0 9px;
+  }
+  .rail-h.second { margin-top: 22px; }
+  /* every finding looks the same: no coloured accents, a kicker carries the weight */
+  .find {
+    background: rgb(var(--md-surface)); border-radius: var(--md-radius-sm);
+    padding: 9px 11px; margin-bottom: 8px;
+    font-size: 12px; line-height: 1.5; color: rgb(var(--md-on-surface-variant));
+  }
+  .find .f-head { display: block; font-weight: 600; color: rgb(var(--md-on-surface)); margin-bottom: 2px; }
+  /* the one call to action is inverted rather than coloured */
+  .find.next { background: rgb(var(--md-primary)); color: rgba(255,255,255,.82); }
+  .find.next .f-head { color: rgb(var(--md-on-primary)); }
+  .find.next .dyn { color: #fff; border-bottom-color: rgba(255,255,255,.6); }
+  .dyn { border-bottom: 1px dotted rgba(28,27,31,.5); font-weight: 600; color: rgb(var(--md-on-surface)); }
+  .know { margin-bottom: 14px; }
+  .know h5 { margin: 0 0 3px; font-size: 12.5px; font-weight: 600; }
+  .know p { margin: 0; font-size: 12px; line-height: 1.55; color: rgb(var(--md-on-surface-variant)); }
+  .legend {
+    margin-top: 14px; padding-top: 10px; border-top: 1px solid rgb(var(--md-outline-variant));
+    font-size: 11px; line-height: 1.5; color: rgb(var(--md-on-surface-variant));
+  }
+
+  /* ===================== catalogue ===================== */
+  .spec {
+    width: 95%; max-width: 1200px; background: rgb(var(--md-surface));
+    border-radius: var(--md-radius-lg); padding: 20px 24px 26px;
+  }
+  .spec h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+  .spec p.lead { margin: 0 0 6px; font-size: 13px; line-height: 1.55; color: rgb(var(--md-on-surface-variant)); }
+  .spec h3 {
+    margin: 22px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px;
+    color: rgb(var(--md-on-surface-variant));
+  }
+  code {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11.5px;
+    background: rgba(var(--md-surface-variant), .8); border-radius: 4px; padding: 1px 5px;
+  }
+  .slot { font-weight: 600; border-bottom: 1px dotted rgba(28,27,31,.5); }
+  .prio { font-variant-numeric: tabular-nums; color: rgb(var(--md-on-surface-variant)); }
+</style>
+</head>
+<body>
+<div class="variant-tag">Mix v2 — monochrom, alle sieben Reiter, Bausteine humanisiert</div>
+
+<!-- =========================================================== 1 ÜBERBLICK -->
+<div class="stage-label">Reiter 1 — Überblick</div>
+<div class="modal" id="pane1">
+  <div class="modal-header">
+    <div>
+      <h2>Modell-Details</h2>
+      <div class="head-sub">
+        <span>Obst v3</span><span>·</span><span>Projekt „Obst erkennen“</span><span>·</span>
+        <span>trainiert am 17.08.2026, 14:32</span>
+        <span class="chip">aktiv</span>
+        <span class="chip muted">Objekt</span>
+      </div>
+    </div>
+    <button class="close-btn">&times;</button>
+  </div>
+
+  <div class="body-3col">
+    <nav class="nav">
+      <div class="nav-group">Modell</div>
+      <button class="nav-item active">Überblick</button>
+      <button class="nav-item">Klassen <span class="n-mark">!</span><span class="n-count">3</span></button>
+      <button class="nav-item">Einstellungen</button>
+      <div class="nav-group">Für Fortgeschrittene</div>
+      <button class="nav-item">Architektur</button>
+      <button class="nav-item">Verlauf pro Epoche <span class="n-count">30</span></button>
+      <button class="nav-item">Verwechslungen <span class="n-mark">!</span></button>
+      <button class="nav-item">Rohdaten &amp; Export</button>
+    </nav>
+
+    <div class="data">
+      <div class="pane-head">
+        <h3>Überblick</h3>
+        <span class="hint">30 von 30 Epochen · 135 Bilder · Bildbereich 224 × 224</span>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="k-label">Genauigkeit
+            <span class="info open"><span class="q">?</span>
+              <span class="tip-card">
+                <span class="t-title">Genauigkeit</span>
+                <span class="t-body">Anteil der Trainingsbilder, die das Modell richtig erkennt. Über neue Bilder sagt der Wert nichts.</span>
+              </span>
+            </span>
+          </div>
+          <div class="k-value">96,3 %</div>
+          <div class="k-sub">Training · 94,1 % geprüft</div>
+        </div>
+        <div class="kpi">
+          <div class="k-label">Verlust <span class="info"><span class="q">?</span></span></div>
+          <div class="k-value">0,0412</div>
+          <div class="k-sub">von 1,08 gefallen</div>
+        </div>
+        <div class="kpi">
+          <div class="k-label">Klassen <span class="info"><span class="q">?</span></span></div>
+          <div class="k-value">3</div>
+          <div class="k-sub">Apfel · Banane · Nichts</div>
+        </div>
+        <div class="kpi">
+          <div class="k-label">Beispiele <span class="info"><span class="q">?</span></span></div>
+          <div class="k-value">135</div>
+          <div class="k-sub">Ø 45 pro Klasse</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          Trainingsverlauf
+          <div class="tabs">
+            <button class="tab active">Kurven</button>
+            <button class="tab">Verwechslungen</button>
+          </div>
+        </div>
+        <div class="chart-legend" style="margin-bottom:2px">
+          <span><i class="dot" style="background:#4CAF50"></i>Genauigkeit</span>
+          <span><i class="dot" style="background:#F44336"></i>Verlust</span>
+        </div>
+        <svg viewBox="0 0 600 196" width="100%" height="196" role="img" aria-label="Genauigkeit und Verlust pro Epoche">
+          <g stroke="rgba(0,0,0,.08)" stroke-width="1">
+            <line x1="42" y1="14" x2="580" y2="14"/><line x1="42" y1="51" x2="580" y2="51"/>
+            <line x1="42" y1="88" x2="580" y2="88"/><line x1="42" y1="125" x2="580" y2="125"/>
+            <line x1="42" y1="160" x2="580" y2="160"/>
+          </g>
+          <g font-size="9" fill="#4CAF50" text-anchor="end">
+            <text x="36" y="18">100%</text><text x="36" y="92">50%</text><text x="36" y="163">0%</text>
+          </g>
+          <g font-size="9" fill="#F44336" text-anchor="start">
+            <text x="586" y="18">1,2</text><text x="586" y="92">0,6</text><text x="586" y="163">0</text>
+          </g>
+          <line x1="240" y1="14" x2="240" y2="160" stroke="#46464F" stroke-width="1" stroke-dasharray="3 3" opacity=".45"/>
+          <text x="245" y="25" font-size="9" fill="#46464F">Plateau ab Epoche 12</text>
+          <polyline fill="none" stroke="#4CAF50" stroke-width="2.2" stroke-linejoin="round"
+            points="42,146 60,112 78,94 96,80 114,70 132,62 150,56 168,49 186,45 204,41 222,38 240,36 258,34 276,32 294,31 312,29 330,28 348,27 366,26 384,25 402,24 420,23 438,23 456,22 474,22 492,21 510,21 528,20 546,20 564,19 580,19"/>
+          <polyline fill="none" stroke="#F44336" stroke-width="2.2" stroke-linejoin="round"
+            points="42,22 60,51 78,71 96,87 114,99 132,109 150,117 168,124 186,129 204,134 222,138 240,141 258,144 276,146 294,148 312,149 330,151 348,152 366,153 384,153 402,154 420,155 438,155 456,156 474,156 492,157 510,157 528,158 546,158 564,158 580,159"/>
+          <g font-size="9" fill="#46464F" text-anchor="middle">
+            <text x="42" y="178">1</text><text x="222" y="178">10</text><text x="402" y="178">20</text><text x="580" y="178">30</text>
+            <text x="311" y="192">Epoche</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Klassen <span class="hint">135 Bilder</span></div>
+        <div class="row-list">
+          <div class="r cls"><div class="nm">Apfel</div><div class="bar"><span style="width:76%"></span></div><div class="num">42</div><div class="sub">31,1 %</div></div>
+          <div class="r cls"><div class="nm">Banane <span class="pill">31 % weniger</span></div><div class="bar"><span class="weak" style="width:69%"></span></div><div class="num">38</div><div class="sub">28,1 %</div></div>
+          <div class="r cls"><div class="nm">Nichts</div><div class="bar"><span style="width:100%"></span></div><div class="num">55</div><div class="sub">40,7 %</div></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <div class="rail-h">Was auffällt</div>
+
+      <div class="find">
+        <span class="f-head">Solide trainiert</span>
+        <span class="dyn">96,3 %</span> auf den Trainingsbildern, <span class="dyn">94,1 %</span>
+        auf den zurückgehaltenen. Die beiden Werte liegen dicht beieinander. Das spricht
+        dafür, dass das Modell auch bei neuen Bildern trägt.
+      </div>
+
+      <div class="find">
+        <span class="f-head">„<span class="dyn">Banane</span>“ hat am wenigsten Bilder</span>
+        <span class="dyn">38</span> gegenüber <span class="dyn">55</span> bei
+        „<span class="dyn">Nichts</span>“. Klassen mit deutlich weniger Bildern erkennt das
+        Modell meist schlechter.
+      </div>
+
+      <div class="find">
+        <span class="f-head">Häufigste Verwechslung</span>
+        „<span class="dyn">Banane</span>“ wurde <span class="dyn">3 ×</span> für
+        „<span class="dyn">Apfel</span>“ gehalten.
+      </div>
+
+      <div class="find">
+        <span class="f-head">Ab Epoche <span class="dyn">12</span> kaum noch Fortschritt</span>
+        Die letzten <span class="dyn">18</span> Epochen haben weniger als einen Prozentpunkt
+        gebracht. Weniger Epochen hätten hier gereicht.
+      </div>
+
+      <div class="find next">
+        <span class="f-head">Nächster Schritt</span>
+        <span class="dyn">15–20</span> weitere Bilder von „<span class="dyn">Banane</span>“
+        aufnehmen, in anderer Position und bei anderem Licht, dann neu trainieren.
+      </div>
+
+      <div class="rail-h second">Gut zu wissen</div>
+      <div class="know">
+        <h5>Woran man Überanpassung merkt</h5>
+        <p>
+          Wenn die Genauigkeit hoch ist, das Modell im Video aber unsicher wird, sobald sich
+          Licht oder Hintergrund ändern, hat es sich die Bilder gemerkt statt der Muster
+          darin.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Gut testen</h5>
+        <p>
+          Halte auch Dinge ins Bild, die zu keiner Klasse gehören. Ein Modell ohne Klasse
+          für „nichts davon“ muss sich immer für eine Klasse entscheiden.
+        </p>
+      </div>
+
+      <div class="legend">
+        <span class="dyn">Gepunktet</span> markiert die Werte, die die App einsetzt. Der
+        übrige Text steht fest im Katalog unten.
+      </div>
+    </aside>
+  </div>
+
+  <div class="modal-footer">
+    <span class="foot-note">Modell-ID m_8f3a21 · 3 Programme nutzen dieses Modell</span>
+    <div style="display:flex;gap:10px">
+      <button class="btn ghost">Exportieren</button>
+      <button class="btn">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================== 2 KLASSEN -->
+<div class="stage-label">Reiter 2 — Klassen</div>
+<div class="modal" id="pane2">
+  <div class="modal-header">
+    <div>
+      <h2>Modell-Details</h2>
+      <div class="head-sub">
+        <span>Obst v3</span><span>·</span><span>Projekt „Obst erkennen“</span>
+        <span class="chip">aktiv</span>
+      </div>
+    </div>
+    <button class="close-btn">&times;</button>
+  </div>
+
+  <div class="body-3col">
+    <nav class="nav">
+      <div class="nav-group">Modell</div>
+      <button class="nav-item">Überblick</button>
+      <button class="nav-item active">Klassen <span class="n-mark">!</span><span class="n-count">3</span></button>
+      <button class="nav-item">Einstellungen</button>
+      <div class="nav-group">Für Fortgeschrittene</div>
+      <button class="nav-item">Architektur</button>
+      <button class="nav-item">Verlauf pro Epoche <span class="n-count">30</span></button>
+      <button class="nav-item">Verwechslungen <span class="n-mark">!</span></button>
+      <button class="nav-item">Rohdaten &amp; Export</button>
+    </nav>
+
+    <div class="data">
+      <div class="pane-head">
+        <h3>Klassen</h3>
+        <span class="hint">3 Klassen · 135 Bilder · Reihenfolge wie im Modell</span>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>Bilder und Erkennung pro Klasse</span>
+          <span class="hint">Erkennungsrate aus der Verwechslungsmatrix</span>
+        </div>
+        <div class="r cls-wide" style="border-bottom:1px solid rgb(var(--md-outline-variant))">
+          <div class="o-label" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:rgb(var(--md-on-surface-variant))">Klasse</div>
+          <div class="o-label" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:rgb(var(--md-on-surface-variant))">Anteil</div>
+          <div class="sub">Bilder</div>
+          <div class="sub">%</div>
+          <div class="sub">Erkannt <span class="info"><span class="q">?</span></span></div>
+          <div class="sub">Beispiele</div>
+        </div>
+        <div class="r cls-wide">
+          <div class="nm">Apfel</div>
+          <div class="bar"><span style="width:76%"></span></div>
+          <div class="num">42</div><div class="sub">31,1 %</div><div class="sub">97,6 %</div>
+          <div class="thumbs"><span class="thumb"></span><span class="thumb"></span><span class="thumb"></span></div>
+        </div>
+        <div class="r cls-wide">
+          <div class="nm">Banane <span class="pill">wenigste Bilder</span></div>
+          <div class="bar"><span class="weak" style="width:69%"></span></div>
+          <div class="num">38</div><div class="sub">28,1 %</div><div class="sub">89,5 %</div>
+          <div class="thumbs"><span class="thumb"></span><span class="thumb"></span><span class="thumb"></span></div>
+        </div>
+        <div class="r cls-wide">
+          <div class="nm">Nichts</div>
+          <div class="bar"><span style="width:100%"></span></div>
+          <div class="num">55</div><div class="sub">40,7 %</div><div class="sub">98,2 %</div>
+          <div class="thumbs"><span class="thumb"></span><span class="thumb"></span><span class="thumb"></span></div>
+        </div>
+      </div>
+
+      <div class="card plain">
+        <div class="card-head">Ausgabe des Modells</div>
+        <p style="margin:0;font-size:12.5px;line-height:1.55;color:rgb(var(--md-on-surface-variant))">
+          Das Modell gibt für jedes Bild drei Werte aus, einen pro Klasse, in der Reihenfolge
+          <strong>Apfel</strong>, <strong>Banane</strong>, <strong>Nichts</strong>. Diese
+          Reihenfolge steht auch in den Programmen, die dieses Modell benutzen. Klassen, die
+          du im Projekt später umbenennst, ändern sie nicht.
+        </p>
+        <div class="export-row" style="margin-top:10px">
+          <button class="btn ghost small">Klassennamen kopieren</button>
+          <button class="btn ghost small">Beispiele im Projekt öffnen</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <div class="rail-h">Was auffällt</div>
+      <div class="find">
+        <span class="f-head">„<span class="dyn">Banane</span>“ hat am wenigsten Bilder</span>
+        <span class="dyn">38</span> gegenüber <span class="dyn">55</span> bei
+        „<span class="dyn">Nichts</span>“. Passend dazu ist die Erkennungsrate dort mit
+        <span class="dyn">89,5 %</span> die niedrigste der drei.
+      </div>
+      <div class="find next">
+        <span class="f-head">Nächster Schritt</span>
+        <span class="dyn">15–20</span> weitere Bilder von „<span class="dyn">Banane</span>“
+        aufnehmen, in anderer Position und bei anderem Licht, dann neu trainieren.
+      </div>
+
+      <div class="rail-h second">Gut zu wissen</div>
+      <div class="know">
+        <h5>Warum die Balance zählt</h5>
+        <p>
+          Beim Training zählt jedes Bild gleich viel. Eine Klasse mit doppelt so vielen
+          Bildern bekommt damit auch doppelt so viel Aufmerksamkeit.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Wozu eine Klasse für „nichts davon“ gut ist</h5>
+        <p>
+          Ohne sie muss das Modell jedes Bild einer der echten Klassen zuordnen, auch wenn
+          gar nichts Passendes im Bild ist. 30 bis 50 Bilder vom leeren Hintergrund
+          genügen dafür.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Was gute Beispielbilder ausmacht</h5>
+        <p>
+          Verschiedene Abstände, Winkel und Lichtsituationen. Zwanzig fast identische
+          Aufnahmen bringen so viel wie eine.
+        </p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- =========================================================== 3 EINSTELLUNGEN -->
+<div class="stage-label">Reiter 3 — Einstellungen</div>
+<div class="modal" id="pane3">
+  <div class="modal-header">
+    <div>
+      <h2>Modell-Details</h2>
+      <div class="head-sub">
+        <span>Obst v3</span><span>·</span><span>Projekt „Obst erkennen“</span>
+        <span class="chip">aktiv</span>
+      </div>
+    </div>
+    <button class="close-btn">&times;</button>
+  </div>
+
+  <div class="body-3col">
+    <nav class="nav">
+      <div class="nav-group">Modell</div>
+      <button class="nav-item">Überblick</button>
+      <button class="nav-item">Klassen <span class="n-mark">!</span><span class="n-count">3</span></button>
+      <button class="nav-item active">Einstellungen</button>
+      <div class="nav-group">Für Fortgeschrittene</div>
+      <button class="nav-item">Architektur</button>
+      <button class="nav-item">Verlauf pro Epoche <span class="n-count">30</span></button>
+      <button class="nav-item">Verwechslungen <span class="n-mark">!</span></button>
+      <button class="nav-item">Rohdaten &amp; Export</button>
+    </nav>
+
+    <div class="data">
+      <div class="pane-head">
+        <h3>Einstellungen</h3>
+        <span class="hint">so war dieser Lauf konfiguriert · nicht mehr änderbar</span>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Grundeinstellungen</div>
+        <div class="opt-grid">
+          <div class="opt"><span class="o-label">Epochen <span class="info"><span class="q">?</span></span></span><span class="o-value">30</span></div>
+          <div class="opt"><span class="o-label">Batch-Größe <span class="info"><span class="q">?</span></span></span><span class="o-value">16</span></div>
+          <div class="opt"><span class="o-label">Lernrate <span class="info"><span class="q">?</span></span></span><span class="o-value">0,001</span></div>
+          <div class="opt"><span class="o-label">Hidden Units <span class="info"><span class="q">?</span></span></span><span class="o-value">100</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Erweiterte Einstellungen</div>
+        <div class="opt-grid">
+          <div class="opt"><span class="o-label">Feature-Extraktor <span class="info"><span class="q">?</span></span></span><span class="o-value">MobileNet v1 (α=1.0)</span></div>
+          <div class="opt"><span class="o-label">Optimierer <span class="info"><span class="q">?</span></span></span><span class="o-value">Adam</span></div>
+          <div class="opt"><span class="o-label">Dropout <span class="info"><span class="q">?</span></span></span><span class="o-value">aus</span></div>
+          <div class="opt"><span class="o-label">Validierung <span class="info"><span class="q">?</span></span></span><span class="o-value">15 %</span></div>
+          <div class="opt"><span class="o-label">Stop-Loss <span class="info"><span class="q">?</span></span></span><span class="o-value">0,015 · nicht erreicht</span></div>
+          <div class="opt"><span class="o-label">Bildbereich <span class="info"><span class="q">?</span></span></span><span class="o-value">224 × 224</span></div>
+        </div>
+
+        <div class="sub-block">
+          <div class="sub-h">Augmentierung: an</div>
+          <div class="opt-grid">
+            <div class="opt"><span class="o-label">Horizontal spiegeln</span><span class="o-value">an</span></div>
+            <div class="opt"><span class="o-label">Rotation</span><span class="o-value">± 12°</span></div>
+            <div class="opt"><span class="o-label">Helligkeit</span><span class="o-value">± 0,15</span></div>
+            <div class="opt"><span class="o-label">Zoom</span><span class="o-value">± 0,10</span></div>
+            <div class="opt"><span class="o-label">Extra-Kopien pro Bild</span><span class="o-value">2</span></div>
+            <div class="opt"><span class="o-label">Trainiert mit</span><span class="o-value">405 Beispielen</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card plain">
+        <div class="card-head">Weitertrainieren</div>
+        <p style="margin:0 0 10px;font-size:12.5px;line-height:1.55;color:rgb(var(--md-on-surface-variant))">
+          Diese Werte lassen sich in ein neues Modell übernehmen. Das bestehende Modell
+          bleibt dabei erhalten, damit du die beiden Läufe vergleichen kannst.
+        </p>
+        <div class="export-row">
+          <button class="btn small">Einstellungen für neues Modell übernehmen</button>
+          <button class="btn ghost small">Nur Bildbereich übernehmen</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <div class="rail-h">Was auffällt</div>
+      <div class="find">
+        <span class="f-head">Ab Epoche <span class="dyn">12</span> kaum noch Fortschritt</span>
+        Die letzten <span class="dyn">18</span> Epochen haben weniger als einen Prozentpunkt
+        gebracht. <span class="dyn">15</span> Epochen hätten hier gereicht und wären
+        schneller durch.
+      </div>
+      <div class="find">
+        <span class="f-head">Augmentierung hat sich gelohnt</span>
+        Aus <span class="dyn">135</span> Bildern wurden <span class="dyn">405</span>
+        Trainingsbeispiele.
+      </div>
+
+      <div class="rail-h second">Gut zu wissen</div>
+      <div class="know">
+        <h5>Was man zuerst ändert</h5>
+        <p>
+          Bei einem schwachen Modell bringen mehr und vielfältigere Bilder fast immer mehr
+          als geänderte Einstellungen. Die Standardwerte hier passen für die meisten
+          Projekte.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Epochen und Überanpassung</h5>
+        <p>
+          Mehr Epochen heißt mehr Lernzeit. Ab einem bestimmten Punkt lernt das Modell
+          nichts Neues mehr, sondern merkt sich die vorhandenen Bilder genauer.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Was die Augmentierung nicht kann</h5>
+        <p>
+          Sie verändert vorhandene Bilder. Eine Ansicht, die nie aufgenommen wurde, kann
+          sie nicht erfinden.
+        </p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- =========================================================== 4 ARCHITEKTUR -->
+<div class="stage-label">Reiter 4 — Architektur (für Fortgeschrittene)</div>
+<div class="modal" id="pane4">
+  <div class="modal-header">
+    <div>
+      <h2>Modell-Details</h2>
+      <div class="head-sub">
+        <span>Obst v3</span><span>·</span><span>Projekt „Obst erkennen“</span>
+        <span class="chip">aktiv</span>
+      </div>
+    </div>
+    <button class="close-btn">&times;</button>
+  </div>
+
+  <div class="body-3col">
+    <nav class="nav">
+      <div class="nav-group">Modell</div>
+      <button class="nav-item">Überblick</button>
+      <button class="nav-item">Klassen <span class="n-mark">!</span><span class="n-count">3</span></button>
+      <button class="nav-item">Einstellungen</button>
+      <div class="nav-group">Für Fortgeschrittene</div>
+      <button class="nav-item active">Architektur</button>
+      <button class="nav-item">Verlauf pro Epoche <span class="n-count">30</span></button>
+      <button class="nav-item">Verwechslungen <span class="n-mark">!</span></button>
+      <button class="nav-item">Rohdaten &amp; Export</button>
+    </nav>
+
+    <div class="data">
+      <div class="pane-head">
+        <h3>Architektur</h3>
+        <span class="hint">Transfer-Learning · 128.203 trainierte Parameter</span>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Was durch das Modell läuft</div>
+        <div class="layers">
+          <div class="layer">
+            <span class="l-idx">1</span><span class="l-name">Bildeingang</span>
+            <span class="l-shape">224 × 224 × 3</span><span class="l-params">–</span>
+          </div>
+          <div class="layer frozen">
+            <span class="l-idx">2</span>
+            <span class="l-name">MobileNet v1 <span class="pill">eingefroren</span></span>
+            <span class="l-shape">→ 1024 Merkmale</span><span class="l-params">4,2 Mio.</span>
+          </div>
+          <div class="layer">
+            <span class="l-idx">3</span><span class="l-name">Dense, ReLU</span>
+            <span class="l-shape">1024 → 100</span><span class="l-params">102.500</span>
+          </div>
+          <div class="layer">
+            <span class="l-idx">4</span><span class="l-name">Dense, Softmax</span>
+            <span class="l-shape">100 → 3</span><span class="l-params">303</span>
+          </div>
+          <div class="layer">
+            <span class="l-idx">5</span><span class="l-name">Ausgabe</span>
+            <span class="l-shape">3 Werte, Summe 1</span><span class="l-params">–</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Steckbrief</div>
+        <div class="opt-grid">
+          <div class="opt"><span class="o-label">Schichten <span class="info"><span class="q">?</span></span></span><span class="o-value">3</span></div>
+          <div class="opt"><span class="o-label">Trainierte Parameter <span class="info"><span class="q">?</span></span></span><span class="o-value">128.203</span></div>
+          <div class="opt"><span class="o-label">Modellgröße <span class="info"><span class="q">?</span></span></span><span class="o-value">500,79 KB</span></div>
+          <div class="opt"><span class="o-label">Eingabegröße</span><span class="o-value">224 × 224</span></div>
+          <div class="opt"><span class="o-label">Ausgabe</span><span class="o-value">3 Wahrscheinlichkeiten</span></div>
+          <div class="opt"><span class="o-label">Modus</span><span class="o-value">Objekt</span></div>
+          <div class="opt"><span class="o-label">Format</span><span class="o-value">TensorFlow.js Layers</span></div>
+          <div class="opt"><span class="o-label">Zahlenformat</span><span class="o-value">float32</span></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <div class="rail-h">Was auffällt</div>
+      <div class="find">
+        <span class="f-head">Größe im Rahmen</span>
+        <span class="dyn">500,79 KB</span> bei <span class="dyn">100</span> Hidden Units.
+        Das lässt sich auf dem Calliope gut verwenden.
+      </div>
+
+      <div class="rail-h second">Gut zu wissen</div>
+      <div class="know">
+        <h5>Transfer-Learning in drei Sätzen</h5>
+        <p>
+          MobileNet ist auf Millionen Bildern vortrainiert und wandelt jedes Bild in 1024
+          Zahlen um, den Merkmalsvektor. Diese Schicht bleibt unverändert. Trainiert wird
+          nur der kleine Klassifikator darüber, deshalb reichen wenige eigene Bilder.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Was der Feature-Extraktor ändert</h5>
+        <p>
+          v2 erkennt feinere Unterschiede, Lite läuft schneller auf schwacher Hardware.
+          Beide brauchen ein neues Training, weil die Merkmalsvektoren nicht zueinander
+          passen.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Warum die Summe 1 ergibt</h5>
+        <p>
+          Softmax verteilt die Sicherheit auf die Klassen. Steigt eine, sinken die
+          anderen. Ein Bild, das zu keiner Klasse passt, bekommt trotzdem eine Verteilung.
+        </p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- =========================================================== 5 VERLAUF -->
+<div class="stage-label">Reiter 5 — Verlauf pro Epoche (für Fortgeschrittene)</div>
+<div class="modal" id="pane5">
+  <div class="modal-header">
+    <div>
+      <h2>Modell-Details</h2>
+      <div class="head-sub">
+        <span>Obst v3</span><span>·</span><span>Projekt „Obst erkennen“</span>
+        <span class="chip">aktiv</span>
+      </div>
+    </div>
+    <button class="close-btn">&times;</button>
+  </div>
+
+  <div class="body-3col">
+    <nav class="nav">
+      <div class="nav-group">Modell</div>
+      <button class="nav-item">Überblick</button>
+      <button class="nav-item">Klassen <span class="n-mark">!</span><span class="n-count">3</span></button>
+      <button class="nav-item">Einstellungen</button>
+      <div class="nav-group">Für Fortgeschrittene</div>
+      <button class="nav-item">Architektur</button>
+      <button class="nav-item active">Verlauf pro Epoche <span class="n-count">30</span></button>
+      <button class="nav-item">Verwechslungen <span class="n-mark">!</span></button>
+      <button class="nav-item">Rohdaten &amp; Export</button>
+    </nav>
+
+    <div class="data">
+      <div class="pane-head">
+        <h3>Verlauf pro Epoche</h3>
+        <span class="hint">30 Epochen · 41 Sekunden gesamt</span>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>Alle Epochen</span>
+          <span class="hint"><button class="link">als CSV kopieren</button></span>
+        </div>
+        <div class="scroll-table">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Genauigkeit</th><th>Verlust</th>
+                <th>Geprüfte Genauigkeit <span class="info"><span class="q">?</span></span></th>
+                <th>Geprüfter Verlust</th><th>Dauer</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>1</td><td>41,20 %</td><td>1,0814</td><td>39,10 %</td><td>1,1203</td><td>1,8 s</td></tr>
+              <tr><td>2</td><td>62,50 %</td><td>0,7663</td><td>58,00 %</td><td>0,8014</td><td>1,3 s</td></tr>
+              <tr><td>3</td><td>74,10 %</td><td>0,5902</td><td>70,20 %</td><td>0,6288</td><td>1,3 s</td></tr>
+              <tr><td>4</td><td>81,40 %</td><td>0,4611</td><td>77,80 %</td><td>0,5033</td><td>1,2 s</td></tr>
+              <tr><td>5</td><td>85,90 %</td><td>0,3702</td><td>82,10 %</td><td>0,4180</td><td>1,3 s</td></tr>
+              <tr><td>6</td><td>88,60 %</td><td>0,3011</td><td>84,60 %</td><td>0,3544</td><td>1,2 s</td></tr>
+              <tr><td>7</td><td>90,80 %</td><td>0,2488</td><td>86,90 %</td><td>0,3070</td><td>1,4 s</td></tr>
+              <tr><td>8</td><td>92,10 %</td><td>0,2075</td><td>88,20 %</td><td>0,2702</td><td>1,2 s</td></tr>
+              <tr><td>9</td><td>93,00 %</td><td>0,1751</td><td>89,40 %</td><td>0,2419</td><td>1,3 s</td></tr>
+              <tr><td>10</td><td>93,80 %</td><td>0,1494</td><td>90,30 %</td><td>0,2201</td><td>1,3 s</td></tr>
+              <tr><td>11</td><td>94,30 %</td><td>0,1287</td><td>91,00 %</td><td>0,2031</td><td>1,2 s</td></tr>
+              <tr><td>12</td><td>94,80 %</td><td>0,1119</td><td>91,80 %</td><td>0,1899</td><td>1,3 s</td></tr>
+              <tr><td>13</td><td>95,10 %</td><td>0,0982</td><td>92,30 %</td><td>0,1797</td><td>1,4 s</td></tr>
+              <tr><td>14</td><td>95,30 %</td><td>0,0869</td><td>92,70 %</td><td>0,1718</td><td>1,3 s</td></tr>
+              <tr><td>15</td><td>95,50 %</td><td>0,0775</td><td>93,00 %</td><td>0,1658</td><td>1,2 s</td></tr>
+              <tr><td>16</td><td>95,70 %</td><td>0,0697</td><td>93,20 %</td><td>0,1613</td><td>1,3 s</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card plain">
+        <div class="card-head">Zusammenfassung</div>
+        <div class="opt-grid">
+          <div class="opt"><span class="o-label">Beste Genauigkeit</span><span class="o-value">96,3 % · Epoche 30</span></div>
+          <div class="opt"><span class="o-label">Bester geprüfter Wert</span><span class="o-value">94,1 % · Epoche 28</span></div>
+          <div class="opt"><span class="o-label">Niedrigster Verlust</span><span class="o-value">0,0412 · Epoche 30</span></div>
+          <div class="opt"><span class="o-label">Plateau ab</span><span class="o-value">Epoche 12</span></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <div class="rail-h">Was auffällt</div>
+      <div class="find">
+        <span class="f-head">Ab Epoche <span class="dyn">12</span> kaum noch Fortschritt</span>
+        Die letzten <span class="dyn">18</span> Epochen haben weniger als einen Prozentpunkt
+        gebracht.
+      </div>
+      <div class="find">
+        <span class="f-head">Verlust fällt bis zum Ende</span>
+        Kein Wiederanstieg im letzten Drittel. Überanpassung ist hier also nicht zu sehen.
+      </div>
+
+      <div class="rail-h second">Gut zu wissen</div>
+      <div class="know">
+        <h5>Welche Spalte zählt</h5>
+        <p>
+          Die geprüfte Genauigkeit ist die härtere Zahl. Sie stammt von Bildern, die im
+          Training zurückgehalten wurden.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Wenn die Kurven auseinanderlaufen</h5>
+        <p>
+          Steigt die Trainings-Genauigkeit weiter, während die geprüfte stehen bleibt,
+          merkt sich das Modell einzelne Bilder. Dann früher aufhören oder mehr Bilder
+          aufnehmen.
+        </p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- =========================================================== 6 VERWECHSLUNGEN -->
+<div class="stage-label">Reiter 6 — Verwechslungen (für Fortgeschrittene)</div>
+<div class="modal" id="pane6">
+  <div class="modal-header">
+    <div>
+      <h2>Modell-Details</h2>
+      <div class="head-sub">
+        <span>Obst v3</span><span>·</span><span>Projekt „Obst erkennen“</span>
+        <span class="chip">aktiv</span>
+      </div>
+    </div>
+    <button class="close-btn">&times;</button>
+  </div>
+
+  <div class="body-3col">
+    <nav class="nav">
+      <div class="nav-group">Modell</div>
+      <button class="nav-item">Überblick</button>
+      <button class="nav-item">Klassen <span class="n-mark">!</span><span class="n-count">3</span></button>
+      <button class="nav-item">Einstellungen</button>
+      <div class="nav-group">Für Fortgeschrittene</div>
+      <button class="nav-item">Architektur</button>
+      <button class="nav-item">Verlauf pro Epoche <span class="n-count">30</span></button>
+      <button class="nav-item active">Verwechslungen <span class="n-mark">!</span></button>
+      <button class="nav-item">Rohdaten &amp; Export</button>
+    </nav>
+
+    <div class="data">
+      <div class="pane-head">
+        <h3>Verwechslungen</h3>
+        <span class="hint">alle 135 Trainingsbilder erneut vorhergesagt</span>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Verwechslungsmatrix</div>
+        <div class="cm-axis">vorhergesagt →</div>
+        <div class="cm">
+          <div class="hd"></div><div class="hd">Apfel</div><div class="hd">Banane</div><div class="hd">Nichts</div>
+          <div class="rl">Apfel</div>
+          <div class="g5">41</div><div class="g1">1</div><div class="g0">0</div>
+          <div class="rl">Banane</div>
+          <div class="g2">3</div><div class="g5">34</div><div class="g1">1</div>
+          <div class="rl">Nichts</div>
+          <div class="g0">0</div><div class="g1">1</div><div class="g5">54</div>
+        </div>
+        <p style="margin:10px 0 0;font-size:12px;line-height:1.5;color:rgb(var(--md-on-surface-variant))">
+          Zeile ist die wahre Klasse, Spalte die Vorhersage. Auf der Diagonale stehen die
+          Treffer, alles daneben sind Fehler.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Pro Klasse</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Klasse</th>
+              <th>Erkannt <span class="info"><span class="q">?</span></span></th>
+              <th>Treffgenauigkeit <span class="info"><span class="q">?</span></span></th>
+              <th>Fehler</th><th>Verwechselt mit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Apfel</td><td>97,6 %</td><td>93,2 %</td><td>1</td><td>Banane (1)</td></tr>
+            <tr><td>Banane</td><td>89,5 %</td><td>94,4 %</td><td>4</td><td>Apfel (3), Nichts (1)</td></tr>
+            <tr><td>Nichts</td><td>98,2 %</td><td>96,4 %</td><td>1</td><td>Banane (1)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <div class="rail-h">Was auffällt</div>
+      <div class="find">
+        <span class="f-head">Häufigste Verwechslung</span>
+        „<span class="dyn">Banane</span>“ wurde <span class="dyn">3 ×</span> für
+        „<span class="dyn">Apfel</span>“ gehalten. In die andere Richtung passiert es nur
+        <span class="dyn">1 ×</span>.
+      </div>
+      <div class="find next">
+        <span class="f-head">Nächster Schritt</span>
+        Bilder aufnehmen, auf denen „<span class="dyn">Banane</span>“ und
+        „<span class="dyn">Apfel</span>“ klar zu unterscheiden sind, dann neu trainieren.
+      </div>
+
+      <div class="rail-h second">Gut zu wissen</div>
+      <div class="know">
+        <h5>Erkannt und Treffgenauigkeit</h5>
+        <p>
+          Erkannt heißt: wie viele Bilder dieser Klasse gefunden wurden. Treffgenauigkeit
+          heißt: wie oft die Klasse stimmte, wenn das Modell sie vorhergesagt hat.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Warum die Zahlen freundlich aussehen</h5>
+        <p>
+          Gerechnet wird mit den Trainingsbildern, die das Modell schon kennt. Im Video mit
+          neuen Bildern gibt es meist mehr Verwechslungen.
+        </p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- =========================================================== 7 ROHDATEN -->
+<div class="stage-label">Reiter 7 — Rohdaten &amp; Export (für Fortgeschrittene)</div>
+<div class="modal" id="pane7">
+  <div class="modal-header">
+    <div>
+      <h2>Modell-Details</h2>
+      <div class="head-sub">
+        <span>Obst v3</span><span>·</span><span>Projekt „Obst erkennen“</span>
+        <span class="chip">aktiv</span>
+      </div>
+    </div>
+    <button class="close-btn">&times;</button>
+  </div>
+
+  <div class="body-3col">
+    <nav class="nav">
+      <div class="nav-group">Modell</div>
+      <button class="nav-item">Überblick</button>
+      <button class="nav-item">Klassen <span class="n-mark">!</span><span class="n-count">3</span></button>
+      <button class="nav-item">Einstellungen</button>
+      <div class="nav-group">Für Fortgeschrittene</div>
+      <button class="nav-item">Architektur</button>
+      <button class="nav-item">Verlauf pro Epoche <span class="n-count">30</span></button>
+      <button class="nav-item">Verwechslungen <span class="n-mark">!</span></button>
+      <button class="nav-item active">Rohdaten &amp; Export</button>
+    </nav>
+
+    <div class="data">
+      <div class="pane-head">
+        <h3>Rohdaten &amp; Export</h3>
+        <span class="hint">m_8f3a21 · 502 KB im Projektspeicher</span>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>Datensatz dieses Modells</span>
+          <span class="hint"><button class="link">JSON kopieren</button></span>
+        </div>
+        <pre>{
+  "id": "m_8f3a21",
+  "label": "Obst v3",
+  "trainedAt": 1787050320000,
+  "source": "trained",
+  "mode": "image",
+  "classes": ["Apfel", "Banane", "Nichts"],
+  "exampleCounts": { "Apfel": 42, "Banane": 38, "Nichts": 55 },
+  "featureExtractor": "mobilenet-v1",
+  "roi": { "x": 0.14, "y": 0.09, "w": 0.62, "h": 0.62 },
+  "options": { "epochs": 30, "batchSize": 16, "learningRate": 0.001,
+               "hiddenUnits": 100, "optimizer": "adam", "dropout": 0,
+               "validationSplit": 0.15, "earlyStopLoss": 0.015,
+               "augmentation": true },
+  "metadata": { "layers": 3, "params": 128203, "sizeBytes": 512809 },
+  "smoothing": 5
+}</pre>
+      </div>
+
+      <div class="card">
+        <div class="card-head">Weitergeben</div>
+        <div class="export-row">
+          <button class="btn small">Als ZIP exportieren</button>
+          <button class="btn ghost small">Kennzahlen als CSV</button>
+          <button class="btn ghost small">Verlauf als CSV</button>
+          <button class="btn ghost small">Modell-ID kopieren</button>
+        </div>
+        <p style="margin:10px 0 0;font-size:12px;line-height:1.5;color:rgb(var(--md-on-surface-variant))">
+          Das ZIP enthält die Gewichte, die Klassennamen, den Bildbereich und die
+          Einstellungen. Die Beispielbilder bleiben im Projekt.
+        </p>
+      </div>
+
+      <div class="card plain">
+        <div class="card-head">Verwendung</div>
+        <div class="row-list">
+          <div class="r" style="grid-template-columns:1fr auto auto;gap:12px">
+            <div class="nm">Starter — Obst v3</div><div class="sub">Programm</div><button class="link">öffnen</button>
+          </div>
+          <div class="r" style="grid-template-columns:1fr auto auto;gap:12px">
+            <div class="nm">Sortieranlage</div><div class="sub">Programm</div><button class="link">öffnen</button>
+          </div>
+          <div class="r" style="grid-template-columns:1fr auto auto;gap:12px">
+            <div class="nm">Obst-Zähler</div><div class="sub">Programm</div><button class="link">öffnen</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <div class="rail-h">Gut zu wissen</div>
+      <div class="know">
+        <h5>Was im ZIP steckt</h5>
+        <p>
+          Gewichte als binäre Datei, dazu eine JSON-Datei mit Klassennamen, Bildbereich und
+          Einstellungen. Importieren lässt sich das in jedem Projekt im selben Modus.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Was beim Löschen passiert</h5>
+        <p>
+          Programme, die dieses Modell benutzen, wechseln automatisch auf das neueste
+          Modell mit passenden Klassen. Findet sich keines, bleiben sie ohne Modell und
+          zeigen das auf ihrer Karte.
+        </p>
+      </div>
+      <div class="know">
+        <h5>Glättung</h5>
+        <p>
+          Der Median über die letzten 5 Vorhersagen wirkt nur beim Testen und beim Einsatz.
+          Das Training ist davon unberührt.
+        </p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- =========================================================== KATALOG -->
+<div class="spec">
+  <h2>Baustein-Katalog</h2>
+  <p class="lead">
+    Jeder Befund in der rechten Spalte ist ein fester deutscher Satz mit Platzhaltern. Die
+    Bedingung entscheidet, ob er erscheint, die Priorität bestimmt die Reihenfolge. Pro
+    Reiter erscheinen höchstens vier Befunde und ein „Nächster Schritt“. Alle Werte kommen
+    aus <code>TrainedModel</code> (<code>history</code>, <code>options</code>,
+    <code>exampleCounts</code>, <code>metadata</code>) und aus der Verwechslungsmatrix.
+    Zur Laufzeit wird nichts formuliert, nur eingesetzt.
+  </p>
+  <p class="lead">
+    Welche Bausteine auf welchem Reiter erscheinen, hängt am Thema: Klassen-Befunde auf
+    „Klassen“, Verlaufs-Befunde auf „Verlauf“ und „Einstellungen“, Verwechslungen auf ihrem
+    eigenen Reiter. Der Überblick zeigt das Fazit und die vier höchstplatzierten Tipps
+    aller Themen.
+  </p>
+
+  <h3>Fazit, genau einer, erste zutreffende Regel gewinnt</h3>
+  <table>
+    <thead><tr><th style="width:150px">Baustein</th><th style="width:230px">Bedingung</th><th>Text</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>fazit.perfekt</code></td>
+        <td>Genauigkeit = 100 %</td>
+        <td><strong>100 % ist ein Warnzeichen.</strong> Ein Modell erreicht das meist nur, wenn die Klassen sehr verschieden aussehen oder wenn zu wenige Bilder da sind. Teste es im Video mit Bildern, die es noch nicht kennt.</td>
+      </tr>
+      <tr>
+        <td><code>fazit.stark</code></td>
+        <td>Genauigkeit ≥ 90 %, Validierung &gt; 0</td>
+        <td><strong>Solide trainiert.</strong> <span class="slot">{acc}</span> auf den Trainingsbildern, <span class="slot">{valAcc}</span> auf den zurückgehaltenen. Die beiden Werte liegen dicht beieinander. Das spricht dafür, dass das Modell auch bei neuen Bildern trägt.</td>
+      </tr>
+      <tr>
+        <td><code>fazit.starkOhneVal</code></td>
+        <td>Genauigkeit ≥ 90 %, Validierung = 0</td>
+        <td><strong>Sieht gut aus, ist aber ungeprüft.</strong> Die <span class="slot">{acc}</span> gelten nur für die Bilder, die du selbst aufgenommen hast.</td>
+      </tr>
+      <tr>
+        <td><code>fazit.mittel</code></td>
+        <td>80 % ≤ Genauigkeit &lt; 90 %</td>
+        <td><strong>Brauchbar, aber wackelig.</strong> Bei <span class="slot">{acc}</span> liegt etwa jedes <span class="slot">{jedesNte}</span> Bild falsch.</td>
+      </tr>
+      <tr>
+        <td><code>fazit.schwach</code></td>
+        <td>Genauigkeit &lt; 80 %</td>
+        <td><strong>Noch zu unsicher.</strong> Mit <span class="slot">{acc}</span> liegt das Modell bei etwa jedem <span class="slot">{jedesNte}</span> Bild falsch, und zwar schon auf den Bildern, mit denen es trainiert wurde.</td>
+      </tr>
+      <tr>
+        <td><code>fazit.importiert</code></td>
+        <td><code>source === 'imported'</code></td>
+        <td><strong>Importiertes Modell.</strong> Trainingsverlauf und Beispielzahlen sind nicht mitgekommen. Beurteilen lässt es sich hier nur im Test.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Tipps, alle zutreffenden nach Priorität</h3>
+  <table>
+    <thead><tr><th style="width:150px">Baustein</th><th style="width:56px">Prio</th><th style="width:100px">Reiter</th><th style="width:215px">Bedingung</th><th>Text</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>tipp.zuWenigeBilder</code></td><td class="prio">1</td><td>Klassen</td>
+        <td>min(Bilder pro Klasse) &lt; 30</td>
+        <td><strong>Zu wenige Bilder.</strong> <span class="slot">{nKlassen}</span> Klassen liegen unter 30 Bildern, „<span class="slot">{minKlasse}</span>“ hat nur <span class="slot">{minAnzahl}</span>. Das ist die wahrscheinlichste Ursache für Fehler.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.unbalanciert</code></td><td class="prio">2</td><td>Klassen</td>
+        <td>min / max &lt; 0,7</td>
+        <td><strong>„<span class="slot">{minKlasse}</span>“ hat am wenigsten Bilder.</strong> <span class="slot">{minAnzahl}</span> gegenüber <span class="slot">{maxAnzahl}</span> bei „<span class="slot">{maxKlasse}</span>“. Klassen mit deutlich weniger Bildern erkennt das Modell meist schlechter.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.lossSteigt</code></td><td class="prio">3</td><td>Verlauf</td>
+        <td>letzter Verlust &gt; Minimum des letzten Drittels × 1,1</td>
+        <td><strong>Der Verlust steigt wieder.</strong> Ab Epoche <span class="slot">{minEpoche}</span> klettert er von <span class="slot">{minLoss}</span> auf <span class="slot">{endLoss}</span>. Das Modell fängt an, sich Bilder zu merken. <span class="slot">{minEpoche}</span> Epochen hätten gereicht.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.keineValidierung</code></td><td class="prio">4</td><td>Einstellungen</td>
+        <td><code>validationSplit === 0</code></td>
+        <td><strong>Keine Validierung eingestellt.</strong> Ohne zurückgehaltene Bilder lässt sich die Genauigkeit nicht gegenprüfen. 15 % sind ein guter Startwert.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.valWeichtAb</code></td><td class="prio">4</td><td>Verlauf</td>
+        <td>Training minus Validierung &gt; 10 Prozentpunkte</td>
+        <td><strong>Große Lücke zur Validierung.</strong> <span class="slot">{acc}</span> im Training, aber nur <span class="slot">{valAcc}</span> auf zurückgehaltenen Bildern. Das Modell hat auswendig gelernt.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.verwechslung</code></td><td class="prio">5</td><td>Verwechslungen</td>
+        <td>größter Wert außerhalb der Diagonale ≥ 2</td>
+        <td><strong>Häufigste Verwechslung.</strong> „<span class="slot">{klasseA}</span>“ wurde <span class="slot">{n}</span> × für „<span class="slot">{klasseB}</span>“ gehalten. In die andere Richtung passiert es nur <span class="slot">{nGegen}</span> ×.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.augmentierungAus</code></td><td class="prio">6</td><td>Einstellungen</td>
+        <td>Augmentierung aus, Bilder &lt; 100</td>
+        <td><strong>Augmentierung ist aus.</strong> Bei <span class="slot">{gesamt}</span> Bildern hilft sie meist deutlich, weil sie aus jedem Bild gespiegelte, gedrehte, hellere und leicht gezoomte Varianten macht.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.augmentierungAn</code></td><td class="prio">7</td><td>Einstellungen</td>
+        <td>Augmentierung an</td>
+        <td><strong>Augmentierung hat sich gelohnt.</strong> Aus <span class="slot">{gesamt}</span> Bildern wurden <span class="slot">{effektiv}</span> Trainingsbeispiele.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.plateau</code></td><td class="prio">7</td><td>Verlauf, Einstellungen</td>
+        <td>Zuwachs im letzten Drittel &lt; 1 Prozentpunkt</td>
+        <td><strong>Ab Epoche <span class="slot">{plateauEpoche}</span> kaum noch Fortschritt.</strong> Die letzten <span class="slot">{restEpochen}</span> Epochen haben weniger als einen Prozentpunkt gebracht. Weniger Epochen hätten hier gereicht.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.frueherStop</code></td><td class="prio">8</td><td>Verlauf</td>
+        <td>gelaufene &lt; eingestellte Epochen</td>
+        <td><strong>Früher gestoppt.</strong> Das Training endete nach <span class="slot">{gelaufen}</span> von <span class="slot">{eingestellt}</span> Epochen, weil der Stop-Loss von <span class="slot">{stopLoss}</span> erreicht war.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.zweiKlassen</code></td><td class="prio">9</td><td>Klassen</td>
+        <td>2 Klassen, keine für „nichts davon“</td>
+        <td><strong>Nur zwei Klassen.</strong> Das Modell muss sich immer für eine davon entscheiden. Eine Klasse für „nichts davon“ macht es im Einsatz brauchbarer.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.grossesModell</code></td><td class="prio">10</td><td>Architektur</td>
+        <td>Modellgröße &gt; 2 MB</td>
+        <td><strong>Recht groß.</strong> <span class="slot">{groesse}</span> bei <span class="slot">{hiddenUnits}</span> Hidden Units. Für den Einsatz auf dem Calliope ist weniger meist besser.</td>
+      </tr>
+      <tr>
+        <td><code>tipp.groesseOk</code></td><td class="prio">11</td><td>Architektur</td>
+        <td>Modellgröße ≤ 2 MB</td>
+        <td><strong>Größe im Rahmen.</strong> <span class="slot">{groesse}</span> bei <span class="slot">{hiddenUnits}</span> Hidden Units. Das lässt sich auf dem Calliope gut verwenden.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Nächster Schritt, abgeleitet aus dem obersten Tipp</h3>
+  <table>
+    <thead><tr><th style="width:200px">Wenn oberster Tipp</th><th>Text</th></tr></thead>
+    <tbody>
+      <tr><td><code>tipp.zuWenigeBilder</code></td><td>Auf mindestens 30 Bilder pro Klasse kommen. Bei „<span class="slot">{minKlasse}</span>“ fehlen <span class="slot">{fehlend}</span>. Danach neu trainieren.</td></tr>
+      <tr><td><code>tipp.unbalanciert</code></td><td><span class="slot">{empfehlung}</span> weitere Bilder von „<span class="slot">{minKlasse}</span>“ aufnehmen, in anderer Position und bei anderem Licht, dann neu trainieren.</td></tr>
+      <tr><td><code>tipp.lossSteigt</code></td><td>Epochen auf <span class="slot">{minEpoche}</span> senken oder mehr Bilder aufnehmen, dann neu trainieren.</td></tr>
+      <tr><td><code>tipp.keineValidierung</code></td><td>Validierung auf 15 % stellen und neu trainieren. Dann steht neben der Trainings-Genauigkeit eine geprüfte Zahl.</td></tr>
+      <tr><td><code>tipp.verwechslung</code></td><td>Bilder aufnehmen, auf denen „<span class="slot">{klasseA}</span>“ und „<span class="slot">{klasseB}</span>“ klar zu unterscheiden sind, dann neu trainieren.</td></tr>
+      <tr><td>kein Tipp zutreffend</td><td>Teste das Modell im Video bei anderem Licht und mit anderem Hintergrund. Dort zeigt sich, ob es trägt.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Kurz-Erklärungen hinter dem „?“, statisch und ohne Bezug zum Ergebnis</h3>
+  <table>
+    <thead><tr><th style="width:170px">Label</th><th>Satz</th></tr></thead>
+    <tbody>
+      <tr><td>Genauigkeit</td><td>Anteil der Trainingsbilder, die das Modell richtig erkennt. Über neue Bilder sagt der Wert nichts.</td></tr>
+      <tr><td>Verlust</td><td>Abstand zwischen Vorhersage und richtiger Antwort. Im Training soll er fallen.</td></tr>
+      <tr><td>Klassen</td><td>Die Dinge, die dieses Modell unterscheiden kann. Sie stehen mit dem Training fest.</td></tr>
+      <tr><td>Beispiele</td><td>Alle aufgenommenen Bilder. Mehr und vielfältigere Bilder helfen meist mehr als geänderte Einstellungen.</td></tr>
+      <tr><td>Epochen</td><td>Ein Durchlauf durch alle Bilder ist eine Epoche.</td></tr>
+      <tr><td>Lernrate</td><td>Schrittweite pro Anpassung. Zu groß schwingt über, zu klein lernt kaum.</td></tr>
+      <tr><td>Batch-Größe</td><td>Wie viele Bilder pro Lernschritt gleichzeitig durchs Modell laufen.</td></tr>
+      <tr><td>Hidden Units</td><td>Neuronen der versteckten Schicht. Mehr Kapazität braucht mehr Bilder.</td></tr>
+      <tr><td>Augmentierung</td><td>Erzeugt aus jedem Bild gespiegelte, gedrehte, hellere und leicht gezoomte Varianten.</td></tr>
+      <tr><td>Validierung</td><td>Anteil der Bilder, die vom Training zurückgehalten und nur zum Prüfen benutzt werden.</td></tr>
+      <tr><td>Dropout</td><td>Anteil der Neuronen, die beim Training zufällig ausgeschaltet werden.</td></tr>
+      <tr><td>Stop-Loss</td><td>Das Training endet früher, sobald der Verlust unter diesen Wert fällt.</td></tr>
+      <tr><td>Optimierer</td><td>Verfahren, das die Gewichte anpasst. Adam passt für die meisten Fälle.</td></tr>
+      <tr><td>Feature-Extraktor</td><td>Vortrainiertes Netz, das jedes Bild in einen Merkmalsvektor umwandelt.</td></tr>
+      <tr><td>Bildbereich</td><td>Ausschnitt des Kamerabildes, mit dem trainiert wurde. Beim Testen gilt derselbe.</td></tr>
+      <tr><td>Schichten</td><td>Zahl der Ebenen im trainierten Klassifikator.</td></tr>
+      <tr><td>Trainierte Parameter</td><td>Einstellbare Werte im Netz. Trainiert werden nur die des kleinen Klassifikators.</td></tr>
+      <tr><td>Modellgröße</td><td>Speicherbedarf des Modells, geschätzt aus der Zahl der Parameter.</td></tr>
+      <tr><td>Geprüfte Genauigkeit</td><td>Genauigkeit auf den Bildern, die vom Training zurückgehalten wurden.</td></tr>
+      <tr><td>Erkannt</td><td>Wie viele Bilder dieser Klasse das Modell gefunden hat.</td></tr>
+      <tr><td>Treffgenauigkeit</td><td>Wie oft die Klasse stimmte, wenn das Modell sie vorhergesagt hat.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>„Gut zu wissen“, statische Absätze pro Reiter</h3>
+  <table>
+    <thead><tr><th style="width:170px">Reiter</th><th>Absätze</th></tr></thead>
+    <tbody>
+      <tr><td>Überblick</td><td>Woran man Überanpassung merkt · Gut testen</td></tr>
+      <tr><td>Klassen</td><td>Warum die Balance zählt · Wozu eine Klasse für „nichts davon“ gut ist · Was gute Beispielbilder ausmacht</td></tr>
+      <tr><td>Einstellungen</td><td>Was man zuerst ändert · Epochen und Überanpassung · Was die Augmentierung nicht kann</td></tr>
+      <tr><td>Architektur</td><td>Transfer-Learning in drei Sätzen · Was der Feature-Extraktor ändert · Warum die Summe 1 ergibt</td></tr>
+      <tr><td>Verlauf pro Epoche</td><td>Welche Spalte zählt · Wenn die Kurven auseinanderlaufen</td></tr>
+      <tr><td>Verwechslungen</td><td>Erkannt und Treffgenauigkeit · Warum die Zahlen freundlich aussehen</td></tr>
+      <tr><td>Rohdaten &amp; Export</td><td>Was im ZIP steckt · Was beim Löschen passiert · Glättung</td></tr>
+    </tbody>
+  </table>
+</div>
+</body>
+</html>

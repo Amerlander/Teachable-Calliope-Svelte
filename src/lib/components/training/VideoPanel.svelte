@@ -40,6 +40,7 @@
     type DeleteTarget
   } from '$lib/components/DeleteConfirmDialog.svelte';
   import {
+    isComparing,
     isTesting,
     isTraining,
     workspaceTab,
@@ -221,14 +222,15 @@
   // is about to be replaced and predicting against it competes for the GPU.
   // Auto-calibration scores every recorded example through the same classifier,
   // so the live loop steps aside for it instead of queueing predictions behind
-  // each measurement.
+  // each measurement. The comparison overlay runs several models on this same
+  // camera while it is on top of this panel, so this loop stands down for it too.
   $effect(() => {
     const m = mode;
     const hasModel = !!$classifierModel;
-    if (m === 'test' && hasModel && !$isTraining && !autoCalibrating) {
+    if (m === 'test' && hasModel && !$isTraining && !autoCalibrating && !$isComparing) {
       startTest();
     } else {
-      stopTest({ keepLastFrame: autoCalibrating });
+      stopTest({ keepLastFrame: autoCalibrating || $isComparing });
     }
   });
 

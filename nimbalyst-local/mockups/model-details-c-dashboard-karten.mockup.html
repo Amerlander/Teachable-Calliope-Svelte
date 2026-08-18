@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Modell-Details — Variante C: Dashboard-Karten</title>
+<style>
+  :root {
+    --md-primary: 0,0,0;
+    --md-on-primary: 255,255,255;
+    --md-surface: 255,255,255;
+    --md-on-surface: 28,27,31;
+    --md-surface-variant: 232,234,237;
+    --md-on-surface-variant: 70,70,79;
+    --md-outline-variant: 202,204,211;
+    --md-radius-sm: 8px;
+    --md-radius-md: 12px;
+    --md-radius-lg: 16px;
+    --md-radius-xl: 28px;
+    --md-font: 'Inter', system-ui, -apple-system, sans-serif;
+    --brand: #98F600;
+    --cyan: #42C9CB;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--md-font); color: rgb(var(--md-on-surface));
+    background: #2b2c2e; min-height: 100vh;
+    display: flex; align-items: flex-start; justify-content: center; padding: 30px 16px 24px;
+  }
+  .variant-tag {
+    position: fixed; top: 9px; left: 14px; z-index: 5;
+    font-size: 11px; letter-spacing: .6px; text-transform: uppercase;
+    color: rgba(255,255,255,.6); font-weight: 600;
+  }
+  .modal {
+    width: 95%; max-width: 1200px;
+    background: rgb(var(--md-surface)); border-radius: var(--md-radius-xl);
+    box-shadow: 0 4px 8px 3px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.3);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-header { display: flex; align-items: flex-start; gap: 12px; padding: 18px 24px 12px; }
+  .modal-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  .head-sub {
+    margin-top: 3px; font-size: 12px; color: rgb(var(--md-on-surface-variant));
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
+    padding: 2px 7px; border-radius: 99px; background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary));
+  }
+  .chip.muted { background: rgba(0,0,0,.10); color: rgb(var(--md-on-surface-variant)); }
+  .chip.expert { background: var(--brand); color: #000; }
+  .close-btn {
+    margin-left: auto; width: 40px; height: 40px; border: none; background: transparent;
+    font-size: 26px; line-height: 1; border-radius: 50%; cursor: pointer; color: rgb(var(--md-on-surface-variant));
+  }
+  .modal-body { flex: 1; overflow-y: auto; padding: 0 24px 20px; }
+  .modal-footer {
+    padding: 12px 24px; border-top: 1px solid rgb(var(--md-outline-variant));
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 9px 18px; border-radius: 99px;
+    border: none; cursor: pointer; background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary));
+  }
+  .btn.ghost { background: transparent; color: rgb(var(--md-on-surface)); border: 1px solid rgb(var(--md-outline-variant)); }
+
+  /* ---------- verdict strip: numbers left, the one sentence that reads them right ---------- */
+  .verdict {
+    display: grid; grid-template-columns: 1fr 360px; gap: 18px; align-items: center;
+    border-radius: var(--md-radius-lg); background: rgba(var(--md-surface-variant), .5);
+    padding: 12px 16px; margin-bottom: 14px;
+  }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi .k-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: rgb(var(--md-on-surface-variant)); }
+  .kpi .k-value { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .kpi .k-value.good { color: #4CAF50; }
+  .kpi .k-sub { font-size: 11px; color: rgb(var(--md-on-surface-variant)); }
+  .verdict-note {
+    font-size: 12.5px; line-height: 1.5; color: rgb(var(--md-on-surface-variant));
+    background: rgb(var(--md-surface)); border-left: 3px solid var(--cyan);
+    border-radius: var(--md-radius-sm); padding: 10px 12px;
+  }
+  .verdict-note strong { color: rgb(var(--md-on-surface)); }
+
+  /* ---------- card grid ---------- */
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+  .card {
+    background: rgba(var(--md-surface-variant), .32);
+    border-radius: var(--md-radius-md); padding: 11px 13px 12px;
+    display: flex; flex-direction: column;
+  }
+  .card.pro {
+    background: rgb(var(--md-surface));
+    border: 1px solid rgba(202,204,211,.9);
+  }
+  .span7 { grid-column: span 7; }
+  .span5 { grid-column: span 5; }
+  .span12 { grid-column: span 12; }
+  .card-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 9px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600;
+    color: rgb(var(--md-on-surface-variant));
+  }
+  .card-head .hint { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; }
+  /* Explanation lives inside the card, under the numbers it explains */
+  .card-note {
+    margin-top: auto; padding-top: 9px; border-top: 1px dashed rgba(202,204,211,.9);
+    font-size: 11.5px; line-height: 1.5; color: rgb(var(--md-on-surface-variant));
+  }
+  .card-note strong { color: rgb(var(--md-on-surface)); }
+  .card-note + .card-note { border-top: none; padding-top: 4px; }
+
+  .tabs { display: flex; gap: 4px; margin-left: auto; }
+  .tab {
+    font: inherit; font-size: 11px; font-weight: 600; padding: 4px 10px; cursor: pointer;
+    border-radius: 99px; border: none; background: transparent; color: rgb(var(--md-on-surface-variant));
+    text-transform: none; letter-spacing: 0;
+  }
+  .tab.active { background: rgb(var(--md-primary)); color: rgb(var(--md-on-primary)); }
+  .chart-legend { display: flex; gap: 14px; font-size: 11.5px; color: rgb(var(--md-on-surface-variant)); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+  .cls-row {
+    display: grid; grid-template-columns: 1fr 92px 44px 46px; gap: 9px; align-items: center;
+    padding: 7px 2px; border-bottom: 1px solid rgba(202,204,211,.45); font-size: 13px;
+  }
+  .cls-row:last-of-type { border-bottom: none; }
+  .cls-row .nm { font-weight: 600; }
+  .bar { height: 6px; border-radius: 99px; background: rgba(28,27,31,.09); overflow: hidden; }
+  .bar > span { display: block; height: 100%; border-radius: 99px; background: var(--cyan); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pct { text-align: right; font-size: 12px; color: rgb(var(--md-on-surface-variant)); font-variant-numeric: tabular-nums; }
+  .warn-pill { font-size: 10px; font-weight: 600; color: #8a5b00; background: #FFF3CD; border-radius: 99px; padding: 1px 6px; margin-left: 6px; }
+
+  /* setting rows: value with its one-liner right beside it */
+  .set-row {
+    display: grid; grid-template-columns: 110px 66px 1fr; gap: 10px; align-items: baseline;
+    padding: 6px 0; border-bottom: 1px solid rgba(202,204,211,.4);
+  }
+  .set-row:last-child { border-bottom: none; }
+  .s-name { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); }
+  .s-val { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .s-exp { font-size: 11.5px; line-height: 1.4; color: rgb(var(--md-on-surface-variant)); }
+
+  .steck { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 14px; }
+  .st { display: flex; flex-direction: column; }
+  .st .st-l { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); }
+  .st .st-v { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* expert row: two panels side by side inside one full-width card */
+  .pro-split { display: grid; grid-template-columns: 1fr 300px 1fr; gap: 18px; align-items: start; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 4px 7px; text-align: left; border-bottom: 1px solid rgba(202,204,211,.5); }
+  th { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); font-weight: 600; }
+  td { font-variant-numeric: tabular-nums; }
+  .scroll-table { max-height: 176px; overflow-y: auto; border-radius: var(--md-radius-sm); background: rgba(var(--md-surface-variant), .35); }
+  .cm { display: grid; grid-template-columns: 62px repeat(3, 1fr); gap: 3px; font-size: 11px; }
+  .cm > div { padding: 7px 4px; text-align: center; border-radius: 4px; font-variant-numeric: tabular-nums; }
+  .cm .hd { color: rgb(var(--md-on-surface-variant)); font-weight: 600; }
+  .cm .rl { color: rgb(var(--md-on-surface-variant)); font-weight: 600; text-align: right; }
+  .sub-h { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: rgb(var(--md-on-surface-variant)); font-weight: 600; margin-bottom: 6px; }
+  .toggle {
+    font: inherit; font-size: 11.5px; font-weight: 600; color: rgb(var(--md-on-surface));
+    background: transparent; border: none; cursor: pointer; padding: 0; text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+<div class="variant-tag">Variante C — Dashboard: alles auf einen Blick, Erklärung in jeder Karte, Experten-Karten abgesetzt</div>
+<div class="modal">
+  <div class="modal-header">
+    <div>
+      <h2>Modell-Details</h2>
+      <div class="head-sub">
+        <span>Obst v3</span><span>·</span><span>Projekt „Obst erkennen“</span><span>·</span>
+        <span>trainiert am 17.08.2026, 14:32</span>
+        <span class="chip">aktiv</span>
+        <span class="chip muted">Objekt</span>
+      </div>
+    </div>
+    <button class="close-btn">&times;</button>
+  </div>
+
+  <div class="modal-body">
+    <!-- VERDICT -->
+    <div class="verdict">
+      <div class="kpis">
+        <div class="kpi"><div class="k-label">Genauigkeit</div><div class="k-value good">96,3 %</div><div class="k-sub">auf Trainingsbildern</div></div>
+        <div class="kpi"><div class="k-label">Verlust</div><div class="k-value">0,0412</div><div class="k-sub">von 1,08 gefallen</div></div>
+        <div class="kpi"><div class="k-label">Klassen</div><div class="k-value">3</div><div class="k-sub">Apfel · Banane · Nichts</div></div>
+        <div class="kpi"><div class="k-label">Beispiele</div><div class="k-value">135</div><div class="k-sub">Ø 45 pro Klasse</div></div>
+      </div>
+      <div class="verdict-note">
+        <strong>Solide trainiert — mit einer Schwachstelle.</strong> Die 96,3 % gelten nur
+        für deine eigenen Bilder. „Banane“ hat am wenigsten davon und wird am ehesten
+        verwechselt.
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- CURVES -->
+      <div class="card span7">
+        <div class="card-head">
+          Trainingsverlauf
+          <div class="tabs">
+            <button class="tab active">Kurven</button>
+            <button class="tab">Verwechslungen</button>
+          </div>
+        </div>
+        <div class="chart-legend" style="margin-bottom:2px">
+          <span><i class="dot" style="background:#4CAF50"></i>Genauigkeit</span>
+          <span><i class="dot" style="background:#F44336"></i>Verlust</span>
+        </div>
+        <svg viewBox="0 0 600 200" width="100%" height="200" role="img" aria-label="Genauigkeit und Verlust pro Epoche">
+          <g stroke="rgba(0,0,0,.08)" stroke-width="1">
+            <line x1="42" y1="14" x2="580" y2="14"/><line x1="42" y1="52" x2="580" y2="52"/>
+            <line x1="42" y1="90" x2="580" y2="90"/><line x1="42" y1="128" x2="580" y2="128"/>
+            <line x1="42" y1="164" x2="580" y2="164"/>
+          </g>
+          <g font-size="9" fill="#4CAF50" text-anchor="end">
+            <text x="36" y="18">100%</text><text x="36" y="94">50%</text><text x="36" y="167">0%</text>
+          </g>
+          <g font-size="9" fill="#F44336" text-anchor="start">
+            <text x="586" y="18">1,2</text><text x="586" y="94">0,6</text><text x="586" y="167">0</text>
+          </g>
+          <polyline fill="none" stroke="#4CAF50" stroke-width="2.2" stroke-linejoin="round"
+            points="42,149 60,114 78,96 96,82 114,71 132,63 150,57 168,50 186,46 204,42 222,39 240,37 258,35 276,33 294,31 312,29 330,28 348,27 366,26 384,25 402,24 420,24 438,23 456,22 474,22 492,21 510,21 528,20 546,20 564,19 580,19"/>
+          <polyline fill="none" stroke="#F44336" stroke-width="2.2" stroke-linejoin="round"
+            points="42,22 60,52 78,73 96,89 114,101 132,111 150,120 168,127 186,132 204,137 222,141 240,145 258,147 276,150 294,151 312,153 330,154 348,155 366,156 384,157 402,158 420,158 438,159 456,159 474,160 492,160 510,161 528,161 546,162 564,162 580,162"/>
+          <g font-size="9" fill="#46464F" text-anchor="middle">
+            <text x="42" y="182">1</text><text x="222" y="182">10</text><text x="402" y="182">20</text><text x="580" y="182">30</text>
+            <text x="311" y="196">Epoche</text>
+          </g>
+        </svg>
+        <div class="card-note">
+          <strong>Grün</strong> soll steigen, <strong>rot</strong> fallen. Hier flacht grün
+          ab Epoche 12 ab — weitere Epochen bringen kaum noch etwas. Steigt rot am Ende
+          wieder, merkt sich das Modell einzelne Bilder statt der Muster darin.
+        </div>
+      </div>
+
+      <!-- CLASSES -->
+      <div class="card span5">
+        <div class="card-head">Klassen &amp; Beispiele <span class="hint">135 Bilder</span></div>
+        <div class="cls-row"><div class="nm">Apfel</div><div class="bar"><span style="width:76%"></span></div><div class="num">42</div><div class="pct">31,1 %</div></div>
+        <div class="cls-row"><div class="nm">Banane <span class="warn-pill">wenig</span></div><div class="bar"><span style="width:69%"></span></div><div class="num">38</div><div class="pct">28,1 %</div></div>
+        <div class="cls-row"><div class="nm">Nichts</div><div class="bar"><span style="width:100%"></span></div><div class="num">55</div><div class="pct">40,7 %</div></div>
+        <div class="steck" style="margin-top:10px">
+          <div class="st"><span class="st-l">Bildbereich</span><span class="st-v">224 &times; 224</span></div>
+          <div class="st"><span class="st-l">Mit Augmentierung</span><span class="st-v">405 Beispiele</span></div>
+        </div>
+        <div class="card-note">
+          Klassen mit deutlich weniger Bildern werden schlechter erkannt.
+          <strong>30 pro Klasse</strong> sind ein guter Start, bei ähnlich aussehenden
+          Klassen lieber 100 und mehr — in verschiedenen Positionen und bei
+          unterschiedlichem Licht aufgenommen.
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="card span7">
+        <div class="card-head">Trainings-Einstellungen <span class="hint">so war dieser Lauf konfiguriert</span></div>
+        <div class="set-row"><div class="s-name">Epochen</div><div class="s-val">30</div>
+          <div class="s-exp">Ein Durchlauf durch alle Bilder. Zu wenige = unterangepasst, zu viele = Überanpassung.</div></div>
+        <div class="set-row"><div class="s-name">Lernrate</div><div class="s-val">0,001</div>
+          <div class="s-exp">Schrittweite pro Anpassung. Zu groß schwingt über, zu klein lernt kaum.</div></div>
+        <div class="set-row"><div class="s-name">Batch-Größe</div><div class="s-val">16</div>
+          <div class="s-exp">Bilder pro Lernschritt. Kleiner = rauschiger, oft besser für wenige Bilder.</div></div>
+        <div class="set-row"><div class="s-name">Hidden Units</div><div class="s-val">100</div>
+          <div class="s-exp">Neuronen der versteckten Schicht. Mehr Kapazität braucht mehr Bilder.</div></div>
+        <div class="set-row"><div class="s-name">Augmentierung</div><div class="s-val">An</div>
+          <div class="s-exp">Gespiegelte, gedrehte, hellere Varianten deiner Bilder — macht robuster.</div></div>
+        <div class="set-row"><div class="s-name">Validierung</div><div class="s-val">15 %</div>
+          <div class="s-exp">Zurückgehaltene Bilder, nur zum Prüfen. Zeigt, wie gut es auf Neues passt.</div></div>
+      </div>
+
+      <!-- MODEL PROFILE -->
+      <div class="card span5">
+        <div class="card-head">Steckbrief</div>
+        <div class="steck">
+          <div class="st"><span class="st-l">Feature-Extraktor</span><span class="st-v">MobileNet v1 (α=1.0)</span></div>
+          <div class="st"><span class="st-l">Bildbereich</span><span class="st-v">224 × 224</span></div>
+          <div class="st"><span class="st-l">Parameter</span><span class="st-v">128.203</span></div>
+          <div class="st"><span class="st-l">Modellgröße</span><span class="st-v">500,79 KB</span></div>
+          <div class="st"><span class="st-l">Optimierer</span><span class="st-v">Adam</span></div>
+          <div class="st"><span class="st-l">Dropout</span><span class="st-v">aus</span></div>
+          <div class="st"><span class="st-l">Schichten</span><span class="st-v">3</span></div>
+          <div class="st"><span class="st-l">Modus</span><span class="st-v">Objekt</span></div>
+        </div>
+        <div class="card-note">
+          Transfer-Learning: MobileNet wandelt jedes Bild in einen Merkmalsvektor um,
+          trainiert wird nur der kleine Klassifikator darüber. Die 128.203 Parameter sind
+          <strong>seine</strong> — deshalb reichen wenige Bilder.
+        </div>
+      </div>
+
+      <!-- EXPERT -->
+      <div class="card pro span12">
+        <div class="card-head">
+          Für Fortgeschrittene <span class="chip expert">Experten</span>
+          <span class="hint"><button class="toggle">einklappen</button></span>
+        </div>
+        <div class="pro-split">
+          <div>
+            <div class="sub-h">Verlauf pro Epoche</div>
+            <div class="scroll-table">
+              <table>
+                <thead><tr><th>#</th><th>Genauigkeit</th><th>Verlust</th><th>Val.-Gen.</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>41,20 %</td><td>1,0814</td><td>39,10 %</td></tr>
+                  <tr><td>2</td><td>62,50 %</td><td>0,7663</td><td>58,00 %</td></tr>
+                  <tr><td>3</td><td>74,10 %</td><td>0,5902</td><td>70,20 %</td></tr>
+                  <tr><td>4</td><td>81,40 %</td><td>0,4611</td><td>77,80 %</td></tr>
+                  <tr><td>5</td><td>85,90 %</td><td>0,3702</td><td>82,10 %</td></tr>
+                  <tr><td>6</td><td>88,60 %</td><td>0,3011</td><td>84,60 %</td></tr>
+                  <tr><td>7</td><td>90,80 %</td><td>0,2488</td><td>86,90 %</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card-note">
+              <strong>Val.-Gen.</strong> ist die härtere Zahl: sie zählt nur Bilder, die im
+              Training zurückgehalten wurden.
+            </div>
+          </div>
+
+          <div>
+            <div class="sub-h">Verwechslungsmatrix</div>
+            <div class="cm">
+              <div class="hd"></div><div class="hd">Apfel</div><div class="hd">Banane</div><div class="hd">Nichts</div>
+              <div class="rl">Apfel</div>
+              <div style="background:rgba(66,201,203,.85);color:#fff;font-weight:700">41</div>
+              <div style="background:rgba(66,201,203,.10)">1</div>
+              <div style="background:rgba(66,201,203,.05)">0</div>
+              <div class="rl">Banane</div>
+              <div style="background:rgba(244,67,54,.16)">3</div>
+              <div style="background:rgba(66,201,203,.75);color:#fff;font-weight:700">34</div>
+              <div style="background:rgba(66,201,203,.10)">1</div>
+              <div class="rl">Nichts</div>
+              <div style="background:rgba(66,201,203,.05)">0</div>
+              <div style="background:rgba(66,201,203,.10)">1</div>
+              <div style="background:rgba(66,201,203,.9);color:#fff;font-weight:700">54</div>
+            </div>
+            <div class="card-note">
+              Zeile = wahre Klasse, Spalte = Vorhersage. Die <strong>3</strong> links unten:
+              dreimal wurde Banane für Apfel gehalten.
+            </div>
+          </div>
+
+          <div>
+            <div class="sub-h">Feineinstellungen &amp; Rohwerte</div>
+            <div class="steck" style="grid-template-columns:1fr 1fr">
+              <div class="st"><span class="st-l">Stop-Loss</span><span class="st-v">0,015 · nicht erreicht</span></div>
+              <div class="st"><span class="st-l">Epochen gelaufen</span><span class="st-v">30 / 30</span></div>
+              <div class="st"><span class="st-l">Horizontal spiegeln</span><span class="st-v">an</span></div>
+              <div class="st"><span class="st-l">Rotation</span><span class="st-v">± 12°</span></div>
+              <div class="st"><span class="st-l">Helligkeit</span><span class="st-v">± 0,15</span></div>
+              <div class="st"><span class="st-l">Zoom-Jitter</span><span class="st-v">± 0,10</span></div>
+              <div class="st"><span class="st-l">Extra-Kopien</span><span class="st-v">2 pro Bild</span></div>
+              <div class="st"><span class="st-l">Glättung</span><span class="st-v">Median über 5</span></div>
+            </div>
+            <div class="card-note">
+              Aus 135 Bildern wurden durch Augmentierung <strong>405 Trainingsbeispiele</strong>.
+              Die Glättung wirkt erst beim Testen, nicht im Training.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-footer">
+    <span style="font-size:11.5px;color:rgb(var(--md-on-surface-variant))">
+      Modell-ID m_8f3a21 · 3 Programme nutzen dieses Modell
+    </span>
+    <div style="display:flex;gap:10px">
+      <button class="btn ghost">Exportieren</button>
+      <button class="btn">Schließen</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

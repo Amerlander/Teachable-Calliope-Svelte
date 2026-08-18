@@ -2,18 +2,24 @@
   import type { Snippet } from 'svelte';
   import Portal from 'svelte-portal';
 
+  // `flush` hands the body over to the content: no padding and no scrolling of
+  // its own, for dialogs that bring their own columns and scroll those.
   let {
     title = '',
+    subtitle,
     isOpen = false,
     size = 'medium',
+    flush = false,
     showCloseButton = true,
     onclose,
     children,
     actions
   }: {
     title?: string;
+    subtitle?: Snippet;
     isOpen?: boolean;
     size?: 'small' | 'medium' | 'large' | 'fullscreen';
+    flush?: boolean;
     showCloseButton?: boolean;
     onclose?: () => void;
     children?: Snippet;
@@ -31,13 +37,18 @@
     <div class="overlay" onclick={onBackdrop} onkeydown={onKey} role="dialog" tabindex="-1" aria-modal="true">
       <div class="modal size-{size}">
         <div class="modal-header">
-          {#if title}<h2>{title}</h2>{/if}
+          {#if title || subtitle}
+            <div class="modal-titles">
+              {#if title}<h2>{title}</h2>{/if}
+              {#if subtitle}<div class="modal-subtitle">{@render subtitle()}</div>{/if}
+            </div>
+          {/if}
           {#if showCloseButton}
             <button class="close-btn ghost" onclick={close} aria-label="Schließen">&times;</button>
           {/if}
         </div>
         {#if children}
-          <div class="modal-body">{@render children()}</div>
+          <div class="modal-body" class:flush>{@render children()}</div>
         {/if}
         {#if actions}
           <div class="modal-footer">{@render actions()}</div>
@@ -71,13 +82,20 @@
     &.size-small    { width: 90%; max-width: 400px; }
     &.size-medium   { width: 90%; max-width: 600px; }
     &.size-large    { width: 90%; max-width: 860px; }
-    &.size-fullscreen { width: 95%; max-width: 1200px; }
+    &.size-fullscreen { width: 95%; max-width: 1200px; height: 88vh; }
   }
   .modal-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
+    gap: 12px;
     padding: 20px 24px 0;
+    .modal-titles { min-width: 0; }
+    .modal-subtitle {
+      margin-top: 3px;
+      font-size: 12px;
+      color: rgb(var(--md-on-surface-variant));
+    }
     h2 { margin: 0; font-size: 20px; font-weight: 600; color: rgb(var(--md-on-surface)); }
     .close-btn {
       background: transparent;
@@ -95,9 +113,16 @@
   }
   .modal-body {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 20px 24px;
     color: rgb(var(--md-on-surface));
+    &.flush {
+      padding: 16px 0 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
   }
   .modal-footer {
     padding: 16px 24px;
