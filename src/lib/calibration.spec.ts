@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
   CLASS_THRESHOLD,
+  DEFAULT_SMOOTHING,
+  MAX_SMOOTHING,
   MIN_RANGE_SPAN,
+  MIN_SMOOTHING,
+  normalizeSmoothing,
   displayScore,
   mapScore,
   normalizeRange,
@@ -26,6 +30,20 @@ describe('normalizeRange', () => {
 
   test('pushes the lower end down when there is no room above', () => {
     expect(normalizeRange({ lo: 1, hi: 1 })).toEqual({ lo: 1 - MIN_RANGE_SPAN, hi: 1 });
+  });
+});
+
+describe('normalizeSmoothing', () => {
+  test('falls back to the default for anything unusable', () => {
+    expect(normalizeSmoothing(undefined)).toBe(DEFAULT_SMOOTHING);
+    expect(normalizeSmoothing(NaN)).toBe(DEFAULT_SMOOTHING);
+    expect(normalizeSmoothing('7' as unknown)).toBe(DEFAULT_SMOOTHING);
+  });
+
+  test('rounds and holds the slider bounds', () => {
+    expect(normalizeSmoothing(3.4)).toBe(3);
+    expect(normalizeSmoothing(0)).toBe(MIN_SMOOTHING);
+    expect(normalizeSmoothing(999)).toBe(MAX_SMOOTHING);
   });
 });
 

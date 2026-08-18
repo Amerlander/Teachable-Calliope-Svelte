@@ -16,6 +16,11 @@
  *
  * Mapped values are computed unclamped so two saturated classes can still be
  * ordered, and clamped to 0–100 % only where they are shown or sent.
+ *
+ * Smoothing lives here as well. It is the other knob that shapes what a model's
+ * output turns into — not per class and not on the value axis but on time — and
+ * it is stored next to the windows on the model, so both survive a reload and
+ * both are read from one place.
  */
 
 /** Raw-probability window that maps onto 0–100 %. Both ends are 0–1. */
@@ -36,6 +41,21 @@ export const CLASS_THRESHOLD = 0.6;
  * flapping the detection on and off frame by frame.
  */
 export const CLASS_THRESHOLD_RELEASE = 0.55;
+
+/**
+ * Frames the rolling median runs over. 1 means no smoothing; the upper bound is
+ * what the slider offers, past which the reaction lag outweighs the steadier
+ * reading.
+ */
+export const DEFAULT_SMOOTHING = 5;
+export const MIN_SMOOTHING = 1;
+export const MAX_SMOOTHING = 20;
+
+/** Force a stored or user-supplied smoothing window into a usable one. */
+export function normalizeSmoothing(v: unknown): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : DEFAULT_SMOOTHING;
+  return Math.max(MIN_SMOOTHING, Math.min(MAX_SMOOTHING, n));
+}
 
 function clamp01(v: number): number {
   if (!Number.isFinite(v)) return 0;
