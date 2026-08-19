@@ -3,6 +3,11 @@
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
+	"packageManager": "pnpm@10.0.0",
+	"engines": {
+		"node": ">=22",
+		"pnpm": ">=10"
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
@@ -83,11 +88,6 @@
 		"svelte-portal": "^2.2.1",
 		"svelte-splitpanes": "^8.0.12",
 		"svelte-tiny-virtual-list": "^3.0.1"
-	},
-	"overrides": {
-		"svelte-tiny-virtual-list": {
-			"svelte": "$svelte"
-		}
 	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
