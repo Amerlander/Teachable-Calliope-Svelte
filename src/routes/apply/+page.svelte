@@ -9,6 +9,7 @@
     drawPoseSkeleton,
     setLastPoseCanvas,
   } from '$lib/machine';
+  import { drawPoseOverlay } from '$lib/poseOverlay';
   import { setVideoRef, mobilenetModel, classifierModel, predictionClasses } from '$lib/stores';
   import { selectedCameraId } from '$lib/stores/camera';
   import { activeModel, availableModels, currentProject } from '$lib/stores/projects';
@@ -27,7 +28,11 @@
   const TICK_MS = 100;
 
   let videoEl: HTMLVideoElement | null = $state(null);
+  // Two canvases, on purpose — see $lib/poseOverlay. `skeletonCanvas` is the
+  // square, black-backed picture the model is fed and must stay exactly what
+  // drawPoseSkeleton renders; `overlayCanvas` is the one on screen.
   let skeletonCanvas: HTMLCanvasElement | null = $state(null);
+  let overlayCanvas: HTMLCanvasElement | null = $state(null);
   let videoAspect = $state(4 / 3);
 
   let tickTimer: ReturnType<typeof setTimeout> | null = null;
@@ -63,6 +68,12 @@
               { size: 512 },
             );
             setLastPoseCanvas(skeletonCanvas);
+          }
+          if (overlayCanvas) {
+            drawPoseOverlay(overlayCanvas, pose, videoEl.videoWidth, videoEl.videoHeight, {
+              // The camera picture is mirrored, so the skeleton has to be too.
+              mirror: true,
+            });
           }
           if (pose?.keypoints?.length) {
             streamPoseKeypoints(pose.keypoints, videoEl.videoWidth, videoEl.videoHeight);
@@ -121,10 +132,18 @@
 </script>
 
 <div class="apply-view">
-  <div class="video-stage">
+  <div class="video-stage" class:pose-mode={mode === 'pose'}>
     <video bind:this={videoEl} autoplay playsinline muted>
       <track kind="captions" />
     </video>
+
+    <!-- The skeleton, over the blurred camera — the same treatment Trainieren
+         uses. Nothing was drawn here before: the only skeleton canvas was the
+         model's own input, rendered offscreen, so a pose project showed a bare
+         camera picture and nothing of what the model sees. -->
+    {#if mode === 'pose'}
+      <canvas class="pose-overlay" bind:this={overlayCanvas}></canvas>
+    {/if}
 
     <!-- The region the running model was trained on. Read-only here: Anwenden
          uses models, the region belongs to the model. -->
@@ -171,6 +190,7 @@
     </div>
   </div>
 
+  <!-- Never shown: this is the square frame predictFromVideo classifies. -->
   {#if mode === 'pose'}
     <canvas bind:this={skeletonCanvas} width="512" height="512" class="offscreen"></canvas>
   {/if}
@@ -198,9 +218,27 @@
     background: #000;
     transform: scaleX(-1);
   }
+  // --- Pose mode: blur the raw camera and let the skeleton read on top. ---
+  .video-stage.pose-mode video {
+    filter: blur(18px) brightness(0.4) saturate(1.1);
+  }
+  // Matches the video's box exactly: drawPoseOverlay renders at the camera's
+  // aspect ratio, so the same `contain` letterboxes both the same way. No
+  // scaleX(-1) — the mirror is in the drawing, or the labels would read
+  // backwards — and no blend mode, the canvas is transparent.
+  .pose-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    z-index: 2;
+    pointer-events: none;
+  }
 
   .hud {
     position: absolute;
+    z-index: 6;
     backdrop-filter: blur(6px);
     background: rgba(0, 0, 0, 0.55);
     color: #fff;
@@ -317,4 +355,5 @@
     width: 1px;
     height: 1px;
   }
+
 </style>

@@ -10,7 +10,13 @@ import {
 } from '@calliope-edu/mini-connection-widget';
 import { sendLineToMakeCode } from '$lib/makecode';
 import { activeModel } from './projects';
-import { mapScores, displayScore, wireScore, pickWinnerIndex } from '$lib/calibration';
+import {
+  mapScores,
+  displayScore,
+  wireScore,
+  pickWinnerIndex,
+  normalizeSmoothing,
+} from '$lib/calibration';
 
 /**
  * Whether a transport that actually carries serial is up.
@@ -65,8 +71,15 @@ export const currentDetection: Readable<CurrentDetection | null> = {
   subscribe: detection.subscribe,
 };
 
-/** Smoothing window size (number of recent frames to median-aggregate). */
-export const smoothingWindow = writable<number>(5);
+/**
+ * Smoothing window size (number of recent frames to median-aggregate). Read off
+ * the selected model rather than held here: it belongs to the model the same way
+ * the class windows do, so it survives a reload and cannot drift apart from
+ * whichever model is loaded.
+ */
+export function smoothingFrames(): number {
+  return normalizeSmoothing(get(activeModel)?.smoothing);
+}
 
 // Rolling ring buffer of recent probability vectors for median smoothing.
 let history: number[][] = [];
@@ -96,6 +109,8 @@ export function resetStreamState() {
   history = [];
   lastLabelsKey = '';
   lastWinnerIdx = -1;
+  lastDetectionLine = '';
+  lastDetectionAt = 0;
   detection.set(null);
 }
 
@@ -105,11 +120,12 @@ export function resetStreamState() {
  * repeat the mapping.
  *
  * The values are smoothed with a rolling-median window, mapped through the
- * selected model's per-class windows, and emitted as two lines: `C <c1> … <cN>`
- * carries the mapped scores (0–100) that back the `confidence` block, `W <id>`
- * names the detected class (0 = none). The winner is decided here, not on the
- * board: the mapping belongs to a model, and a program can be pointed at another
- * model at any time, so a threshold baked into the program would go stale.
+ * selected model's per-class windows, and emitted as one line,
+ * `D <id> <c1> … <cN>`: the detected class (0 = none) followed by the
+ * mapped scores (0–100) that back the `confidence` block. The winner is
+ * decided here, not on the board: the mapping belongs to a model, and a program
+ * can be pointed at another model at any time, so a threshold baked into the
+ * program would go stale.
  */
 export function streamClassProbabilities(
   labels: string[],
@@ -123,7 +139,7 @@ export function streamClassProbabilities(
     lastLabelsKey = key;
   }
 
-  const windowSize = Math.max(1, Math.floor(get(smoothingWindow)));
+  const windowSize = smoothingFrames();
   history.push(probabilities.slice());
   while (history.length > windowSize) history.shift();
 
@@ -158,12 +174,40 @@ export function streamClassProbabilities(
   detection.set(next);
 
   if (mapped.length) {
-    // Scores first, then the winner: a handler running on the class event reads
-    // the scores of the same frame.
-    emitToCalliope(`C ${mapped.map(wireScore).join(' ')}`);
-    emitToCalliope(`W ${winnerIdx >= 0 ? winnerIdx + 1 : 0}`);
+    emitDetection(
+      `D ${winnerIdx >= 0 ? winnerIdx + 1 : 0} ${mapped.map(wireScore).join(' ')}`,
+    );
   }
   return next;
+}
+
+/**
+ * Longest a frame identical to the last one may go unsent. Bounds how long a
+ * dropped line can leave the board on a stale detection.
+ */
+const DETECTION_REFRESH_MS = 500;
+let lastDetectionLine = '';
+let lastDetectionAt = 0;
+
+/**
+ * Emit a detection line, skipping frames the board already has.
+ *
+ * One line rather than the `C` + `W` pair this used to send: two lines meant two
+ * DAPLink round trips and two delimiter events per frame, and a `C` lost to an RX
+ * overflow left a `W` whose scores came from an older frame. Now the winner and
+ * the scores it was picked from arrive together or not at all.
+ *
+ * The scores are integer percentages, so a still scene renders the same line over
+ * and over — nothing the board can learn from. A repeat is resent every
+ * {@link DETECTION_REFRESH_MS} anyway, so a line lost in transit can't latch a
+ * stale detection for as long as the scene holds.
+ */
+function emitDetection(line: string): void {
+  const now = Date.now();
+  if (line === lastDetectionLine && now - lastDetectionAt < DETECTION_REFRESH_MS) return;
+  lastDetectionLine = line;
+  lastDetectionAt = now;
+  emitToCalliope(line);
 }
 
 /**

@@ -2,3 +2,7 @@
 # a single converted byte silently corrupts a tensor or a font table.
 *.bin binary
 *.woff2 binary
+
+# pnpm applies patches/*.patch byte-exactly — a CRLF conversion on a Windows
+# checkout makes the patch fail to apply and takes the install down with it.
+*.patch -text

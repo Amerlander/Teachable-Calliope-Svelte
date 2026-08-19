@@ -1,11 +1,11 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { trainingHistory } from '$lib/stores';
+  import { examples, trainingHistory } from '$lib/stores';
   import { isTraining } from '$lib/stores/app';
   import { activeModel } from '$lib/stores/projects';
   import ConfusionMatrix from '$lib/components/ConfusionMatrix.svelte';
   import InfoTooltip from '$lib/components/ui/InfoTooltip.svelte';
-  import { calculateConfusionMatrix } from '$lib/machine';
+  import { cachedConfusion, confusionRunning, ensureConfusion } from '$lib/confusion';
   import { showNotification } from '$lib/stores/notifications';
 
   let { initialTab = 'accuracy' }: { initialTab?: 'accuracy' | 'confusion' } = $props();
@@ -14,9 +14,12 @@
   const LOSS_COLOR = '#F44336';
 
   let tab = $state<'accuracy' | 'confusion'>(initialTab);
-  let matrix: number[][] = $state([]);
-  let matrixClasses: string[] = $state([]);
-  let matrixLoading = $state(false);
+  // The matrix itself is cached on the model (see confusion.ts), so switching
+  // tabs, models or views no longer starts the measurement over.
+  const cached = $derived(cachedConfusion($activeModel, $examples));
+  const matrix = $derived(cached?.matrix ?? []);
+  const matrixClasses = $derived(cached?.classes ?? []);
+  const matrixLoading = $derived($confusionRunning.includes($activeModel?.id ?? ''));
 
   const hist = $derived($trainingHistory);
 
@@ -148,36 +151,21 @@
     c.updateSeries(untrack(() => series), true);
   });
 
-  // A different run means a different classifier, so a matrix computed for the
-  // previous one has to go — the tab recomputes it when it is opened again.
+  // Asking is idempotent: a cached matrix answers at once, a running one is
+  // joined, and only a missing one starts a measurement.
+  // Not retried on its own: without this the effect would start over the moment
+  // the running flag drops after a failure.
+  let failedFor = $state<string | null>(null);
+
   $effect(() => {
-    void runId;
-    untrack(() => {
-      if (matrix.length) {
-        matrix = [];
-        matrixClasses = [];
-      }
+    const m = $activeModel;
+    if (tab !== 'confusion' || !m || $isTraining) return;
+    if (cached || matrixLoading || failedFor === m.id) return;
+    ensureConfusion(m).catch((err) => {
+      failedFor = m.id;
+      showNotification('Konfusionsmatrix: ' + (err as Error).message, { type: 'error' });
     });
   });
-
-  $effect(() => {
-    if (tab === 'confusion' && !matrix.length && !matrixLoading && !$isTraining) {
-      void computeMatrix();
-    }
-  });
-
-  async function computeMatrix() {
-    matrixLoading = true;
-    try {
-      const res = await calculateConfusionMatrix();
-      matrix = res.matrix;
-      matrixClasses = res.classes;
-    } catch (err) {
-      showNotification('Konfusionsmatrix: ' + (err as Error).message, { type: 'error' });
-    } finally {
-      matrixLoading = false;
-    }
-  }
 </script>
 
 <div class="charts">

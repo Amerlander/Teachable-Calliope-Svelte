@@ -59,7 +59,7 @@
   </section> -->
 
   <!-- Section: communication log -->
-  <!-- <section>
+  <section>
     <div class="log-head">
       <h4>Kommunikation</h4>
       <button class="link-btn" onclick={clearCalliopeLog}>Leeren</button>
@@ -85,7 +85,7 @@
         {/each}
       {/if}
     </div>
-  </section> -->
+  </section>
 </div>
 
 <style lang="scss">
