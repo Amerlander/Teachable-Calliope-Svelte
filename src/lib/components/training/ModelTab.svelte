@@ -4,7 +4,8 @@
     trainingOptions,
     setTrainingOptions,
     classifierModel,
-    trainingReadiness
+    trainingReadiness,
+    draftRoi
   } from '$lib/stores';
   import type { TrainingOptions } from '$lib/stores';
   import {
@@ -21,7 +22,6 @@
     trainStatus,
     modelTrained,
     modelTabView,
-    draftRoi,
     trainPhase,
     trainEpoch,
     trainTotalEpochs,

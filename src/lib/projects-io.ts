@@ -132,6 +132,10 @@ export async function importModelAsNewProject(file: File): Promise<Project> {
   );
   p.classes = [...contents.classes];
   for (const c of p.classes) p.examples[c] = [];
+  // Same reasoning as the class list: material recorded here is meant to extend
+  // what the imported model already knows, so the next run should crop the way
+  // that model was trained. A ZIP without a region leaves it unpicked.
+  if (contents.roi) p.draftRoi = contents.roi;
   await idbPut(STORES.projects, p);
   currentProject.set(p);
   localStorage.setItem('teachable-last-project-id', p.id);

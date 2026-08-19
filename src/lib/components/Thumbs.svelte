@@ -1,7 +1,6 @@
 <script lang="ts">
   import VirtualList from 'svelte-tiny-virtual-list';
-  import { examples, activeClass } from '$lib/stores';
-  import { draftRoi } from '$lib/stores/app';
+  import { examples, activeClass, draftRoi } from '$lib/stores';
   import { roiCropStyle } from '$lib/roi';
 
   const THUMB_SIZE = 64;

@@ -220,6 +220,21 @@ export type Project = {
   examples: Record<string, { data: string }[]>;
   activeClass: string | null;
   trainingOptions: TrainingOptions;
+  /**
+   * The region the *next* training run will crop to (see $lib/roi). Stored on
+   * the project rather than held for the session, so the framing a user set up
+   * in front of their camera is still there after a training run, after a model
+   * switch and after a reload — the same reasoning that puts `trainingOptions`
+   * here, which is the other half of the setup for the model being composed.
+   *
+   * Nothing about selecting a model may write here. A model carries the region
+   * it was trained on (`TrainedModel.roi`), and looking at an old run must not
+   * redraw the box for the next one; only the camera panel and the explicit
+   * „Einstellungen und Bildbereich übernehmen“ button change it.
+   *
+   * Absent or null means "not picked yet", not "whole image".
+   */
+  draftRoi?: Roi | null;
   trainingHistory: TrainingHistory;
   modelMetadata: ModelMetadata;
   modelArtifacts: ModelArtifacts | null;
@@ -285,6 +300,14 @@ function hydrate(p: Project): Project {
   if (p.currentProgramId === undefined) p.currentProgramId = null;
   if (p.trainingOptions) {
     p.trainingOptions.featureExtractor = resolveFeatureExtractor(p.trainingOptions.featureExtractor);
+  }
+  // The draft region used to be session state, so projects saved before it moved
+  // here carry it only on their models. The newest run's region *was* the draft
+  // when that run started, which is what the composer should still show — an
+  // unset field would instead throw the framing away exactly once, on the reload
+  // that introduces this.
+  if (p.draftRoi === undefined) {
+    p.draftRoi = [...p.modelHistory].reverse().find((m) => m.roi)?.roi ?? null;
   }
   const mode: ProjectMode = p.mode ?? 'image';
   // Models used to keep their class list under `classesSnapshot` and to inherit
@@ -622,6 +645,8 @@ function appendModel(model: TrainedModel): string | null {
     p.modelMetadata = model.metadata;
     p.trainingHistory = model.history;
     p.trainingOptions = model.options;
+    // `p.draftRoi` is not among them: it describes the next model, not this one,
+    // and a finished run must leave the framing the user set up alone.
     created = model.id;
   });
   return created;
@@ -706,6 +731,10 @@ export function setCurrentModel(id: string): TrainedModel | null {
     p.modelMetadata = m.metadata;
     p.trainingHistory = m.history;
     p.trainingOptions = m.options;
+    // Not `p.draftRoi`: switching to a model that was trained on another region
+    // shows that region on the test view (see RoiOverlay) and nowhere else. The
+    // box for the next model stays where the user last put it — carrying it over
+    // is a separate, explicit action in the model details.
     chosen = m;
   });
   return chosen;
@@ -763,6 +792,9 @@ export async function importProjectFromJson(data: Project): Promise<Project> {
       featureExtractor: resolveFeatureExtractor(data.trainingOptions?.featureExtractor)
     },
     trainingHistory: data.trainingHistory || { epochs: [], accuracy: [], loss: [] },
+    // Left undefined when the file predates the field, which is what lets
+    // hydrate() take the region off the newest model instead.
+    draftRoi: data.draftRoi,
     modelMetadata: data.modelMetadata || {
       name: data.name,
       date: new Date().toISOString(),

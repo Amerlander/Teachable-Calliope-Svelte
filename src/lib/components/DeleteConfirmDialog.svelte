@@ -21,11 +21,10 @@
 <script lang="ts">
   import Modal from '$lib/components/ui/Modal.svelte';
   import CampusButton from '$lib/components/ui/CampusButton.svelte';
-  import { classes, examples } from '$lib/stores';
+  import { classes, examples, draftRoi } from '$lib/stores';
   import { currentProject } from '$lib/stores/projects';
   import { modelLabel } from '$lib/models';
   import { highestClassIndex } from '$lib/makecode/programFiles';
-  import { draftRoi } from '$lib/stores/app';
   import { roiCropStyle } from '$lib/roi';
 
   let {

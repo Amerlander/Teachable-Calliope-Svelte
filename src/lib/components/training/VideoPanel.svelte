@@ -16,7 +16,9 @@
     removeClass,
     removeExamples,
     renameClass,
-    videoRefs
+    videoRefs,
+    draftRoi,
+    setDraftRoi
   } from '$lib/stores';
   import {
     initSharedCamera,
@@ -44,8 +46,7 @@
     isTesting,
     isTraining,
     workspaceTab,
-    modelTabView,
-    draftRoi
+    modelTabView
   } from '$lib/stores/app';
   import {
     defaultRoi,
@@ -270,9 +271,10 @@
   }
 
   // ---------- Region editor (prep mode) ----------
-  // `draftRoi` is the source of truth and holds camera-frame coordinates. The
-  // feed is shown mirrored, so the box is edited in mirrored coordinates and
-  // converted on the way in and out — see $lib/roi.
+  // `draftRoi` is the source of truth and holds camera-frame coordinates. It
+  // lives on the project, so what is dragged here is still here after a run, a
+  // model switch or a reload. The feed is shown mirrored, so the box is edited in
+  // mirrored coordinates and converted on the way in and out — see $lib/roi.
   //
   // A null draft means "this project has not picked a region yet" rather than
   // "whole image": the box is always on screen, so it always has a value, and an
@@ -312,12 +314,12 @@
   const roiBelowInput = $derived(Math.min(previewCrop.w, previewCrop.h) < MODEL_INPUT);
 
   function commitEditRoi(displayRoi: Roi) {
-    draftRoi.set(mirrorRoi(displayRoi));
+    setDraftRoi(mirrorRoi(displayRoi));
   }
 
   /** Back to the largest centred square — the one reset there is. */
   function resetRoi() {
-    draftRoi.set(defaultRoi(videoAspect));
+    setDraftRoi(defaultRoi(videoAspect));
   }
 
   // Write the fallback through once the camera has reported its real aspect, so
@@ -330,7 +332,7 @@
   // not a square at all, the one thing this is here to avoid.
   $effect(() => {
     if (mode === 'prep' && !isPose && aspectKnown && !$draftRoi) {
-      draftRoi.set(defaultRoi(videoAspect));
+      setDraftRoi(defaultRoi(videoAspect));
     }
   });
 

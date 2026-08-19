@@ -1,8 +1,8 @@
 import { derived, writable, get } from 'svelte/store';
 import { activeModel, currentProject, scheduleSave, updateProject } from './stores/projects';
-import type { ModelMetadata, TrainingHistory, TrainingOptions } from './stores/projects';
+import type { ModelMetadata, Roi, TrainingHistory, TrainingOptions } from './stores/projects';
 
-export type { ModelMetadata, TrainingHistory, TrainingOptions };
+export type { ModelMetadata, Roi, TrainingHistory, TrainingOptions };
 
 // --- Project-backed reactive views ---
 // These are derived from the current project so the UI auto-updates on project switch.
@@ -33,6 +33,19 @@ export const trainingOptions = derived(
   (p): TrainingOptions =>
     p?.trainingOptions ?? { epochs: 30, batchSize: 16, learningRate: 0.001, hiddenUnits: 64, augmentation: false }
 );
+/**
+ * The region the *next* training run will crop to, in camera-frame coordinates
+ * (see $lib/roi). Project-backed like the training options next to it, and for
+ * the same reason: it describes the model being composed, and a framing the user
+ * spent time on has to still be there after a run, after a model switch and
+ * after a reload — see `Project.draftRoi`.
+ *
+ * null means "not picked yet", not "whole image": the camera panel fills it in
+ * with the largest centred square as soon as it knows the camera's aspect. On a
+ * *model* (see TrainedModel.roi) a null still does mean the whole frame, which is
+ * what models trained before regions existed carry.
+ */
+export const draftRoi = derived(currentProject, (p): Roi | null => p?.draftRoi ?? null);
 
 // --- Training readiness ---
 // Training only makes sense once every class can actually carry an output: the
@@ -215,6 +228,17 @@ export function updateModelMetadata(patch: Partial<ModelMetadata>): void {
 export function setTrainingOptions(patch: Partial<TrainingOptions>): void {
   updateProject((p) => {
     p.trainingOptions = { ...p.trainingOptions, ...patch };
+  });
+}
+
+/**
+ * Set the region for the next run. Called on every pointer move while the box is
+ * being dragged, which is what the readout and the crop preview follow; the
+ * project save behind it is debounced, so a drag ends in one write.
+ */
+export function setDraftRoi(roi: Roi | null): void {
+  updateProject((p) => {
+    p.draftRoi = roi;
   });
 }
 

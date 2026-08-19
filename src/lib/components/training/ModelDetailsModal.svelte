@@ -4,8 +4,8 @@
   import Button from '$lib/components/ui/Button.svelte';
   import ModelCharts from './ModelCharts.svelte';
   import EpochChart from './EpochChart.svelte';
-  import { examples, setTrainingOptions } from '$lib/stores';
-  import { modelTabView, draftRoi } from '$lib/stores/app';
+  import { examples, setTrainingOptions, setDraftRoi } from '$lib/stores';
+  import { modelTabView } from '$lib/stores/app';
   import { activeModel, currentProject, type TrainedModel } from '$lib/stores/projects';
   import { exportModelToZip } from '$lib/machine';
   import { cachedConfusion, confusionRunning, ensureConfusion } from '$lib/confusion';
@@ -294,7 +294,7 @@
   /** Carry this run's setup into the composer for a new model. */
   function reuseSettings(m: TrainedModel, withRoi: boolean) {
     setTrainingOptions({ ...m.options });
-    if (withRoi) draftRoi.set(m.roi ?? null);
+    if (withRoi) setDraftRoi(m.roi ?? null);
     modelTabView.set('new');
     close();
     showNotification(
