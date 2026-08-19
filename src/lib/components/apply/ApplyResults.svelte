@@ -14,9 +14,11 @@
    * Nothing here re-derives a threshold.
    */
   import type { CurrentDetection } from '$lib/stores/streaming';
-  import type { ClassOrder, ResultDetail } from '$lib/stores/applyView';
+  import type { ClassOrder, ResultDetail, ThumbSize } from '$lib/stores/applyView';
   import type { TrainedModel } from '$lib/stores/projects';
   import type { ModelPrediction } from '$lib/compare';
+  import type { ClassCover } from '$lib/classThumb';
+  import { roiCropStyle } from '$lib/roi';
   import { modelLabel } from '$lib/models';
 
   let {
@@ -25,9 +27,11 @@
     det = null,
     multi = null,
     showThumbs = true,
+    size = 'medium',
     activeModelId = null,
     colorFor = null,
-    thumbFor,
+    cropCovers = false,
+    coverFor,
   }: {
     detail: ResultDetail;
     /** Class order, and with it whether the leading class is repeated in the list. */
@@ -37,6 +41,8 @@
     /** One entry per compared model, or null when only one model is running. */
     multi?: { model: TrainedModel; prediction: ModelPrediction | null }[] | null;
     showThumbs?: boolean;
+    /** Cover size, and at 'large' the row-of-pictures layout — see $lib/stores/applyView. */
+    size?: ThumbSize;
     /** Which of the compared models is the one streaming to the board. */
     activeModelId?: string | null;
     /**
@@ -44,11 +50,30 @@
      * the picture. Null while there is nothing to tell apart.
      */
     colorFor?: ((index: number) => string) | null;
+    /**
+     * Cut every cover down to its model's region. Follows the same setting that
+     * crops the stage, so the covers are framed like the picture they sit on.
+     */
+    cropCovers?: boolean;
     /** The class cover to show beside a label, if there is one. */
-    thumbFor: (model: TrainedModel | null, label: string) => string | undefined;
+    coverFor: (model: TrainedModel | null, label: string) => ClassCover | null;
   } = $props();
 
   const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+  /**
+   * The row of pictures replaces the list, so it needs the *whole* class list —
+   * which is why it is only reachable where that list is on screen anyway. One
+   * model at a time, too: inside a card in the several-models strip there is no
+   * width for a row of pictures, and eight rows of them would be the whole stage.
+   */
+  const gallery = $derived(size === 'large' && detail === 'all' && showThumbs && !multi);
+
+  /** One entry per class, in the chosen order. */
+  function ordered(labels: string[], values: number[]) {
+    const all = labels.map((label, i) => ({ label, value: values[i] ?? 0 }));
+    return order === 'detected' ? [...all].sort((a, b) => b.value - a.value) : all;
+  }
 
   /**
    * The rows under the big result, for one model's raw output.
@@ -64,11 +89,35 @@
    * probability, and the row to leave out is the one that is actually up there.
    */
   function rows(labels: string[], values: number[], leading: string) {
-    const all = labels.map((label, i) => ({ label, value: values[i] ?? 0 }));
-    if (order !== 'detected') return all;
-    return all.filter((r) => r.label !== leading).sort((a, b) => b.value - a.value);
+    const all = ordered(labels, values);
+    return order === 'detected' ? all.filter((r) => r.label !== leading) : all;
   }
 </script>
+
+<!--
+  A cover is stored as the whole camera frame (see $lib/classThumb), so the box is
+  a window and the picture inside it is what moves. Left alone it fills the box and
+  `object-fit: cover` lands on the centre square — the same framing covers used to
+  be stored in. Cut, roiCropStyle blows the frame up and pushes it so that only the
+  model's region is inside the window, exactly as the stored thumbnails in
+  Trainieren do it.
+-->
+{#snippet cover(c: ClassCover | null, kind: 'single' | 'row' | 'mc' | 'gal')}
+  {@const cut = cropCovers && !!c?.roi}
+  <span
+    class="cov"
+    class:single-thumb={kind === 'single'}
+    class:row-thumb={kind === 'row'}
+    class:mc-thumb={kind === 'mc'}
+    class:gal-thumb={kind === 'gal'}
+    class:cut
+    aria-hidden="true"
+  >
+    {#if c}
+      <img src={c.src} alt="" style={cut && c.roi ? roiCropStyle(c.roi) : ''} />
+    {/if}
+  </span>
+{/snippet}
 
 {#if detail !== 'none'}
   {#if multi}
@@ -94,17 +143,18 @@
             <div class="mc-wait">…</div>
           {:else}
             {@const top = entry.model.classes[p.topIndex] ?? p.topLabel}
-            <div class="mc-top">
+            <!-- The size setting reaches in here too. S keeps picture, class and
+                 percentage on one line; M moves the percentage under the class name
+                 to make room for a bigger picture; L gives the picture the whole
+                 width of the card. -->
+            <div class="mc-top" class:sz-m={size === 'medium'} class:sz-l={size === 'large'}>
               {#if showThumbs}
-                {@const thumb = thumbFor(entry.model, top)}
-                {#if thumb}
-                  <img class="mc-thumb" src={thumb} alt="" />
-                {:else}
-                  <span class="mc-thumb placeholder" aria-hidden="true"></span>
-                {/if}
+                {@render cover(coverFor(entry.model, top), 'mc')}
               {/if}
-              <span class="mc-top-label" title={top}>{top}</span>
-              <span class="mc-top-pct">{pct(p.topProb)}</span>
+              <span class="mc-text">
+                <span class="mc-top-label" title={top}>{top}</span>
+                <span class="mc-top-pct">{pct(p.topProb)}</span>
+              </span>
             </div>
 
             {@const restRows = rows(entry.model.classes, p.probs, top)}
@@ -127,43 +177,54 @@
     </div>
   {:else if det}
     {@const restRows = rows(det.labels, det.all, det.label)}
-    <div class="single" class:confident={det.detected}>
-      <div class="single-top">
-        {#if showThumbs}
-          {@const thumb = thumbFor(null, det.label)}
-          {#if thumb}
-            <img class="single-thumb" src={thumb} alt="" />
-          {:else}
-            <span class="single-thumb placeholder" aria-hidden="true"></span>
-          {/if}
-        {/if}
-        <span class="single-label" title={det.label}>{det.label}</span>
-        <span class="single-bar">
-          <span class="single-fill" style="width: {det.confidence * 100}%"></span>
-        </span>
-        <span class="single-pct">{pct(det.confidence)}</span>
-      </div>
-
-      {#if detail === 'all' && restRows.length && det.labels.length > 1}
-        <div class="single-rows">
-          {#each restRows as row (row.label)}
-            <div class="single-row" class:leading={row.label === det.label}>
-              {#if showThumbs}
-                {@const thumb = thumbFor(null, row.label)}
-                {#if thumb}
-                  <img class="row-thumb" src={thumb} alt="" />
-                {:else}
-                  <span class="row-thumb placeholder" aria-hidden="true"></span>
-                {/if}
-              {/if}
-              <span class="single-row-label" title={row.label}>{row.label}</span>
-              <span class="single-row-bar">
-                <span class="single-row-fill" style="width: {row.value * 100}%"></span>
+    {@const cells = ordered(det.labels, det.all)}
+    <div class="single" class:confident={det.detected} class:gallery>
+      {#if gallery}
+        <!-- Every class as a picture with its own bar, and no separate headline
+             above it: the leading class is the one lit up in the row, so a
+             headline would be the same class a second time. That it counts as
+             *detected* — the calibrated decision, not just the highest bar — is
+             what the green is for. -->
+        <div class="gal-row">
+          {#each cells as cell (cell.label)}
+            <div class="gal-cell" class:leading={cell.label === det.label}>
+              {@render cover(coverFor(null, cell.label), 'gal')}
+              <span class="gal-label" title={cell.label}>{cell.label}</span>
+              <span class="gal-bar">
+                <span class="gal-fill" style="width: {cell.value * 100}%"></span>
               </span>
-              <span class="single-row-pct">{pct(row.value)}</span>
+              <span class="gal-pct">{pct(cell.value)}</span>
             </div>
           {/each}
         </div>
+      {:else}
+        <div class="single-top">
+          {#if showThumbs}
+            {@render cover(coverFor(null, det.label), 'single')}
+          {/if}
+          <span class="single-label" title={det.label}>{det.label}</span>
+          <span class="single-bar">
+            <span class="single-fill" style="width: {det.confidence * 100}%"></span>
+          </span>
+          <span class="single-pct">{pct(det.confidence)}</span>
+        </div>
+
+        {#if detail === 'all' && restRows.length && det.labels.length > 1}
+          <div class="single-rows">
+            {#each restRows as row (row.label)}
+              <div class="single-row" class:leading={row.label === det.label}>
+                {#if showThumbs}
+                  {@render cover(coverFor(null, row.label), 'row')}
+                {/if}
+                <span class="single-row-label" title={row.label}>{row.label}</span>
+                <span class="single-row-bar">
+                  <span class="single-row-fill" style="width: {row.value * 100}%"></span>
+                </span>
+                <span class="single-row-pct">{pct(row.value)}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
       {/if}
     </div>
   {/if}
@@ -171,6 +232,29 @@
 
 <style lang="scss">
   $panel: rgba(0, 0, 0, 0.58);
+
+  // The window every cover is shown through — see the snippet above. Sizes stay on
+  // the four kind classes, so each place keeps deciding how big its covers are.
+  .cov {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.12);
+    img {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      max-width: none;
+      object-fit: cover;
+    }
+    // Cut: the offsets come from roiCropStyle and assume the picture covers the
+    // window exactly, which `cover` would undo by cropping it a second time.
+    &.cut img { object-fit: fill; }
+  }
 
   // ---------- one model ----------
   .single {
@@ -200,9 +284,6 @@
     width: calc(44px * var(--thumb-scale, 1));
     height: calc(44px * var(--thumb-scale, 1));
     border-radius: 8px;
-    object-fit: cover;
-    flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.12);
   }
   .single-label {
     font-weight: 700;
@@ -254,9 +335,6 @@
     width: calc(22px * var(--thumb-scale, 1));
     height: calc(22px * var(--thumb-scale, 1));
     border-radius: 5px;
-    object-fit: cover;
-    flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.12);
   }
   .single-row-label {
     flex: 0 0 30%;
@@ -283,6 +361,74 @@
     font-variant-numeric: tabular-nums;
     flex: 0 0 40px;
     text-align: right;
+  }
+
+  // ---------- the classes as a row of pictures ----------
+  // Wider than the list it replaces, and scrollable sideways rather than shrinking
+  // the pictures: past six or seven classes the point of the layout is the size of
+  // each picture, not that they all fit at once.
+  .single.gallery {
+    width: min(1180px, calc(100% - 32px));
+    bottom: 24px;
+    padding: 12px 14px;
+  }
+  .gal-row {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    align-items: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .gal-cell {
+    flex: 0 0 auto;
+    width: clamp(96px, 11vw, 190px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    // Dimmed rather than hidden: the classes that are not it still say how close
+    // they came, which is half of what this view is for.
+    opacity: 0.55;
+    transition: opacity 0.15s;
+    &.leading { opacity: 1; }
+  }
+  .gal-thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 10px;
+  }
+  .gal-cell.leading .gal-thumb {
+    outline: 3px solid rgba(255, 255, 255, 0.75);
+    outline-offset: 2px;
+  }
+  .single.confident .gal-cell.leading .gal-thumb { outline-color: #22c55e; }
+  .gal-label {
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gal-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.18);
+    overflow: hidden;
+  }
+  .gal-fill {
+    display: block;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.62);
+    transition: width 0.15s;
+  }
+  .gal-cell.leading .gal-fill { background: #9ca3af; }
+  .single.confident .gal-cell.leading .gal-fill { background: #22c55e; }
+  .gal-pct {
+    font-size: 13px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.9;
   }
 
   // ---------- several models ----------
@@ -352,6 +498,9 @@
     color: rgba(255, 255, 255, 0.5);
     padding: 4px 0;
   }
+  // A card is one narrow column, so the size setting changes the arrangement here
+  // rather than only a number of pixels: past a certain picture size there is no
+  // room left beside it for a name and a percentage on the same line.
   .mc-top {
     display: flex;
     align-items: center;
@@ -359,12 +508,16 @@
     min-width: 0;
   }
   .mc-thumb {
-    width: calc(30px * var(--thumb-scale, 1));
-    height: calc(30px * var(--thumb-scale, 1));
+    width: 34px;
+    height: 34px;
     border-radius: 6px;
-    object-fit: cover;
-    flex-shrink: 0;
-    background: rgba(255, 255, 255, 0.12);
+  }
+  .mc-text {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
   }
   .mc-top-label {
     flex: 1;
@@ -380,6 +533,31 @@
     font-variant-numeric: tabular-nums;
     opacity: 0.85;
     flex-shrink: 0;
+  }
+
+  // M: a bigger picture, and the percentage moves under the class name.
+  .mc-top.sz-m {
+    align-items: flex-start;
+    .mc-thumb { width: 52px; height: 52px; border-radius: 8px; }
+    .mc-text { flex-direction: column; align-items: flex-start; gap: 1px; }
+    .mc-top-label { flex: 0 0 auto; max-width: 100%; font-size: 16px; }
+    .mc-top-pct { font-size: 15px; opacity: 1; }
+  }
+  // L: the picture takes the card's whole width, with the name and the percentage
+  // stacked under it.
+  .mc-top.sz-l {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 7px;
+    .mc-thumb {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1;
+      border-radius: 10px;
+    }
+    .mc-text { flex-direction: column; align-items: flex-start; gap: 1px; }
+    .mc-top-label { flex: 0 0 auto; max-width: 100%; font-size: 17px; }
+    .mc-top-pct { font-size: 15px; opacity: 1; }
   }
   .mc-rows {
     display: flex;
@@ -425,8 +603,6 @@
     flex: 0 0 32px;
     text-align: right;
   }
-
-  .placeholder { display: inline-block; }
 
   @media (max-width: 720px) {
     .single { bottom: 16px; padding: 10px 12px; }

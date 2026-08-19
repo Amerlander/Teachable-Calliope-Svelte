@@ -155,7 +155,8 @@ export async function importModelAsNewProject(file: File): Promise<Project> {
     roi: contents.roi,
     featureExtractor: contents.featureExtractor,
     mode: contents.mode ?? 'image',
-    classThumbs: contents.classThumbs
+    classThumbs: contents.classThumbs,
+    classThumbsVersion: contents.classThumbsVersion
   });
   await saveCurrentProject();
   await refreshProjectList();

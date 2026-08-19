@@ -57,10 +57,10 @@
     { value: 'detected', label: 'Nach Erkennung' },
   ];
 
-  const thumbSizes: { value: ThumbSize; label: string }[] = [
-    { value: 'small', label: 'S' },
-    { value: 'medium', label: 'M' },
-    { value: 'large', label: 'L' },
+  const thumbSizes: { value: ThumbSize; label: string; title: string }[] = [
+    { value: 'small', label: 'S', title: 'kleine Bilder in der Liste' },
+    { value: 'medium', label: 'M', title: 'größere Bilder, Prozent unter dem Namen' },
+    { value: 'large', label: 'L', title: 'Bilderreihe statt Liste, Bild über die ganze Breite' },
   ];
 
   const thumbsOff = $derived($applyView.resultDetail === 'none' || !$applyView.classThumbs);
@@ -153,6 +153,7 @@
                 type="button"
                 class:on={$applyView.thumbSize === size.value}
                 disabled={thumbsOff}
+                title={size.title}
                 aria-pressed={$applyView.thumbSize === size.value}
                 onclick={() => setThumbSize(size.value)}
               >
@@ -161,6 +162,14 @@
             {/each}
           </div>
         </div>
+        {#if $applyView.thumbSize === 'large' && !thumbsOff}
+          <p class="note">
+            L stellt die Klassen als Bilderreihe dar, mit einem Balken unter jedem
+            Bild statt einer Liste — dafür braucht es „Alle Klassen“ und ein einzelnes
+            Modell. Bei mehreren Modellen füllt das Bild stattdessen die Breite jeder
+            Karte.
+          </p>
+        {/if}
       </section>
 
       <section class="group">
@@ -278,15 +287,6 @@
         </section>
       {/if}
 
-      <section class="group">
-        <h3>Kamerabild</h3>
-        <!-- Mirroring used to be a switch here. It is a property of the camera, so
-             it is set with the camera and holds in every view. -->
-        <p class="note">
-          Ob das Bild gespiegelt ist, wird bei der Kamera eingestellt und gilt in
-          allen Ansichten.
-        </p>
-      </section>
 
       <section class="group">
         <h3>Darstellung</h3>

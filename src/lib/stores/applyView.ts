@@ -38,14 +38,28 @@ export type RoiDisplay = 'show' | 'hide' | 'only';
  */
 export type ClassOrder = 'fixed' | 'detected';
 
-/** How big the class covers are drawn. A projector at the back of a room wants large. */
+/**
+ * How the class covers are drawn.
+ *
+ *  'small'  — beside the class name, as a list
+ *  'medium' — the same list, pictures twice the size, for a room
+ *  'large'  — the list becomes a *row of pictures*, each with its own bar
+ *             underneath. It needs every class on screen at once, so it falls
+ *             back to the list wherever the full list is not being shown: with
+ *             only the result, with covers switched off, and per model in the
+ *             several-models strip, where each card is one column of many.
+ */
 export type ThumbSize = 'small' | 'medium' | 'large';
 
-/** The factor the cover sizes in ApplyResults are multiplied by. */
+/**
+ * The factor the cover sizes in ApplyResults are multiplied by, for the two sizes
+ * that are still a list. 'large' is a layout of its own and sizes its pictures
+ * from the width it has.
+ */
 export const THUMB_SCALE: Record<ThumbSize, number> = {
-  small: 0.8,
-  medium: 1.15,
-  large: 1.7
+  small: 1.15,
+  medium: 2.4,
+  large: 2.4
 };
 
 /** How much of the classification result is on screen. */

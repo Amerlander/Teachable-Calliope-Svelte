@@ -346,12 +346,19 @@ label.file-label {
   &:empty { display: none; margin: 0; padding: 0; border: none; }
 }
 
-// Pose overlay
+// Pose overlay.
+//
+// Deliberately without a mirror. There are two kinds of overlay canvas and only
+// one of them wants a CSS flip: drawPoseSkeleton (Trainieren) renders in raw
+// camera coordinates and is flipped by the view that shows it, while
+// drawPoseOverlay puts the mirror *into the coordinates* so its labels do not
+// read backwards — see $lib/poseOverlay. A flip here applied to both, which
+// mirrored the second kind twice and left the skeleton lying the wrong way round
+// over a mirrored picture.
 .pose-overlay {
   position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
   pointer-events: none;
   z-index: 3;
-  transform: scaleX(var(--cam-mirror));
 }

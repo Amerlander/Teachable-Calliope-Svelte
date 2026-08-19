@@ -35,6 +35,7 @@
     type ModelPrediction,
   } from '$lib/compare';
   import { displayRoi, roiCropStyle } from '$lib/roi';
+  import { COVER_VERSION, type ClassCover } from '$lib/classThumb';
   import NoModelNotice from '$lib/components/NoModelNotice.svelte';
   import RoiOverlay from '$lib/components/RoiOverlay.svelte';
   import ApplySidebar from '$lib/components/apply/ApplySidebar.svelte';
@@ -230,17 +231,38 @@
     cropRoi ? roiCropStyle(displayRoi(cropRoi, $cameraMirror)) : '',
   );
 
+  /** Whether a map of covers holds whole frames, so a region can be cut out of one. */
+  const cuttable = (version: number | undefined) => (version ?? 1) >= COVER_VERSION;
+
   /**
-   * The cover for `label`, preferring the one the model itself carries.
+   * The cover for `label`, preferring the one the model itself carries, together
+   * with the region it may be cut down to.
    *
    * A model's own covers are the right answer here: this view labels its output
    * from the model, and the project's live map has usually moved on — renamed
    * classes, deleted ones, a model imported from a ZIP whose classes the project
    * never had. The project map is the fallback for models recorded before covers
    * existed.
+   *
+   * Which map a cover came out of decides whether it can be cut, because each map
+   * carries its own version — a model trained before covers held whole frames still
+   * has square ones, and cutting a region out of those would show a corner of an
+   * already-cut picture. The region itself always comes off the model: the readout
+   * is about what *it* sees.
    */
-  function thumbFor(model: TrainedModel | null, label: string): string | undefined {
-    return (model ?? $activeModel)?.classThumbs?.[label] ?? $classThumbs[label];
+  function coverFor(model: TrainedModel | null, label: string): ClassCover | null {
+    const m = model ?? $activeModel;
+    const roi = m?.roi ?? null;
+    const fromModel = m?.classThumbs?.[label];
+    if (fromModel) {
+      return { src: fromModel, roi: cuttable(m?.classThumbsVersion) ? roi : null };
+    }
+    const fromProject = $classThumbs[label];
+    if (!fromProject) return null;
+    return {
+      src: fromProject,
+      roi: cuttable($currentProject?.classThumbsVersion) ? roi : null
+    };
   }
 
   // ---------- Fullscreen ----------
@@ -355,9 +377,11 @@
       {det}
       multi={multiResults}
       showThumbs={$applyView.classThumbs}
+      size={$applyView.thumbSize}
       activeModelId={$activeModel?.id ?? null}
       colorFor={multiResults && multiResults.length > 1 ? overlayColor : null}
-      {thumbFor}
+      cropCovers={roiMode === 'only'}
+      {coverFor}
     />
 
     {#if $availableModels.length === 0}

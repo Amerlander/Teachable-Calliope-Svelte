@@ -13,8 +13,37 @@
  * cases, which is exactly when it is still wanted.
  */
 
-/** Side of a stored cover, in pixels. Big enough for a 64 px slot on a 2× screen. */
-export const CLASS_THUMB_SIZE = 160;
+import type { Roi } from '$lib/stores/projects';
+
+/**
+ * A stored cover, together with the region it may be cut down to.
+ *
+ * `roi` is null whenever nothing can be cut: a cover from before COVER_VERSION, a
+ * pose project, a model trained on the whole picture. Whoever looks the cover up
+ * decides that — it is the one that knows which map it came out of.
+ */
+export type ClassCover = { src: string; roi: Roi | null };
+
+/**
+ * Short side of a stored cover, in pixels.
+ *
+ * Large enough that a *part* of it still holds up where covers are drawn biggest
+ * — the picture row in Anwenden, on a 2× screen — since a view may cut the frame
+ * down to the model's region before showing it.
+ */
+export const CLASS_THUMB_SHORT = 400;
+
+/**
+ * What a stored cover contains. Kept beside every map of them (see
+ * `classThumbsVersion` on Project and TrainedModel) because the two cannot be
+ * told apart by looking at them, and cutting a region out of one that has already
+ * been cut is how a cover ends up showing a corner of itself.
+ *
+ *  1 — a square, already cut out of the frame: centred, or to whatever region was
+ *      set when it was made. Nothing further can be cut from it.
+ *  2 — the whole camera frame, downscaled. A view cuts what it wants.
+ */
+export const COVER_VERSION = 2;
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -26,28 +55,39 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
- * A square cover from an example image, centre-cropped.
+ * A cover from an example image: the whole frame, downscaled.
  *
- * Cropped rather than letterboxed: these are shown in small square slots, and a
- * letterboxed thumbnail spends a third of an already tiny box on black bars.
+ * Uncut on purpose. A cover is shown in several places that want different
+ * framings — the class list wants a picture of the class, and Anwenden showing
+ * nothing but the model's region wants the cover to agree with what is on the
+ * stage. Cutting at this point would fix one of those and lose the other, and the
+ * region can still be moved afterwards, which would leave every cover stale.
+ *
+ * So the crop lives at the display end (`roiCropStyle` in $lib/roi) and this
+ * keeps the picture it was given. A square slot showing the frame with
+ * `object-fit: cover` lands on the same centre square that used to be stored,
+ * which is why nothing that shows a cover had to change.
+ *
  * The encoding follows the source — camera captures are JPEG, pose captures are
  * flat-coloured line art on black where JPEG rings around every bone.
  */
 export async function makeClassThumb(
   dataUrl: string,
-  size = CLASS_THUMB_SIZE
+  short = CLASS_THUMB_SHORT
 ): Promise<string> {
   const img = await loadImage(dataUrl);
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
   if (!w || !h) throw new Error('Bild hat keine Größe');
-  const side = Math.min(w, h);
+  // Never upscaled: a capture is already small, and a cover twice its size is
+  // twice the bytes in the project for no more detail.
+  const scale = Math.min(1, short / Math.min(w, h));
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Kein 2D-Kontext');
-  ctx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   return dataUrl.startsWith('data:image/png')
     ? canvas.toDataURL('image/png')
     : canvas.toDataURL('image/jpeg', 0.85);

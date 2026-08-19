@@ -1118,10 +1118,12 @@ type ModelZipMetadata = ModelMetadata & {
    * One cover image per class as a data URL — see TrainedModel.classThumbs.
    *
    * In the metadata rather than as files in the ZIP: they are already-compressed
-   * 160 px thumbnails, so storing them as entries would not shrink them, and
-   * keeping them here means one place decides which class a cover belongs to.
+   * thumbnails, so storing them as entries would not shrink them, and keeping them
+   * here means one place decides which class a cover belongs to.
    */
   classThumbs?: Record<string, string>;
+  /** What those covers contain — see COVER_VERSION in $lib/classThumb. */
+  classThumbsVersion?: number;
 };
 
 const MODEL_ZIP_FORMAT = 2;
@@ -1153,7 +1155,12 @@ export async function exportModelToZip(model: TrainedModel): Promise<void> {
     // The covers travel with the model for the same reason the class list does:
     // wherever it is loaded, it can name and show its classes on its own.
     ...(model.classThumbs && Object.keys(model.classThumbs).length
-      ? { classThumbs: model.classThumbs }
+      ? {
+          classThumbs: model.classThumbs,
+          // Without this the covers read as the oldest kind wherever the ZIP is
+          // opened, and no view would dare cut a region out of them.
+          classThumbsVersion: model.classThumbsVersion ?? 1
+        }
       : {})
   };
   zip.file('metadata.json', JSON.stringify(meta, null, 2));
@@ -1187,6 +1194,8 @@ export type ModelZipContents = {
   smoothing?: number;
   /** Cover image per class — see TrainedModel.classThumbs. */
   classThumbs?: Record<string, string>;
+  /** What those covers contain — see COVER_VERSION in $lib/classThumb. */
+  classThumbsVersion?: number;
   /** The loaded classifier, ready to hand to `classifierModel`. */
   model: any;
 };
@@ -1250,6 +1259,7 @@ export async function readModelZip(file: File): Promise<ModelZipContents> {
     classRanges: sanitizeClassRanges(meta.classRanges, classes),
     ...(meta.smoothing !== undefined ? { smoothing: normalizeSmoothing(meta.smoothing) } : {}),
     classThumbs: sanitizeClassThumbs(meta.classThumbs, classes),
+    classThumbsVersion: meta.classThumbsVersion,
     model
   };
 }
@@ -1314,6 +1324,7 @@ export async function importModelFromZip(file: File): Promise<string | null> {
     mode: contents.mode,
     classRanges: contents.classRanges,
     classThumbs: contents.classThumbs,
+    classThumbsVersion: contents.classThumbsVersion,
     smoothing: contents.smoothing
   });
   classifierModel.set(contents.model);

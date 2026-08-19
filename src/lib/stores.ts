@@ -7,7 +7,7 @@ import type {
   TrainingHistory,
   TrainingOptions
 } from './stores/projects';
-import { makeClassThumb } from './classThumb';
+import { COVER_VERSION, makeClassThumb } from './classThumb';
 
 export type { ModelMetadata, Roi, TrainingHistory, TrainingOptions };
 
@@ -177,16 +177,24 @@ const thumbInFlight = new Set<string>();
  * Give `name` a cover from `data` unless it already has one. Called for every
  * recorded example, so it is a no-op after the first.
  */
-export async function ensureClassThumb(name: string, data: string): Promise<void> {
+export function ensureClassThumb(name: string, data: string): Promise<void> {
+  return writeClassThumb(name, data, false);
+}
+
+/**
+ * Build a cover from `data` and store it. `replace` is the difference between
+ * filling one in and rebuilding one that is already there.
+ */
+async function writeClassThumb(name: string, data: string, replace: boolean): Promise<void> {
   if (!name || !data) return;
-  if (get(currentProject)?.classThumbs?.[name]) return;
+  if (!replace && get(currentProject)?.classThumbs?.[name]) return;
   if (thumbInFlight.has(name)) return;
   thumbInFlight.add(name);
   try {
     const thumb = await makeClassThumb(data);
     // Re-checked: the user may have picked one by hand while this was decoding,
     // and an explicit choice outranks the automatic first-image default.
-    if (get(currentProject)?.classThumbs?.[name]) return;
+    if (!replace && get(currentProject)?.classThumbs?.[name]) return;
     setClassThumb(name, thumb);
   } catch (err) {
     console.warn('Klassenbild konnte nicht erstellt werden', err);
@@ -231,17 +239,42 @@ export async function chooseClassThumb(name: string, image: string): Promise<voi
 let backfilledProjectId: string | null = null;
 
 async function backfillClassThumbs(p: Project): Promise<void> {
+  // Covers saved before COVER_VERSION are squares already cut out of the frame, so
+  // a view that cuts the model's region out of one would be cutting a crop out of
+  // a crop. Those are rebuilt from the first example — and dropped where no
+  // example is left to rebuild from, because a missing cover draws a placeholder
+  // while a wrongly cut one quietly shows the wrong thing.
+  //
+  // A hand-picked cover is lost to this, and that is the trade: the source it was
+  // picked from is not recorded, only the cut copy.
+  const stale = (p.classThumbsVersion ?? 1) < COVER_VERSION;
   for (const cls of p.classes) {
     // The user can switch projects while this is decoding, and setClassThumb
     // writes to whatever is current — not to `p`. Without this, a cover from the
     // project being left would land on a same-named class in the new one.
     if (get(currentProject)?.id !== p.id) return;
-    if (p.classThumbs?.[cls]) continue;
+    const had = !!p.classThumbs?.[cls];
+    if (had && !stale) continue;
     const first = p.examples?.[cls]?.[0]?.data;
-    if (!first) continue;
+    if (!first) {
+      if (had) {
+        updateProject((cur) => {
+          if (cur.classThumbs) delete cur.classThumbs[cls];
+        });
+      }
+      continue;
+    }
     // Sequential: a whole class list's worth of decodes at once would compete
     // with the camera and the feature extractor for the same main thread.
-    await ensureClassThumb(cls, first);
+    await writeClassThumb(cls, first, stale);
+  }
+  // Only now, and only if this is still the project it ran for: every cover left
+  // in the map was written by the current maker, so the mark is true. Written last
+  // on purpose — a run cut short half way leaves the mark off and runs again.
+  if (stale && get(currentProject)?.id === p.id) {
+    updateProject((cur) => {
+      cur.classThumbsVersion = COVER_VERSION;
+    });
   }
 }
 

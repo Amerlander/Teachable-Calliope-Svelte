@@ -16,15 +16,11 @@ msgstr "Program 1"
 msgid "Mindestens {0} Klassen mit je {1} Bildern nötig ({2}/{3})"
 msgstr "At least {0} classes with {1} images each required ({2}/{3})"
 
-#. 0: MIN_EXAMPLES_PER_CLASS
-#: src/lib/stores.ts
-msgid "Noch eine Klasse braucht mindestens {0} Bilder"
-msgstr "One more class needs at least {0} images"
+#~ msgid "Noch eine Klasse braucht mindestens {0} Bilder"
+#~ msgstr "One more class needs at least {0} images"
 
-#. 0: short; 1: MIN_EXAMPLES_PER_CLASS
-#: src/lib/stores.ts
-msgid "Noch {0} Klassen brauchen mindestens {1} Bilder"
-msgstr "{0} more classes need at least {1} images"
+#~ msgid "Noch {0} Klassen brauchen mindestens {1} Bilder"
+#~ msgstr "{0} more classes need at least {1} images"
 
 #. 0: index + 1
 #: src/lib/stores/camera.ts
@@ -255,9 +251,8 @@ msgstr "{0} images imported"
 msgid "{0} Bilder importiert in \"{1}\""
 msgstr "{0} images imported into \"{1}\""
 
-#: src/lib/components/training/ClassesTab.svelte
-msgid "Alle aufgenommenen Bilder aus allen Klassen löschen?"
-msgstr "Delete every captured image from every class?"
+#~ msgid "Alle aufgenommenen Bilder aus allen Klassen löschen?"
+#~ msgstr "Delete every captured image from every class?"
 
 #: src/lib/components/training/ClassesTab.svelte
 msgid "Alle Bilder gelöscht"
@@ -353,17 +348,20 @@ msgstr "At least 3 classes required ({0}/3)"
 msgid "Modell trainieren"
 msgstr "Train model"
 
+#: src/lib/components/training/CompareChart.svelte
 #: src/lib/components/training/ModelCharts.svelte
 #: src/lib/components/training/ModelCharts.svelte
 #: src/lib/components/training/ModelDetailsModal.svelte
 msgid "Genauigkeit"
 msgstr "Accuracy"
 
+#: src/lib/components/training/CompareChart.svelte
 #: src/lib/components/training/ModelCharts.svelte
 #: src/lib/components/training/ModelCharts.svelte
 msgid "Verlust"
 msgstr "Loss"
 
+#: src/lib/components/training/CompareChart.svelte
 #: src/lib/components/training/ModelCharts.svelte
 #: src/lib/components/training/ModelCharts.svelte
 msgid "Epoche"
@@ -548,6 +546,7 @@ msgstr "Close"
 #: src/lib/components/Header.svelte
 #: src/lib/components/training/ModelHistory.svelte
 #: src/lib/components/tryout/ProgramList.svelte
+#: src/routes/tryout/+page.svelte
 msgid "Fehler beim Laden: "
 msgstr "Error while loading: "
 
@@ -982,6 +981,7 @@ msgstr "Configure augmentation"
 msgid "Daten-Augmentierung <0/>"
 msgstr "Data augmentation <0/>"
 
+#: src/lib/components/training/ClassThumbDialog.svelte
 #: src/lib/components/training/VideoPanel.svelte
 #: src/lib/components/training/VideoPanel.svelte
 msgid "Fertig"
@@ -1451,9 +1451,7 @@ msgid "ohne Klassen-Blöcke"
 msgstr "without class blocks"
 
 #. 0: modelLabel(model)
-#. 0: modelLabel(model)
 #: src/lib/components/tryout/ProgramList.svelte
-#: src/routes/tryout/+page.svelte
 msgid "Programm nutzt jetzt „{0}“"
 msgstr "Program now uses “{0}”"
 
@@ -2592,6 +2590,7 @@ msgstr ""
 msgid "Ø {0} pro Klasse"
 msgstr ""
 
+#: src/lib/components/training/CompareChart.svelte
 #: src/lib/components/training/ModelDetailsModal.svelte
 msgid "Trainingsverlauf"
 msgstr ""
@@ -3173,7 +3172,6 @@ msgstr ""
 msgid "Gezeichnetes Skelett"
 msgstr ""
 
-#: src/lib/components/apply/ApplySidebar.svelte
 #: src/lib/modelInsights.ts
 msgid "Kamerabild"
 msgstr ""
@@ -4077,9 +4075,8 @@ msgstr ""
 msgid "Bild {0}"
 msgstr ""
 
-#: src/lib/components/training/ClassThumbDialog.svelte
-msgid "Das aktuelle Klassenbild ist eine verkleinerte Kopie und bleibt auch erhalten, wenn du das Bild später löschst."
-msgstr ""
+#~ msgid "Das aktuelle Klassenbild ist eine verkleinerte Kopie und bleibt auch erhalten, wenn du das Bild später löschst."
+#~ msgstr ""
 
 #: src/lib/components/training/ClassThumbDialog.svelte
 msgid "Standard verwenden"
@@ -4129,9 +4126,8 @@ msgstr ""
 msgid "Gezeigt wird der Bereich des oben gewählten Modells — das ist das Modell, das an den Calliope sendet."
 msgstr ""
 
-#: src/lib/components/apply/ApplySidebar.svelte
-msgid "Ob das Bild gespiegelt ist, wird bei der Kamera eingestellt und gilt in allen Ansichten."
-msgstr ""
+#~ msgid "Ob das Bild gespiegelt ist, wird bei der Kamera eingestellt und gilt in allen Ansichten."
+#~ msgstr ""
 
 #. 0: modelLabel(model)
 #. 0: modelLabel(o.model)
@@ -4155,5 +4151,37 @@ msgstr ""
 
 #: src/lib/components/apply/ApplySidebar.svelte
 msgid "Kamerabild weichzeichnen"
+msgstr ""
+
+#. 0: MIN_EXAMPLES_PER_CLASS
+#: src/lib/stores.ts
+msgid "Eine Klasse mit weniger als {0} Bildern wird nicht trainiert"
+msgstr ""
+
+#. 0: short; 1: MIN_EXAMPLES_PER_CLASS
+#: src/lib/stores.ts
+msgid "{0} Klassen mit weniger als {1} Bildern werden nicht trainiert"
+msgstr ""
+
+#. 0: MIN_EXAMPLES_PER_CLASS
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Erst ab {0} Bildern wird diese Klasse mittrainiert"
+msgstr ""
+
+#~ msgid "Bilderreihe mit Balken statt Liste"
+#~ msgstr ""
+
+#~ msgid "L stellt die Klassen als Bilderreihe dar, mit einem Balken unter jedem Bild statt einer Liste. Dafür braucht es „Alle Klassen\" und ein Modell."
+#~ msgstr ""
+
+#~ msgid "L stellt die Klassen als Bilderreihe dar, mit einem Balken unter jedem Bild statt einer Liste. Dafür braucht es „Alle Klassen“ und ein Modell."
+#~ msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Bilderreihe statt Liste, Bild über die ganze Breite"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "L stellt die Klassen als Bilderreihe dar, mit einem Balken unter jedem Bild statt einer Liste — dafür braucht es „Alle Klassen“ und ein einzelnes Modell. Bei mehreren Modellen füllt das Bild stattdessen die Breite jeder Karte."
 msgstr ""
 

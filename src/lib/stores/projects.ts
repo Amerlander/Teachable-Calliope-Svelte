@@ -155,6 +155,8 @@ export type TrainedModel = {
    * exist at all for an imported model.
    */
   classThumbs?: Record<string, string>;
+  /** What those covers contain — see COVER_VERSION in $lib/classThumb. */
+  classThumbsVersion?: number;
   exampleCounts: Record<string, number>;
   /** Region of the camera frame the model was trained on; absent = whole image. */
   roi?: Roi;
@@ -236,6 +238,8 @@ export type Project = {
    * one; a copy of its own, so clearing or deleting examples leaves it standing.
    */
   classThumbs?: Record<string, string>;
+  /** What those covers contain — see COVER_VERSION in $lib/classThumb. */
+  classThumbsVersion?: number;
   activeClass: string | null;
   trainingOptions: TrainingOptions;
   /**
@@ -667,7 +671,20 @@ function appendModel(model: TrainedModel): string | null {
     const thumbs = fromProject || model.classThumbs
       ? { ...fromProject, ...model.classThumbs }
       : undefined;
-    if (thumbs) model = { ...model, classThumbs: thumbs };
+    if (thumbs) {
+      // The lower of the two versions, because the merged map is only as
+      // re-cuttable as its worst entry — and being told a cover is a whole frame
+      // when it is already a crop is the one mistake that shows.
+      const versions = [
+        fromProject ? (p.classThumbsVersion ?? 1) : null,
+        model.classThumbs ? (model.classThumbsVersion ?? 1) : null
+      ].filter((v): v is number => v !== null);
+      model = {
+        ...model,
+        classThumbs: thumbs,
+        classThumbsVersion: versions.length ? Math.min(...versions) : undefined
+      };
+    }
     const next = [...p.modelHistory, model];
     // Cap history at 20 most recent runs to keep storage bounded
     p.modelHistory = next.length > 20 ? next.slice(-20) : next;
@@ -734,6 +751,8 @@ export function recordImportedModel(init: {
   smoothing?: number;
   /** Class covers the ZIP carried, if any — see TrainedModel.classThumbs. */
   classThumbs?: Record<string, string>;
+  /** What those covers contain — see COVER_VERSION in $lib/classThumb. */
+  classThumbsVersion?: number;
 }): string | null {
   const exampleCounts: Record<string, number> = {};
   for (const c of init.classes) exampleCounts[c] = 0;
@@ -754,7 +773,9 @@ export function recordImportedModel(init: {
     ...(init.smoothing !== undefined ? { smoothing: normalizeSmoothing(init.smoothing) } : {}),
     // An imported model brings its own covers; appendModel only fills the gaps
     // from the project, for classes that happen to share a name.
-    ...(init.classThumbs ? { classThumbs: init.classThumbs } : {}),
+    ...(init.classThumbs
+      ? { classThumbs: init.classThumbs, classThumbsVersion: init.classThumbsVersion ?? 1 }
+      : {}),
     featureExtractor: resolveFeatureExtractor(init.featureExtractor)
   });
 }
