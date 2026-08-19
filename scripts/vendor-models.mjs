@@ -11,14 +11,16 @@
  * downloads work fine, so vendoring is the only way to get those weights into
  * the browser — and it also makes the app usable in filtered school networks.
  *
- * Weight shards are merged into a single .bin per model. MobileNet v1 Lite ships
- * as 55 separate shards upstream; serving that as one file turns 56 requests
- * into 2.
+ * Weight shards are merged per model. MobileNet v1 Lite ships as 55 separate
+ * shards upstream; serving that as one file turns 56 requests into 2. The merged
+ * blob is then cut back into as few pieces as a static host allows — see
+ * scripts/shard-weights.mjs for why that limit exists.
  */
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { specByteLength, writeModel } from './shard-weights.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_ROOT = join(ROOT, 'static', 'models');
@@ -59,25 +61,6 @@ const MODELS = [
   }
 ];
 
-const MERGED_SHARD = 'weights.bin';
-
-/** Bytes one element of a weight spec occupies on the wire. */
-function bytesPerElement(spec) {
-  const dtype = spec.quantization?.dtype ?? spec.dtype;
-  switch (dtype) {
-    case 'uint8': case 'int8': case 'bool': return 1;
-    case 'uint16': case 'int16': case 'float16': return 2;
-    case 'float32': case 'int32': return 4;
-    case 'complex64': return 8;
-    default: throw new Error(`Unhandled weight dtype: ${dtype}`);
-  }
-}
-
-function specByteLength(spec) {
-  const elements = (spec.shape ?? []).reduce((a, b) => a * b, 1);
-  return elements * bytesPerElement(spec);
-}
-
 async function fetchBuffer(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
@@ -85,8 +68,8 @@ async function fetchBuffer(url) {
 }
 
 /**
- * Concatenate every shard of every weight group into one buffer and rewrite the
- * manifest as a single group pointing at it.
+ * Concatenate every shard of every weight group into one buffer and flatten the
+ * groups into a single list of specs describing it.
  *
  * TFJS resolves a weight's position by walking a group's specs in order and
  * summing their byte lengths, so flattening groups is only safe when each
@@ -111,7 +94,7 @@ async function downloadMerged(baseUrl, manifest, query) {
     chunks.push(...buffers);
     weights.push(...group.weights);
   }
-  return { data: Buffer.concat(chunks), manifest: [{ paths: [MERGED_SHARD], weights }] };
+  return { data: Buffer.concat(chunks), manifest: [{ paths: [], weights }] };
 }
 
 async function vendor(model) {
@@ -127,14 +110,13 @@ async function vendor(model) {
   const outDir = join(OUT_ROOT, model.dir);
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
-  const modelJson = JSON.stringify(topology);
-  await writeFile(join(outDir, 'model.json'), modelJson);
-  await writeFile(join(outDir, MERGED_SHARD), data);
+  const shards = await writeModel(outDir, topology, data);
+  const modelJson = await readFile(join(outDir, 'model.json'), 'utf8');
 
   const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
   console.log(
     `${model.dir.padEnd(30)} ${mb(modelJson.length + data.length).padStart(8)}  ` +
-    `${shardCountBefore} Shards -> 1`
+    `${shardCountBefore} Shards -> ${shards.length}`
   );
 
   return {

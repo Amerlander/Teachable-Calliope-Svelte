@@ -76,8 +76,20 @@ cd /mnt/c/GIT/calliope-stack/apps/web/Teachable-Calliope-Svelte
 ```
 
 Das Skript pinnt jede Quelle auf einen HF-Commit, schneidet den Kopf ab, konvertiert,
-führt die Shards zu einer `weights.bin` zusammen (wie das Vendor-Skript), schreibt nach
+führt die Shards zusammen (wie das Vendor-Skript), schreibt nach
 `static/models/<variante>/` und ergänzt `static/models/PROVENANCE.json`.
+
+Zusammengeführt wird nicht zwingend zu einer Datei: Cloudflare Pages lehnt Assets über
+25 MiB beim Upload ab, und v4 Medium wiegt 32 MiB. Deshalb wird der Blob am Ende auf so
+wenige Dateien wie möglich verteilt, jede höchstens `SHARD_LIMIT` groß — eine
+`weights.bin`, solange es passt, sonst `weights-1of2.bin`, `weights-2of2.bin`. Für den
+Loader ist das transparent. Bereits eingecheckte Modelle lassen sich ohne die
+Konvertierungs-Toolchain nachträglich aufteilen:
+
+```bash
+node scripts/shard-weights.mjs                     # alle Modelle
+node scripts/shard-weights.mjs mobilenet-v4-medium # nur eins
+```
 
 ## Prüfen — nicht optional
 

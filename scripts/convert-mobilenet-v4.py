@@ -50,6 +50,9 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT_ROOT = ROOT / "static" / "models"
 FIXTURE_DIR = ROOT / "scripts" / "fixtures"
 MERGED_SHARD = "weights.bin"
+# Mirrors SHARD_LIMIT in scripts/shard-weights.mjs: Cloudflare Pages refuses any asset
+# above 25 MiB, and v4 Medium is 32 MiB when its weights are one file.
+SHARD_LIMIT = 20 * 1024 * 1024
 PROBE_COUNT = 3
 
 # Pinned to a commit so a rerun cannot silently pick up different weights.
@@ -160,12 +163,23 @@ def normalise(images: np.ndarray) -> np.ndarray:
     return scaled.transpose(0, 3, 1, 2).astype(np.float32)
 
 
-def merge_shards(model_dir: Path) -> int:
+def shard_names(count: int) -> list[str]:
+    """`weights.bin` while it fits, numbered siblings once it does not."""
+    if count == 1:
+        return [MERGED_SHARD]
+    return [f"weights-{i + 1}of{count}.bin" for i in range(count)]
+
+
+def repack_shards(model_dir: Path) -> list[str]:
     """
-    Concatenate the converter's shards into one weights.bin, as vendor-models.mjs does
-    for the downloaded models — same reasoning (fewer requests), and the same check
-    that a group's shards hold exactly its specs and nothing else, because a padded
-    group would silently shift every later tensor.
+    Concatenate the converter's shards, as vendor-models.mjs does for the downloaded
+    models — same reasoning (fewer requests), and the same check that a group's shards
+    hold exactly its specs and nothing else, because a padded group would silently
+    shift every later tensor.
+
+    The merged blob is then cut back into as few files as SHARD_LIMIT allows. TFJS
+    concatenates a group's paths before walking its specs, so a boundary may fall
+    mid-tensor — which is what tensorflowjs_converter does by default anyway.
     """
     manifest_path = model_dir / "model.json"
     topology = json.loads(manifest_path.read_text(encoding="utf8"))
@@ -174,9 +188,7 @@ def merge_shards(model_dir: Path) -> int:
 
     chunks: list[bytes] = []
     weights: list[dict] = []
-    shard_count = 0
     for group in topology["weightsManifest"]:
-        shard_count += len(group["paths"])
         blob = b"".join((model_dir / p).read_bytes() for p in group["paths"])
         expected = 0
         for spec in group["weights"]:
@@ -193,10 +205,16 @@ def merge_shards(model_dir: Path) -> int:
     for group in topology["weightsManifest"]:
         for path in group["paths"]:
             (model_dir / path).unlink()
-    topology["weightsManifest"] = [{"paths": [MERGED_SHARD], "weights": weights}]
+
+    data = b"".join(chunks)
+    count = max(1, -(-len(data) // SHARD_LIMIT))
+    size = -(-len(data) // count)
+    names = shard_names(count)
+    for i, name in enumerate(names):
+        (model_dir / name).write_bytes(data[i * size:(i + 1) * size])
+    topology["weightsManifest"] = [{"paths": names, "weights": weights}]
     manifest_path.write_text(json.dumps(topology), encoding="utf8")
-    (model_dir / MERGED_SHARD).write_bytes(b"".join(chunks))
-    return shard_count
+    return names
 
 
 def graph_output_name(model_dir: Path) -> str:
@@ -252,7 +270,11 @@ def convert(variant: dict, work: Path) -> dict:
         tfjs_out,
     ])
 
-    shards = merge_shards(tfjs_out)
+    shard_count_before = sum(
+        len(g["paths"])
+        for g in json.loads((tfjs_out / "model.json").read_text(encoding="utf8"))["weightsManifest"]
+    )
+    shards = repack_shards(tfjs_out)
     output_name = graph_output_name(tfjs_out)
 
     target = OUT_ROOT / variant["dir"]
@@ -275,11 +297,11 @@ def convert(variant: dict, work: Path) -> dict:
         encoding="utf8",
     )
 
-    weights = (target / MERGED_SHARD).read_bytes()
+    weights = b"".join((target / name).read_bytes() for name in shards)
     model_json = (target / "model.json").read_bytes()
     print(
-        f"  {(len(weights) + len(model_json)) / 1048576:.1f} MB, {shards} shards -> 1, "
-        f"output '{output_name}'",
+        f"  {(len(weights) + len(model_json)) / 1048576:.1f} MB, "
+        f"{shard_count_before} shards -> {len(shards)}, output '{output_name}'",
         flush=True,
     )
     return {
@@ -287,7 +309,7 @@ def convert(variant: dict, work: Path) -> dict:
         "note": variant["note"],
         "source": url,
         "retrieved": date.today().isoformat(),
-        "shardsMerged": shards,
+        "shardsMerged": shard_count_before,
         "bytes": len(weights) + len(model_json),
         "sha256": hashlib.sha256(weights).hexdigest(),
         "conversion": "onnx.utils.extract_model -> onnx2tf -cotof -> tensorflowjs_converter "

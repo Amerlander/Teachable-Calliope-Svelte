@@ -68,16 +68,13 @@ function cosine(a, b) {
 /**
  * Load a vendored model straight off disk. tfjs normally fetches over HTTP; in Node
  * that means standing up a server for a file we already have, so hand it the parsed
- * artifacts instead. Works because our models ship as a single merged weights.bin.
+ * artifacts instead — concatenating the manifest's shards the way tfjs would.
  */
 async function loadLocalGraphModel(dir) {
   const modelDir = join(MODEL_ROOT, dir);
   const json = JSON.parse(readFileSync(join(modelDir, 'model.json'), 'utf8'));
   const paths = json.weightsManifest.flatMap((group) => group.paths);
-  if (paths.length !== 1) {
-    throw new Error(`${dir}: expected one merged weight file, found ${paths.length}`);
-  }
-  const bytes = readFileSync(join(modelDir, paths[0]));
+  const bytes = Buffer.concat(paths.map((p) => readFileSync(join(modelDir, p))));
   return tf.loadGraphModel(
     tf.io.fromMemory({
       modelTopology: json.modelTopology,
