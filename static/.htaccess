@@ -1,0 +1,21 @@
+# Apache config for static hosting (Strato & co.). Vite copies static/ verbatim,
+# so this lands in build/ next to index.html.
+#
+# The app is a prerendered SvelteKit SPA: every route already has its own
+# directory with an index.html, which the server resolves on its own. The rewrite
+# below only catches deep links that the prerender step did not emit.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Real files and directories win. `/training/` is a directory holding
+  # index.html, so prerendered routes never reach the fallback.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Everything else is a client-side route: hand out the SPA shell and let the
+  # router work out what to render.
+  RewriteRule ^ /200.html [L]
+</IfModule>
