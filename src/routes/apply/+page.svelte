@@ -303,7 +303,7 @@
   <div
     class="video-stage"
     class:pose-mode={mode === 'pose'}
-    class:blurred={$applyView.blurCamera}
+    class:blurred={$applyView.blurCamera && mode === 'pose'}
     style="--thumb-scale: {THUMB_SCALE[$applyView.thumbSize]};"
   >
     <!-- The picture and everything that has to line up with it, in a box that is
@@ -351,6 +351,7 @@
 
     <ApplyResults
       detail={$applyView.resultDetail}
+      order={$applyView.classOrder}
       {det}
       multi={multiResults}
       showThumbs={$applyView.classThumbs}
@@ -438,9 +439,8 @@
     object-fit: fill;
     max-width: none;
   }
-  // Heavier in pose mode, where the skeleton is the whole subject, than in an
-  // image project, where the picture is still what is being classified.
-  .video-stage.blurred video { filter: blur(10px) brightness(0.55) saturate(1.1); }
+  // Pose projects only — see `blurCamera` in $lib/stores/applyView. An image model
+  // classifies the picture itself, so there is nothing to be gained by hiding it.
   .video-stage.pose-mode.blurred video { filter: blur(18px) brightness(0.4) saturate(1.1); }
 
   // Matches the video's box exactly: drawPoseOverlay renders at the camera's

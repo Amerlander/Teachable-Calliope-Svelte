@@ -7,7 +7,7 @@
   import { examples, setVideoRef, videoRefs } from '$lib/stores';
   import { cachedConfusion } from '$lib/confusion';
   import { isComparing } from '$lib/stores/app';
-  import { selectedCameraId } from '$lib/stores/camera';
+  import { cameraMirror, selectedCameraId } from '$lib/stores/camera';
   import { currentProject, type TrainedModel } from '$lib/stores/projects';
   import {
     captureFrameFromVideo,
@@ -28,6 +28,7 @@
     type ModelPrediction,
     type TestRunResult
   } from '$lib/compare';
+  import RoiOverlay from '$lib/components/RoiOverlay.svelte';
   import { CLASS_THRESHOLD } from '$lib/calibration';
   import { activateModel, modelLabel } from '$lib/models';
   import { showNotification } from '$lib/stores/notifications';
@@ -73,6 +74,8 @@
    */
   let poseCanvas = $state<HTMLCanvasElement | null>(null);
   let overlayCanvas = $state<HTMLCanvasElement | null>(null);
+  /** The camera's own shape, so the region outlines can track the letterboxed picture. */
+  let videoAspect = $state(4 / 3);
   /**
    * A still standing in for the live feed — a frozen frame, a remembered one, or
    * one picked from the images the models disagreed on. It is shown in the
@@ -221,7 +224,17 @@
       void initSharedCamera(get(videoRefs), get(selectedCameraId) ?? undefined);
     }
     if (isPose) void loadPoseDetector();
-    return () => setVideoRef('webcamCompare', null);
+    const onMeta = () => {
+      if (el.videoWidth && el.videoHeight) videoAspect = el.videoWidth / el.videoHeight;
+    };
+    el.addEventListener('loadedmetadata', onMeta);
+    // The stream is usually already running when this box opens, so the event has
+    // been and gone — read it now as well as on the next one.
+    onMeta();
+    return () => {
+      el.removeEventListener('loadedmetadata', onMeta);
+      setVideoRef('webcamCompare', null);
+    };
   });
 
   /** What the models are fed: the skeleton in pose projects, else the picture itself. */
@@ -238,8 +251,9 @@
     const pose = await estimatePose(base);
     drawPoseSkeleton(canvas, pose, width, height, { size: 512 });
     if (overlayCanvas) {
-      // The box shows the camera mirrored, so the skeleton has to be mirrored too.
-      drawPoseOverlay(overlayCanvas, pose, width, height, { mirror: true });
+      // Follows the picture: the skeleton of a mirrored camera has to be
+      // mirrored with it, or it lands back to front over the person.
+      drawPoseOverlay(overlayCanvas, pose, width, height, { mirror: $cameraMirror });
     }
     return canvas;
   }
@@ -655,6 +669,20 @@
             {/if}
             {#if isPose}
               <canvas bind:this={overlayCanvas} class="pose-overlay"></canvas>
+            {:else}
+              <!-- Every model's image region, in the colour of its column. They
+                   differ from model to model, and a comparison that hides them
+                   invites reading a difference in the numbers as a difference in
+                   the model when it was a difference in what each one was shown. -->
+              {#each models as model, i (model.id)}
+                <RoiOverlay
+                  roi={model.roi}
+                  aspect={videoAspect}
+                  color={COMPARE_COLORS[i % COMPARE_COLORS.length]}
+                  label={models.length > 1 ? modelLabel(model) : null}
+                  title={`Bildbereich von ${modelLabel(model)}`}
+                />
+              {/each}
             {/if}
             <div class="cam-tag" class:paused={!!stillSrc}>
               <span class="live-dot"></span>{stillSrc ? 'Standbild' : 'live'}
@@ -1155,11 +1183,14 @@
     overflow: hidden;
     aspect-ratio: 4/3;
     background: #22242a;
+    // `contain` rather than `cover`: a cropped picture would put the region
+    // outlines somewhere other than the pixels they belong to, and half of a
+    // region could sit outside the box entirely.
     video {
       width: 100%;
       height: 100%;
-      object-fit: cover;
-      transform: scaleX(-1);
+      object-fit: contain;
+      transform: scaleX(var(--cam-mirror));
       &.hidden { visibility: hidden; }
     }
     .still {
@@ -1167,21 +1198,21 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
-      transform: scaleX(-1);
+      object-fit: contain;
+      transform: scaleX(var(--cam-mirror));
     }
     // Heavier in pose mode: the skeleton is the subject, the picture is not.
     &.pose video { filter: blur(12px) brightness(0.45) saturate(1.1); }
     &.pose .still { filter: blur(12px) brightness(0.45) saturate(1.1); }
     // Matches the picture's box exactly: drawPoseOverlay renders at the camera's
-    // aspect ratio, so the same `cover` crops both the same way. No scaleX(-1)
+    // aspect ratio, so the same `contain` letterboxes both the same way. No scaleX(-1)
     // — the mirror is in the drawing — and no blend mode, it is transparent.
     .pose-overlay {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
       pointer-events: none;
       z-index: 2;
     }

@@ -210,6 +210,7 @@ msgid "Kein Modell"
 msgstr "No model"
 
 #: src/lib/components/DeleteConfirmDialog.svelte
+#: src/lib/components/apply/ApplySidebar.svelte
 #: src/lib/components/training/ModelDetailsModal.svelte
 #: src/lib/components/training/NewProjectDialog.svelte
 #: src/lib/components/training/ProjectStartScreen.svelte
@@ -225,13 +226,11 @@ msgstr "Pose"
 msgid "Objekt"
 msgstr "Object"
 
-#: src/routes/apply/+page.svelte
-msgid "Calliope verbunden"
-msgstr "Calliope connected"
+#~ msgid "Calliope verbunden"
+#~ msgstr "Calliope connected"
 
-#: src/routes/apply/+page.svelte
-msgid "Calliope nicht verbunden"
-msgstr "Calliope not connected"
+#~ msgid "Calliope nicht verbunden"
+#~ msgstr "Calliope not connected"
 
 #: src/lib/components/training/ClassesTab.svelte
 #: src/lib/components/training/ClassesTab.svelte
@@ -539,15 +538,16 @@ msgstr "Loss"
 msgid "Verlauf pro Epoche"
 msgstr "History per epoch"
 
+#: src/lib/components/CameraOverlay.svelte
 #: src/lib/components/training/ModelDetailsModal.svelte
 #: src/lib/components/ui/Modal.svelte
 #: src/routes/tryout/+page.svelte
 msgid "Schließen"
 msgstr "Close"
 
+#: src/lib/components/Header.svelte
 #: src/lib/components/training/ModelHistory.svelte
 #: src/lib/components/tryout/ProgramList.svelte
-#: src/routes/apply/+page.svelte
 msgid "Fehler beim Laden: "
 msgstr "Error while loading: "
 
@@ -893,6 +893,7 @@ msgstr "Import model"
 msgid "Modell löschen"
 msgstr "Delete model"
 
+#: src/lib/components/apply/ApplySidebar.svelte
 #: src/lib/components/training/ModelTab.svelte
 msgid "Modelle"
 msgstr "Models"
@@ -1056,6 +1057,7 @@ msgid "Trainiertes Modell laden (.zip)"
 msgstr "Load a trained model (.zip)"
 
 #: src/lib/components/DeleteConfirmDialog.svelte
+#: src/lib/components/Header.svelte
 #: src/lib/components/training/ProjectStartScreen.svelte
 #: src/lib/components/tryout/ProgramList.svelte
 #: src/routes/apply/+page.svelte
@@ -1114,8 +1116,9 @@ msgstr "Loading camera…"
 #~ msgid "{0} Hz"
 #~ msgstr "{0} Hz"
 
-#~ msgid "Alle Klassen"
-#~ msgstr "All classes"
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Alle Klassen"
+msgstr "All classes"
 
 #~ msgid "Glättung (Fenster): <0/>"
 #~ msgstr "Smoothing (window): <0/>"
@@ -1155,8 +1158,9 @@ msgstr "Choose a model on the left or train a new one to test it here."
 msgid "Trainingsbereich"
 msgstr "Training region"
 
-#~ msgid "Zurücksetzen"
-#~ msgstr "Reset"
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Zurücksetzen"
+msgstr "Reset"
 
 #: src/lib/components/training/VideoPanel.svelte
 msgid "Klassen & Bilder"
@@ -1249,9 +1253,11 @@ msgstr "Close dropdown"
 msgid "Info"
 msgstr "Info"
 
+#. 0: topIndex + 1
 #. 0: n
 #. 0: n
 #. 0: i + 1
+#: src/lib/compare.ts
 #: src/lib/components/training/VideoPanel.svelte
 #: src/lib/components/training/VideoPanel.svelte
 #: src/lib/machine.ts
@@ -1306,6 +1312,7 @@ msgstr "<0/> Loss <1/>"
 msgid "· Bereich {0}"
 msgstr "· Region {0}"
 
+#: src/lib/components/Header.svelte
 #: src/lib/components/ModelPicker.svelte
 msgid "· importiert"
 msgstr "· imported"
@@ -1337,6 +1344,7 @@ msgid "Importiere…"
 msgstr "Importing…"
 
 #: src/lib/components/RoiOverlay.svelte
+#: src/lib/components/apply/ApplySidebar.svelte
 msgid "Bildbereich des Modells"
 msgstr "The model's image region"
 
@@ -1423,7 +1431,6 @@ msgid "{0} Klassen <0/>"
 msgstr "{0} classes <0/>"
 
 #: src/lib/components/tryout/ProgramList.svelte
-#: src/routes/apply/+page.svelte
 msgid "Modell wählen"
 msgstr "Choose a model"
 
@@ -1450,10 +1457,8 @@ msgstr "without class blocks"
 msgid "Programm nutzt jetzt „{0}“"
 msgstr "Program now uses “{0}”"
 
-#. 0: modelLabel(model)
-#: src/routes/apply/+page.svelte
-msgid "Modell „{0}“ aktiv"
-msgstr "Model “{0}” active"
+#~ msgid "Modell „{0}“ aktiv"
+#~ msgstr "Model “{0}” active"
 
 #. 0: modelLabel(imported)
 #: src/lib/components/training/ModelTab.svelte
@@ -1904,8 +1909,9 @@ msgstr "Detected from raw {0}%"
 #~ msgid "Fehler bei Vorhersage"
 #~ msgstr ""
 
-#~ msgid "Kein Modell geladen"
-#~ msgstr ""
+#: src/lib/components/Header.svelte
+msgid "Kein Modell geladen"
+msgstr ""
 
 #~ msgid "Mobilenet noch nicht geladen"
 #~ msgstr ""
@@ -2210,6 +2216,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/DeleteConfirmDialog.svelte
+#: src/lib/components/Header.svelte
 msgid "· Pose"
 msgstr ""
 
@@ -3111,14 +3118,11 @@ msgstr ""
 msgid "{0} bei {1} Hidden Units. Das fällt beim Speichern im Projekt und beim Export ins Gewicht. Weniger Hidden Units machen das Modell kleiner."
 msgstr ""
 
-#: src/lib/modelInsights.ts
-msgid "Kompaktes Modell"
-msgstr ""
+#~ msgid "Kompaktes Modell"
+#~ msgstr ""
 
-#. 0: bytes(f.sizeBytes); 1: num(f.params)
-#: src/lib/modelInsights.ts
-msgid "{0} für {1} Parameter. Das sind nur die des Klassifikators. MobileNet selbst wird geladen und steckt nicht im Export."
-msgstr ""
+#~ msgid "{0} für {1} Parameter. Das sind nur die des Klassifikators. MobileNet selbst wird geladen und steckt nicht im Export."
+#~ msgstr ""
 
 #: src/lib/modelInsights.ts
 msgid "Nächster Schritt"
@@ -3169,6 +3173,7 @@ msgstr ""
 msgid "Gezeichnetes Skelett"
 msgstr ""
 
+#: src/lib/components/apply/ApplySidebar.svelte
 #: src/lib/modelInsights.ts
 msgid "Kamerabild"
 msgstr ""
@@ -3436,6 +3441,7 @@ msgstr ""
 msgid "Trainingsbilder"
 msgstr ""
 
+#: src/lib/components/apply/ApplySidebar.svelte
 #: src/lib/components/training/ModelCompareModal.svelte
 msgid "Größe"
 msgstr ""
@@ -3448,6 +3454,7 @@ msgstr ""
 msgid "Augmentierung"
 msgstr ""
 
+#: src/lib/components/apply/ApplySidebar.svelte
 #: src/lib/components/training/ModelCompareModal.svelte
 msgid "Bildbereich"
 msgstr ""
@@ -3919,3 +3926,234 @@ msgstr ""
 #: src/lib/classThumb.ts
 msgid "Bild konnte nicht gelesen werden"
 msgstr ""
+
+#: src/routes/apply/+page.svelte
+msgid "Die Modelle konnten nicht gemeinsam geladen werden"
+msgstr ""
+
+#: src/routes/apply/+page.svelte
+msgid "Vollbild ist in diesem Browser nicht möglich"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Nur Ergebnis"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Nichts"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Ansicht-Einstellungen"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Einstellungen einklappen"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Ansicht"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Ergebnis-Detailgrad"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Klassenbilder"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "das Bild der Klasse neben ihrem Namen"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Ergebnis"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "dafür braucht das Projekt mindestens zwei Modelle"
+msgstr ""
+
+#. 0: Math.min(modelCount, MAX_COMPARED)
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "{0} Modelle gleichzeitig auf demselben Bild"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Alle Modelle anzeigen"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "An den Calliope wird weiterhin nur das oben gewählte Modell gesendet."
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Skelett"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "genau das, was das Modell sieht"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Körperteile benennen"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Nase, Schulter, Handgelenk …"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Gelenkwinkel"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Grad an Ellbogen, Schultern, Hüften, Knien"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "wie in Trainieren, damit das Skelett vorne liegt"
+msgstr ""
+
+#~ msgid "legt den Fokus auf das Ergebnis"
+#~ msgstr ""
+
+#~ msgid "Weichzeichnen"
+#~ msgstr ""
+
+#~ msgid "Spiegeln"
+#~ msgstr ""
+
+#~ msgid "wie ein Spiegel statt wie die Kamera"
+#~ msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Vollbild beenden"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Vollbild"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Darstellung"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Ansicht-Einstellungen öffnen"
+msgstr ""
+
+#: src/lib/components/apply/ApplyResults.svelte
+msgid "an Calliope"
+msgstr ""
+
+#: src/lib/components/training/VideoPanel.svelte
+msgid "Klassenbild wählen"
+msgstr ""
+
+#. 0: className
+#: src/lib/components/training/ClassThumbDialog.svelte
+msgid "Klassenbild für „{0}“"
+msgstr ""
+
+#: src/lib/components/training/ClassThumbDialog.svelte
+msgid "Dieses Bild steht überall für die Klasse — in der Klassenliste und in Anwenden. Standard ist das erste aufgenommene Bild."
+msgstr ""
+
+#. 0: className
+#: src/lib/components/training/ClassThumbDialog.svelte
+msgid "Für „{0}“ sind noch keine Bilder aufgenommen. Das erste wird automatisch das Klassenbild."
+msgstr ""
+
+#: src/lib/components/training/ClassThumbDialog.svelte
+msgid "Als Klassenbild verwenden"
+msgstr ""
+
+#. 0: i + 1
+#: src/lib/components/training/ClassThumbDialog.svelte
+msgid "Bild {0}"
+msgstr ""
+
+#: src/lib/components/training/ClassThumbDialog.svelte
+msgid "Das aktuelle Klassenbild ist eine verkleinerte Kopie und bleibt auch erhalten, wenn du das Bild später löschst."
+msgstr ""
+
+#: src/lib/components/training/ClassThumbDialog.svelte
+msgid "Standard verwenden"
+msgstr ""
+
+#: src/lib/components/training/ClassThumbDialog.svelte
+msgid "Aktuelles Klassenbild"
+msgstr ""
+
+#: src/lib/components/training/ClassThumbDialog.svelte
+msgid "Das Klassenbild wird als verkleinerte Kopie gespeichert und bleibt auch erhalten, wenn du das Bild später löschst."
+msgstr ""
+
+#: src/lib/components/CameraOverlay.svelte
+msgid "Bild spiegeln"
+msgstr ""
+
+#: src/lib/components/CameraOverlay.svelte
+msgid "wie ein Spiegel statt wie die Kamera — gilt in allen Ansichten"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Einzeichnen"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Rahmen über dem ganzen Bild"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Ausblenden"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Nur der Bereich"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Größe der Klassenbilder"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Jedes Modell bekommt seinen eigenen Rahmen in der Farbe seiner Karte."
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Gezeigt wird der Bereich des oben gewählten Modells — das ist das Modell, das an den Calliope sendet."
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Ob das Bild gespiegelt ist, wird bei der Kamera eingestellt und gilt in allen Ansichten."
+msgstr ""
+
+#. 0: modelLabel(model)
+#. 0: modelLabel(o.model)
+#: src/lib/components/training/ModelCompareModal.svelte
+#: src/routes/apply/+page.svelte
+msgid "Bildbereich von {0}"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Wie im Projekt"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Nach Erkennung"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Reihenfolge der Klassen"
+msgstr ""
+
+#: src/lib/components/apply/ApplySidebar.svelte
+msgid "Kamerabild weichzeichnen"
+msgstr ""
+

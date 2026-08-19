@@ -14,13 +14,14 @@
    * Nothing here re-derives a threshold.
    */
   import type { CurrentDetection } from '$lib/stores/streaming';
-  import type { ResultDetail } from '$lib/stores/applyView';
+  import type { ClassOrder, ResultDetail } from '$lib/stores/applyView';
   import type { TrainedModel } from '$lib/stores/projects';
   import type { ModelPrediction } from '$lib/compare';
   import { modelLabel } from '$lib/models';
 
   let {
     detail,
+    order = 'detected',
     det = null,
     multi = null,
     showThumbs = true,
@@ -29,6 +30,8 @@
     thumbFor,
   }: {
     detail: ResultDetail;
+    /** Class order, and with it whether the leading class is repeated in the list. */
+    order?: ClassOrder;
     /** The selected model's calibrated frame; null until the first prediction. */
     det?: CurrentDetection | null;
     /** One entry per compared model, or null when only one model is running. */
@@ -48,16 +51,22 @@
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 
   /**
-   * Class rows for one model's raw output, strongest first.
+   * The rows under the big result, for one model's raw output.
    *
-   * Sorted rather than left in output order: with eight models side by side the
-   * thing being looked for is what each of them thinks, and a fixed order buries
-   * that under whichever class happens to be first.
+   * Sorted strongest-first the leading class is dropped, because it is already on
+   * screen in full size directly above and a sorted list would only repeat it as
+   * the first small row. In the model's own order it stays: the point of that order
+   * is that every class keeps its place, and a row disappearing out of the middle
+   * of the list whenever it wins defeats it.
+   *
+   * `leading` is passed rather than re-derived. The class shown large comes from
+   * the model's calibration, which can name a different class than the highest raw
+   * probability, and the row to leave out is the one that is actually up there.
    */
-  function rows(labels: string[], values: number[]) {
-    return labels
-      .map((label, i) => ({ label, value: values[i] ?? 0 }))
-      .sort((a, b) => b.value - a.value);
+  function rows(labels: string[], values: number[], leading: string) {
+    const all = labels.map((label, i) => ({ label, value: values[i] ?? 0 }));
+    if (order !== 'detected') return all;
+    return all.filter((r) => r.label !== leading).sort((a, b) => b.value - a.value);
   }
 </script>
 
@@ -98,9 +107,10 @@
               <span class="mc-top-pct">{pct(p.topProb)}</span>
             </div>
 
-            {#if detail === 'all'}
+            {@const restRows = rows(entry.model.classes, p.probs, top)}
+            {#if detail === 'all' && restRows.length && entry.model.classes.length > 1}
               <div class="mc-rows">
-                {#each rows(entry.model.classes, p.probs) as row (row.label)}
+                {#each restRows as row (row.label)}
                   <div class="mc-row" class:leading={row.label === top}>
                     <span class="mc-row-label" title={row.label}>{row.label}</span>
                     <span class="mc-row-bar">
@@ -116,6 +126,7 @@
       {/each}
     </div>
   {:else if det}
+    {@const restRows = rows(det.labels, det.all, det.label)}
     <div class="single" class:confident={det.detected}>
       <div class="single-top">
         {#if showThumbs}
@@ -133,9 +144,9 @@
         <span class="single-pct">{pct(det.confidence)}</span>
       </div>
 
-      {#if detail === 'all' && det.labels.length > 1}
+      {#if detail === 'all' && restRows.length && det.labels.length > 1}
         <div class="single-rows">
-          {#each rows(det.labels, det.all) as row (row.label)}
+          {#each restRows as row (row.label)}
             <div class="single-row" class:leading={row.label === det.label}>
               {#if showThumbs}
                 {@const thumb = thumbFor(null, row.label)}

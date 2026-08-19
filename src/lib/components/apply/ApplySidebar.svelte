@@ -14,10 +14,12 @@
   import {
     applyView,
     resetApplyView,
+    setClassOrder,
     setResultDetail,
     setRoiDisplay,
     setThumbSize,
     toggleApplyView,
+    type ClassOrder,
     type ResultDetail,
     type RoiDisplay,
     type ThumbSize,
@@ -50,6 +52,11 @@
     { value: 'only', label: 'Nur der Bereich', hint: 'nichts als der Bildbereich, groß' },
   ];
 
+  const classOrders: { value: ClassOrder; label: string }[] = [
+    { value: 'fixed', label: 'Wie im Projekt' },
+    { value: 'detected', label: 'Nach Erkennung' },
+  ];
+
   const thumbSizes: { value: ThumbSize; label: string }[] = [
     { value: 'small', label: 'S' },
     { value: 'medium', label: 'M' },
@@ -57,6 +64,8 @@
   ];
 
   const thumbsOff = $derived($applyView.resultDetail === 'none' || !$applyView.classThumbs);
+  /** The order only decides anything while there is a list to order. */
+  const orderOff = $derived($applyView.resultDetail !== 'all');
 </script>
 
 {#if $applyView.sidebarOpen}
@@ -102,6 +111,25 @@
             </label>
           {/each}
         </div>
+        <!-- Belongs to "Alle Klassen" above: with only the result on screen there
+             is nothing to put in an order. -->
+        <div class="inset-col" class:disabled={orderOff}>
+          <span class="inset-label">Reihenfolge der Klassen</span>
+          <div class="seg wide" role="group" aria-label="Reihenfolge der Klassen">
+            {#each classOrders as order (order.value)}
+              <button
+                type="button"
+                class:on={$applyView.classOrder === order.value}
+                disabled={orderOff}
+                aria-pressed={$applyView.classOrder === order.value}
+                onclick={() => setClassOrder(order.value)}
+              >
+                {order.label}
+              </button>
+            {/each}
+          </div>
+        </div>
+
         <label class="switch-row" class:disabled={$applyView.resultDetail === 'none'}>
           <input
             type="checkbox"
@@ -200,6 +228,20 @@
       {#if poseMode}
         <section class="group">
           <h3>Pose</h3>
+          <!-- Blurring lives here rather than under Kamerabild: it is what puts the
+               skeleton in front, and an image project has nothing to put in front
+               of the picture. -->
+          <label class="switch-row">
+            <input
+              type="checkbox"
+              checked={$applyView.blurCamera}
+              onchange={() => toggleApplyView('blurCamera')}
+            />
+            <span class="switch-text">
+              <span class="switch-label">Kamerabild weichzeichnen</span>
+              <span class="switch-hint">wie in Trainieren, damit das Skelett vorne liegt</span>
+            </span>
+          </label>
           <label class="switch-row">
             <input
               type="checkbox"
@@ -238,21 +280,8 @@
 
       <section class="group">
         <h3>Kamerabild</h3>
-        <label class="switch-row">
-          <input
-            type="checkbox"
-            checked={$applyView.blurCamera}
-            onchange={() => toggleApplyView('blurCamera')}
-          />
-          <span class="switch-text">
-            <span class="switch-label">Weichzeichnen</span>
-            <span class="switch-hint">
-              {#if poseMode}wie in Trainieren, damit das Skelett vorne liegt{:else}legt den Fokus auf das Ergebnis{/if}
-            </span>
-          </span>
-        </label>
-        <!-- Mirroring used to live here. It is a property of the camera, so it is
-             set with the camera and holds in every view. -->
+        <!-- Mirroring used to be a switch here. It is a property of the camera, so
+             it is set with the camera and holds in every view. -->
         <p class="note">
           Ob das Bild gespiegelt ist, wird bei der Kamera eingestellt und gilt in
           allen Ansichten.
@@ -268,13 +297,15 @@
       </section>
     </div>
   </aside>
-{:else if !fullscreen}
+{:else}
   <!-- Collapsed: floating over the picture rather than a column beside it, so a
-       closed panel costs the stage nothing. Gone entirely in fullscreen — a
-       projected picture should have no furniture on it, and Escape is the way out
-       of fullscreen anyway. -->
+       closed panel costs the stage nothing. Out of sight in fullscreen, where a
+       projected picture should carry no furniture at all — but still there under
+       the pointer, or collapsing the panel in fullscreen would be a door that
+       locks behind you. -->
   <button
     class="side-eye"
+    class:ghost={fullscreen}
     onclick={() => toggleApplyView('sidebarOpen')}
     title="Ansicht-Einstellungen"
     aria-label="Ansicht-Einstellungen öffnen"
@@ -425,7 +456,15 @@
     padding-left: 8px;
   }
 
-  // A setting that belongs to the switch above it, indented to say so.
+  // A setting that belongs to the row above it, indented to say so. Side by side
+  // where the control is small, stacked where its labels need the width.
+  .inset-col {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 2px 0 10px 26px;
+    &.disabled { opacity: 0.45; pointer-events: none; }
+  }
   .inset-row {
     display: flex;
     align-items: center;
@@ -442,6 +481,10 @@
   .seg {
     display: inline-flex;
     gap: 2px;
+    &.wide {
+      display: flex;
+      button { flex: 1; min-width: 0; font-size: 11.5px; padding: 4px 6px; }
+    }
     padding: 2px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.08);
@@ -510,10 +553,18 @@
     box-shadow: none;
     color: rgba(255, 255, 255, 0.88);
     cursor: pointer;
+    transition: opacity 0.15s;
     &:hover {
       background: rgba(0, 0, 0, 0.75);
       border-color: rgba(255, 255, 255, 0.6);
       color: #fff;
+    }
+    // Invisible rather than absent: nothing on the projected picture, and the way
+    // back is wherever the pointer already is.
+    &.ghost {
+      opacity: 0;
+      &:hover,
+      &:focus-visible { opacity: 1; }
     }
   }
 

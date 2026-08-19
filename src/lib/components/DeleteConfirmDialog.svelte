@@ -293,7 +293,7 @@
       height: 44px;
       border-radius: 6px;
       background: rgb(var(--md-surface));
-      transform: scaleX(-1);
+      transform: scaleX(var(--cam-mirror));
       img {
         position: absolute;
         display: block;

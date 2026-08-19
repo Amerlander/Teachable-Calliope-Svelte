@@ -75,7 +75,7 @@
     height: var(--thumb);
     border-radius: 4px;
     background: #000;
-    transform: scaleX(-1);
+    transform: scaleX(var(--cam-mirror));
     img {
       position: absolute;
       display: block;

@@ -24,6 +24,20 @@ import { writable, get } from 'svelte/store';
  */
 export type RoiDisplay = 'show' | 'hide' | 'only';
 
+/**
+ * The order the classes are listed in.
+ *
+ *  'fixed'    — the model's own order, so each class keeps its place and a bar can
+ *               be watched rising and falling in one spot
+ *  'detected' — strongest first, so the answer is at the top
+ *
+ * With 'detected' the leading class is only drawn once, large, and left out of the
+ * list underneath: sorted, the first row would say the same thing again in small
+ * print. In fixed order it stays in the list, because taking it out would leave a
+ * hole where a class is expected.
+ */
+export type ClassOrder = 'fixed' | 'detected';
+
 /** How big the class covers are drawn. A projector at the back of a room wants large. */
 export type ThumbSize = 'small' | 'medium' | 'large';
 
@@ -62,8 +76,12 @@ export type ApplyViewSettings = {
    * Blur the camera picture, as Trainieren does in pose mode. It makes the
    * skeleton the thing you look at, and shows that the skeleton is all the model
    * is given.
+   *
+   * Pose projects only, and not offered elsewhere: an image model classifies the
+   * picture itself, so blurring it hides the very thing the answer is about.
    */
   blurCamera: boolean;
+  classOrder: ClassOrder;
   /** Show the class cover next to the detected class name. */
   classThumbs: boolean;
   thumbSize: ThumbSize;
@@ -81,6 +99,7 @@ export const DEFAULT_APPLY_VIEW: ApplyViewSettings = {
   poseLabels: false,
   poseAngles: false,
   blurCamera: true,
+  classOrder: 'detected',
   classThumbs: true,
   thumbSize: 'medium',
   roiDisplay: 'show',
@@ -113,6 +132,7 @@ function readInitial(): ApplyViewSettings {
     typeof stored[key] === 'boolean' ? (stored[key] as boolean) : (DEFAULT_APPLY_VIEW[key] as boolean);
   const detail = stored.resultDetail;
   const size = stored.thumbSize;
+  const order = stored.classOrder;
   const roi = stored.roiDisplay;
   return {
     resultDetail:
@@ -124,6 +144,7 @@ function readInitial(): ApplyViewSettings {
     poseLabels: bool('poseLabels'),
     poseAngles: bool('poseAngles'),
     blurCamera: bool('blurCamera'),
+    classOrder: order === 'fixed' || order === 'detected' ? order : DEFAULT_APPLY_VIEW.classOrder,
     classThumbs: bool('classThumbs'),
     thumbSize:
       size === 'small' || size === 'medium' || size === 'large'
@@ -166,6 +187,10 @@ export function setRoiDisplay(roiDisplay: RoiDisplay): void {
 
 export function setThumbSize(thumbSize: ThumbSize): void {
   applyView.update((v) => ({ ...v, thumbSize }));
+}
+
+export function setClassOrder(classOrder: ClassOrder): void {
+  applyView.update((v) => ({ ...v, classOrder }));
 }
 
 export function resetApplyView(): void {
