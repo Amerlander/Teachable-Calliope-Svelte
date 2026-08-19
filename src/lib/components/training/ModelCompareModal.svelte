@@ -16,6 +16,7 @@
     initSharedCamera,
     loadPoseDetector
   } from '$lib/machine';
+  import { drawPoseOverlay } from '$lib/poseOverlay';
   import {
     COMPARE_COLORS,
     disposeComparison,
@@ -65,7 +66,13 @@
   let diffOnly = $state(false);
 
   let videoEl = $state<HTMLVideoElement | null>(null);
+  /**
+   * Two canvases, on purpose — see $lib/poseOverlay. `poseCanvas` is the square,
+   * black-backed frame the models are fed and stays offscreen; `overlayCanvas` is
+   * the transparent one drawn over the camera for the user.
+   */
   let poseCanvas = $state<HTMLCanvasElement | null>(null);
+  let overlayCanvas = $state<HTMLCanvasElement | null>(null);
   /**
    * A still standing in for the live feed — a frozen frame, a remembered one, or
    * one picked from the images the models disagreed on. It is shown in the
@@ -230,7 +237,18 @@
     const height = still ? still.naturalHeight : video!.videoHeight;
     const pose = await estimatePose(base);
     drawPoseSkeleton(canvas, pose, width, height, { size: 512 });
+    if (overlayCanvas) {
+      // The box shows the camera mirrored, so the skeleton has to be mirrored too.
+      drawPoseOverlay(overlayCanvas, pose, width, height, { mirror: true });
+    }
     return canvas;
+  }
+
+  /** Drop the drawn skeleton, so a live picture is never left under a stale one. */
+  function clearPoseOverlay() {
+    const canvas = overlayCanvas;
+    if (!canvas) return;
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
   }
 
   let busy = false;
@@ -280,7 +298,12 @@
       clearInterval(liveTimer);
       liveTimer = null;
     }
-    if (!shouldRun) return;
+    if (!shouldRun) {
+      // A frozen frame keeps its skeleton — it belongs to the picture on screen.
+      // A running camera with a stopped loop must not.
+      if (!stillSrc) clearPoseOverlay();
+      return;
+    }
     void tick();
     liveTimer = setInterval(() => void tick(), 200);
     return () => {
@@ -631,7 +654,7 @@
               <img class="still" src={stillSrc} alt="Das Bild, das alle Modelle gerade bewerten" />
             {/if}
             {#if isPose}
-              <canvas bind:this={poseCanvas} class="pose-overlay" width="512" height="512"></canvas>
+              <canvas bind:this={overlayCanvas} class="pose-overlay"></canvas>
             {/if}
             <div class="cam-tag" class:paused={!!stillSrc}>
               <span class="live-dot"></span>{stillSrc ? 'Standbild' : 'live'}
@@ -645,6 +668,11 @@
               <button type="button" class="mini" onclick={rememberFrame}>＋ Bild merken</button>
             </div>
           </div>
+
+          <!-- Never shown: the square frame predictAll classifies. -->
+          {#if isPose}
+            <canvas bind:this={poseCanvas} width="512" height="512" class="offscreen"></canvas>
+          {/if}
 
           <div class="src-right">
             <div class="src-line">
@@ -1142,19 +1170,27 @@
       object-fit: cover;
       transform: scaleX(-1);
     }
-    &.pose video { filter: blur(6px) brightness(0.7); }
+    // Heavier in pose mode: the skeleton is the subject, the picture is not.
+    &.pose video { filter: blur(12px) brightness(0.45) saturate(1.1); }
+    &.pose .still { filter: blur(12px) brightness(0.45) saturate(1.1); }
+    // Matches the picture's box exactly: drawPoseOverlay renders at the camera's
+    // aspect ratio, so the same `cover` crops both the same way. No scaleX(-1)
+    // — the mirror is in the drawing — and no blend mode, it is transparent.
     .pose-overlay {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
-      transform: scaleX(-1);
+      object-fit: cover;
+      pointer-events: none;
+      z-index: 2;
     }
   }
   .cam-tag {
     position: absolute;
     left: 8px;
     top: 8px;
+    z-index: 4;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.4px;
@@ -1177,17 +1213,21 @@
     padding: 6px 8px;
     display: flex;
     gap: 6px;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
+    z-index: 4;
+    // No gradient scrim: it reads as nothing over a dark frame, which is exactly
+    // what a pose box is. Each button carries its own contrast instead.
     .mini {
       font: inherit;
       font-size: 11px;
       font-weight: 600;
       color: #fff;
-      background: rgba(0, 0, 0, 0.55);
-      border: none;
+      background: rgba(0, 0, 0, 0.62);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, 0.35);
       border-radius: 99px;
       padding: 4px 10px;
       cursor: pointer;
+      &:hover { background: rgba(0, 0, 0, 0.8); border-color: rgba(255, 255, 255, 0.6); }
     }
   }
   .src-right { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -1242,6 +1282,13 @@
     cursor: pointer;
     text-decoration: underline;
     color: rgb(var(--md-on-surface-variant));
+  }
+  .offscreen {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    width: 1px;
+    height: 1px;
   }
   .saved-strip {
     display: flex;
