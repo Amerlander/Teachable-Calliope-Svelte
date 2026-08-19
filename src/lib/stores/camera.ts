@@ -8,6 +8,7 @@ import {
 } from '$lib/machine';
 
 const STORAGE_KEY = 'teachable-selected-camera';
+const MIRROR_KEY = 'teachable-camera-mirror';
 
 function readInitial(): string | null {
   if (typeof localStorage === 'undefined') return null;
@@ -20,6 +21,16 @@ function readInitial(): string | null {
 
 export const selectedCameraId = writable<string | null>(readInitial());
 
+/** Mirrored unless it was explicitly turned off — see {@link cameraMirror}. */
+function readMirror(): boolean {
+  if (typeof localStorage === 'undefined') return true;
+  try {
+    return localStorage.getItem(MIRROR_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
 selectedCameraId.subscribe((id) => {
   if (typeof localStorage === 'undefined') return;
   try {
@@ -29,6 +40,41 @@ selectedCameraId.subscribe((id) => {
     /* ignore */
   }
 });
+
+/**
+ * Show the camera mirrored, the way a mirror shows you to yourself.
+ *
+ * A property of the camera rather than of one view: it decides which way round
+ * *this webcam* is watched, and it would be a trap for it to hold in Anwenden and
+ * not while recording the pictures in Trainieren. So it lives beside the device
+ * choice, is set where the camera is picked, and every feed in the app follows it.
+ *
+ * Read in CSS through the `--cam-mirror` factor (see global.scss), which is why
+ * this also carries a class on <html>: a stylesheet cannot subscribe to a store,
+ * and a `scaleX(var(--cam-mirror))` in each view is less to get wrong than a
+ * mirrored class threaded through every component that shows a picture.
+ *
+ * Anything drawn *over* the picture has to follow it too — the pose overlay
+ * mirrors in its coordinates, a region of interest through {@link displayRoi} —
+ * or the skeleton and the box end up on the other side of the person.
+ */
+export const cameraMirror = writable<boolean>(readMirror());
+
+cameraMirror.subscribe((on) => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.toggle('cam-unmirrored', !on);
+  }
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(MIRROR_KEY, on ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+});
+
+export function toggleCameraMirror(): void {
+  cameraMirror.update((v) => !v);
+}
 
 /** Video inputs known to the browser, refreshed by {@link refreshCameras}. */
 export const cameras = writable<MediaDeviceInfo[]>([]);

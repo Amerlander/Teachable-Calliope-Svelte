@@ -8,27 +8,47 @@
    *
    * Place inside a positioned box that holds the video. The box is centred and
    * given the camera's aspect ratio so it tracks the letterboxed video instead
-   * of the element, and mirrored to match the feed (see $lib/roi).
+   * of the element, and follows the feed's mirroring (see $lib/roi).
+   *
+   * `color` and `label` are for several models on one picture: an unmarked box
+   * says which region but not whose.
    */
-  import { mirrorRoi } from '$lib/roi';
+  import { displayRoi } from '$lib/roi';
+  import { cameraMirror } from '$lib/stores/camera';
   import type { Roi } from '$lib/stores/projects';
 
   let {
     roi,
     aspect = 4 / 3,
     title = 'Bildbereich des Modells',
-  }: { roi: Roi | null | undefined; aspect?: number; title?: string } = $props();
+    color = null,
+    label = null,
+  }: {
+    roi: Roi | null | undefined;
+    aspect?: number;
+    title?: string;
+    /** Outline colour. The theme's tertiary when there is only one region. */
+    color?: string | null;
+    /** Named in the corner of the box. Only worth it with more than one. */
+    label?: string | null;
+  } = $props();
 
-  const shown = $derived(roi ? mirrorRoi(roi) : null);
+  const shown = $derived(roi ? displayRoi(roi, $cameraMirror) : null);
 </script>
 
 {#if shown}
   <div class="roi-overlay" style="aspect-ratio: {aspect};">
     <div
       class="roi-rect"
-      style="left:{shown.x * 100}%; top:{shown.y * 100}%; width:{shown.w * 100}%; height:{shown.h * 100}%;"
+      class:tinted={!!color}
+      style="left:{shown.x * 100}%; top:{shown.y * 100}%; width:{shown.w * 100}%; height:{shown.h *
+        100}%;{color ? ` --roi-color: ${color};` : ''}"
       {title}
-    ></div>
+    >
+      {#if label}
+        <span class="roi-label">{label}</span>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -48,5 +68,34 @@
     border: 2px dashed rgb(var(--md-tertiary));
     background: rgba(var(--md-tertiary), 0.08);
     border-radius: 2px;
+    // No fill once the boxes are told apart by colour: four tinted overlays over
+    // one picture add up to a wash. The hairline and the glow are what keep a
+    // dark hue findable on a dark picture and a bright one on a light picture —
+    // the palette cannot know what the camera is pointed at.
+    &.tinted {
+      border-color: var(--roi-color);
+      border-style: solid;
+      background: transparent;
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.6),
+        0 0 5px rgba(0, 0, 0, 0.55);
+    }
+  }
+  // Inside the corner, so a box against an edge keeps its name on screen.
+  .roi-label {
+    position: absolute;
+    left: 0;
+    top: 0;
+    max-width: 100%;
+    padding: 2px 6px;
+    border-radius: 0 0 6px 0;
+    background: var(--roi-color, rgb(var(--md-tertiary)));
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>

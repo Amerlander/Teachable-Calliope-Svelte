@@ -3,11 +3,16 @@
  * coordinates (0..1, origin top-left, unmirrored) because that is what the
  * training and inference crop uses — see `drawWithRoi` in machine.ts.
  *
- * Every camera view in the app shows the feed mirrored, the way a mirror shows
- * you to yourself, so a ROI drawn or displayed on screen is horizontally
- * flipped against the stored one. {@link mirrorRoi} is the only place that
- * conversion happens; forget it and the box a user draws around their left hand
- * trains on whatever sits on the other side of the frame.
+ * Camera views normally show the feed mirrored, the way a mirror shows you to
+ * yourself, so a ROI drawn or displayed on screen is horizontally flipped
+ * against the stored one. {@link mirrorRoi} is the only place that conversion
+ * happens; forget it and the box a user draws around their left hand trains on
+ * whatever sits on the other side of the frame.
+ *
+ * Whether the picture is mirrored is a setting (`cameraMirror` in
+ * $lib/stores/camera), so screen coordinates are only flipped while it is on --
+ * that is what {@link displayRoi} is for. Nothing stored ever changes: a region
+ * recorded with a mirrored camera still means the same pixels with it turned off.
  */
 
 import type { Roi } from '$lib/stores/projects';
@@ -36,6 +41,14 @@ export function defaultRoi(aspect: number): Roi {
  */
 export function mirrorRoi(roi: Roi): Roi {
   return { x: 1 - roi.x - roi.w, y: roi.y, w: roi.w, h: roi.h };
+}
+
+/**
+ * Stored region to screen region, for a view that knows whether its picture is
+ * mirrored. Its own inverse as well, for the same reason {@link mirrorRoi} is.
+ */
+export function displayRoi(roi: Roi, mirrored: boolean): Roi {
+  return mirrored ? mirrorRoi(roi) : roi;
 }
 
 /** "70×70 %" — the size of the region as a share of the frame. */

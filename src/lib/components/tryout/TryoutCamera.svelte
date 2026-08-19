@@ -10,7 +10,7 @@
   } from '$lib/machine';
   import { drawPoseOverlay } from '$lib/poseOverlay';
   import { setVideoRef, mobilenetModel, classifierModel, predictionClasses } from '$lib/stores';
-  import { selectedCameraId } from '$lib/stores/camera';
+  import { cameraMirror, selectedCameraId } from '$lib/stores/camera';
   import { activeModel, currentProject } from '$lib/stores/projects';
   import { modelLabel } from '$lib/models';
   import RoiOverlay from '$lib/components/RoiOverlay.svelte';
@@ -60,8 +60,9 @@
           }
           if (overlayCanvas) {
             drawPoseOverlay(overlayCanvas, pose, videoEl.videoWidth, videoEl.videoHeight, {
-              // The camera picture is mirrored, so the skeleton has to be too.
-              mirror: true,
+              // Follows the picture, or the person's left arm ends up on the
+              // wrong side of the skeleton.
+              mirror: $cameraMirror,
             });
           }
           if (pose?.keypoints?.length) {
@@ -184,7 +185,7 @@
       height: auto;
       max-height: 60vh;
       object-fit: contain;
-      transform: scaleX(-1);
+      transform: scaleX(var(--cam-mirror));
     }
 
     // --- Pose mode: blur the raw camera and let the skeleton read on top. ---

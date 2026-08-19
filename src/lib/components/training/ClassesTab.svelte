@@ -10,7 +10,8 @@
     clearClass,
     videoRefs,
     removeClass,
-    renameClass
+    renameClass,
+    classThumbs
   } from '$lib/stores';
   import { updateProject, currentProject } from '$lib/stores/projects';
   import { showNotification } from '$lib/stores/notifications';
@@ -235,6 +236,7 @@
           name={cls}
           count={($examples[cls] || []).length}
           selected={$activeClass === cls}
+          thumb={$classThumbs[cls]}
           onselect={() => setActiveClass(cls)}
           onrename={(next) => renameClass(cls, next)}
         />

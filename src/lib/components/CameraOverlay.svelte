@@ -4,6 +4,7 @@
   import {
     cameraFellBack,
     cameraLabel,
+    cameraMirror,
     cameraPreviewLive,
     cameraProblem,
     cameras,
@@ -12,6 +13,7 @@
     selectedCameraId,
     setCameraPreview,
     switchCamera,
+    toggleCameraMirror,
     type CameraProblem
   } from '$lib/stores/camera';
 
@@ -102,6 +104,17 @@
           </span>
         {/if}
       </div>
+
+      <!-- Which way round the camera is watched belongs to the camera and not to
+           one view, so it is set here and holds everywhere. The preview above
+           shows the answer while it is being changed. -->
+      <label class="mirror-row">
+        <input type="checkbox" checked={$cameraMirror} onchange={() => toggleCameraMirror()} />
+        <span class="mirror-text">
+          <span class="mirror-label">Bild spiegeln</span>
+          <span class="mirror-hint">wie ein Spiegel statt wie die Kamera — gilt in allen Ansichten</span>
+        </span>
+      </label>
 
       {#if working && $cameras.length === 0}
         <p class="hint">Kameras werden gesucht …</p>
@@ -198,8 +211,9 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      // Self-view, mirrored the way every other feed in the app is.
-      transform: scaleX(-1);
+      // Self-view, flipped the way every other feed in the app is — the switch
+      // under the preview is what changes that, for all of them at once.
+      transform: scaleX(var(--cam-mirror));
       // Kept mounted while dark: binding a stream needs the element to exist.
       opacity: 0;
       transition: opacity 0.2s;
@@ -211,6 +225,22 @@
     font-size: 14px;
     color: #bbb;
   }
+
+  .mirror-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: -8px 0 18px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f5f5f5;
+    cursor: pointer;
+    &:hover { background: #eee; }
+    input { margin: 2px 0 0; flex-shrink: 0; cursor: pointer; width: 16px; height: 16px; }
+  }
+  .mirror-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .mirror-label { font-size: 15px; font-weight: 600; color: #222; }
+  .mirror-hint { font-size: 13px; line-height: 1.35; color: #666; }
 
   .list { display: flex; flex-direction: column; gap: 8px; }
   .cam-option {

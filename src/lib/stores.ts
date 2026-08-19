@@ -1,6 +1,13 @@
 import { derived, writable, get } from 'svelte/store';
 import { activeModel, currentProject, scheduleSave, updateProject } from './stores/projects';
-import type { ModelMetadata, Roi, TrainingHistory, TrainingOptions } from './stores/projects';
+import type {
+  ModelMetadata,
+  Project,
+  Roi,
+  TrainingHistory,
+  TrainingOptions
+} from './stores/projects';
+import { makeClassThumb } from './classThumb';
 
 export type { ModelMetadata, Roi, TrainingHistory, TrainingOptions };
 
@@ -8,6 +15,8 @@ export type { ModelMetadata, Roi, TrainingHistory, TrainingOptions };
 // These are derived from the current project so the UI auto-updates on project switch.
 export const classes = derived(currentProject, (p) => p?.classes ?? []);
 export const examples = derived(currentProject, (p) => p?.examples ?? {});
+/** The cover image per class name — see $lib/classThumb. */
+export const classThumbs = derived(currentProject, (p) => p?.classThumbs ?? {});
 export const activeClass = derived(currentProject, (p) => p?.activeClass ?? null);
 /**
  * Labels that belong to the classifier currently in memory: the class list the
@@ -139,6 +148,114 @@ export function pushExample(name: string, data: string): void {
     if (!p.examples[name]) p.examples[name] = [];
     p.examples[name].push({ data });
   });
+  // The first image recorded for a class becomes its cover. Not awaited: the
+  // capture must not wait on a decode, and a cover that arrives a frame later is
+  // invisible to the user. Downscaling is why it cannot happen inside the
+  // synchronous update above.
+  void ensureClassThumb(name, data);
+}
+
+// Classes whose cover is being built right now. Without this, a burst capture
+// would start a dozen decodes for the same class, all of which passed the
+// "has no cover yet" check before the first one finished.
+const thumbInFlight = new Set<string>();
+
+/**
+ * Give `name` a cover from `data` unless it already has one. Called for every
+ * recorded example, so it is a no-op after the first.
+ */
+export async function ensureClassThumb(name: string, data: string): Promise<void> {
+  if (!name || !data) return;
+  if (get(currentProject)?.classThumbs?.[name]) return;
+  if (thumbInFlight.has(name)) return;
+  thumbInFlight.add(name);
+  try {
+    const thumb = await makeClassThumb(data);
+    // Re-checked: the user may have picked one by hand while this was decoding,
+    // and an explicit choice outranks the automatic first-image default.
+    if (get(currentProject)?.classThumbs?.[name]) return;
+    setClassThumb(name, thumb);
+  } catch (err) {
+    console.warn('Klassenbild konnte nicht erstellt werden', err);
+  } finally {
+    thumbInFlight.delete(name);
+  }
+}
+
+/**
+ * Set the cover for `name` from an already-sized data URL.
+ *
+ * Callers that hand over a full-size example image should go through
+ * {@link chooseClassThumb} instead, which downscales first.
+ */
+export function setClassThumb(name: string, thumb: string): void {
+  if (!name || !thumb) return;
+  updateProject((p) => {
+    if (!p.classThumbs) p.classThumbs = {};
+    p.classThumbs[name] = thumb;
+  });
+}
+
+/** Make `image` the cover of `name`, downscaling it first. */
+export async function chooseClassThumb(name: string, image: string): Promise<void> {
+  if (!name || !image) return;
+  try {
+    setClassThumb(name, await makeClassThumb(image));
+  } catch (err) {
+    console.warn('Klassenbild konnte nicht gesetzt werden', err);
+  }
+}
+
+// ---- Covers for classes that were recorded before covers existed ----
+// A cover is only built when an example is added (see pushExample), so a project
+// whose classes were all recorded earlier would never get one: nothing captures
+// into them again, and the class list stays blank except where a cover was picked
+// by hand. Which is exactly what it looked like.
+//
+// Not done in `hydrate`, which is synchronous — building a cover means decoding
+// and downscaling an image. Instead every project that becomes current gets one
+// pass over its classes.
+let backfilledProjectId: string | null = null;
+
+async function backfillClassThumbs(p: Project): Promise<void> {
+  for (const cls of p.classes) {
+    // The user can switch projects while this is decoding, and setClassThumb
+    // writes to whatever is current — not to `p`. Without this, a cover from the
+    // project being left would land on a same-named class in the new one.
+    if (get(currentProject)?.id !== p.id) return;
+    if (p.classThumbs?.[cls]) continue;
+    const first = p.examples?.[cls]?.[0]?.data;
+    if (!first) continue;
+    // Sequential: a whole class list's worth of decodes at once would compete
+    // with the camera and the feature extractor for the same main thread.
+    await ensureClassThumb(cls, first);
+  }
+}
+
+// Every way into a project ends in `currentProject.set` — loading, creating,
+// importing a project ZIP, importing a model as a new project. Watching the store
+// covers all of them at once, instead of each caller having to remember.
+if (typeof document !== 'undefined') {
+  currentProject.subscribe((p) => {
+    // Only on a change of project. Every capture writes the project too, and
+    // those already fill their own cover.
+    if (!p || p.id === backfilledProjectId) return;
+    backfilledProjectId = p.id;
+    void backfillClassThumbs(p);
+  });
+}
+
+/**
+ * Drop the cover of `name` and fall back to the first example still recorded, so
+ * "reset" lands back on the default rather than on nothing.
+ */
+export function resetClassThumb(name: string): void {
+  if (!name) return;
+  updateProject((p) => {
+    if (p.classThumbs) delete p.classThumbs[name];
+  });
+  const first = get(currentProject)?.examples?.[name]?.[0]?.data;
+  if (first) void ensureClassThumb(name, first);
 }
 
 /**
@@ -166,6 +283,7 @@ export function removeClass(name: string): void {
   updateProject((p) => {
     p.classes = p.classes.filter((c) => c !== name);
     delete p.examples[name];
+    if (p.classThumbs) delete p.classThumbs[name];
     if (p.activeClass === name) p.activeClass = p.classes[0] ?? null;
   });
 }
@@ -181,6 +299,10 @@ export function renameClass(oldName: string, newName: string): boolean {
     if (p.examples[oldName]) {
       p.examples[trimmed] = p.examples[oldName];
       delete p.examples[oldName];
+    }
+    if (p.classThumbs?.[oldName]) {
+      p.classThumbs[trimmed] = p.classThumbs[oldName];
+      delete p.classThumbs[oldName];
     }
     if (p.activeClass === oldName) p.activeClass = trimmed;
     ok = true;

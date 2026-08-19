@@ -48,6 +48,31 @@ export const COMPARE_COLORS = [
 export const COMPARE_DASHES = ['', '', '7 5', '3 4', '', '7 5', '3 4', '10 4 2 4'];
 
 /**
+ * Model colours for things drawn *over a camera picture* — the region outlines in
+ * Anwenden and in the comparison box.
+ *
+ * Not COMPARE_COLORS: those are picked to read as ink on the white surface of a
+ * chart, and the first of them is very nearly black. On a dimmed video the dark
+ * half of that palette disappears. Same order, so a model keeps its position in
+ * both; the two are matched by the label on the box, not by hue.
+ */
+export const OVERLAY_COLORS = [
+  '#ADF54C',
+  '#38BDF8',
+  '#FB923C',
+  '#F472B6',
+  '#FACC15',
+  '#4ADE80',
+  '#A78BFA',
+  '#22D3EE'
+];
+
+/** The overlay colour of the i-th model, wrapping round for very long lists. */
+export function overlayColor(index: number): string {
+  return OVERLAY_COLORS[index % OVERLAY_COLORS.length];
+}
+
+/**
  * Fewer than two is not a comparison. The upper end is not about the screen —
  * the columns scroll sideways — but about what still costs nothing: every model
  * beyond the first shares the extractor pass and only adds its own head.

@@ -100,6 +100,8 @@ export async function importProjectFromFile(file: File): Promise<Project> {
   const now = Date.now();
   const p: Project = {
     ...restored,
+    // Projects exported before class covers existed carry no map at all.
+    classThumbs: restored.classThumbs ?? {},
     id: `prj_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
     createdAt: now,
     updatedAt: now
@@ -132,6 +134,10 @@ export async function importModelAsNewProject(file: File): Promise<Project> {
   );
   p.classes = [...contents.classes];
   for (const c of p.classes) p.examples[c] = [];
+  // The covers the ZIP carried seed the project too, so the class list shows them
+  // straight away — without this they would only appear on the imported model and
+  // the classes it was seeded from would look like they had never been recorded.
+  if (contents.classThumbs) p.classThumbs = { ...contents.classThumbs };
   // Same reasoning as the class list: material recorded here is meant to extend
   // what the imported model already knows, so the next run should crop the way
   // that model was trained. A ZIP without a region leaves it unpicked.
@@ -148,7 +154,8 @@ export async function importModelAsNewProject(file: File): Promise<Project> {
     label: contents.label || contents.metadata.name,
     roi: contents.roi,
     featureExtractor: contents.featureExtractor,
-    mode: contents.mode ?? 'image'
+    mode: contents.mode ?? 'image',
+    classThumbs: contents.classThumbs
   });
   await saveCurrentProject();
   await refreshProjectList();

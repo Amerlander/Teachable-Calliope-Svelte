@@ -1098,6 +1098,14 @@ type ModelZipMetadata = ModelMetadata & {
   classRanges?: Record<string, ClassRange>;
   /** Frames the rolling median smooths over — see TrainedModel.smoothing. */
   smoothing?: number;
+  /**
+   * One cover image per class as a data URL — see TrainedModel.classThumbs.
+   *
+   * In the metadata rather than as files in the ZIP: they are already-compressed
+   * 160 px thumbnails, so storing them as entries would not shrink them, and
+   * keeping them here means one place decides which class a cover belongs to.
+   */
+  classThumbs?: Record<string, string>;
 };
 
 const MODEL_ZIP_FORMAT = 2;
@@ -1125,7 +1133,12 @@ export async function exportModelToZip(model: TrainedModel): Promise<void> {
     ...(model.classRanges && Object.keys(model.classRanges).length
       ? { classRanges: model.classRanges }
       : {}),
-    ...(model.smoothing !== undefined ? { smoothing: model.smoothing } : {})
+    ...(model.smoothing !== undefined ? { smoothing: model.smoothing } : {}),
+    // The covers travel with the model for the same reason the class list does:
+    // wherever it is loaded, it can name and show its classes on its own.
+    ...(model.classThumbs && Object.keys(model.classThumbs).length
+      ? { classThumbs: model.classThumbs }
+      : {})
   };
   zip.file('metadata.json', JSON.stringify(meta, null, 2));
   zip.file(
@@ -1156,6 +1169,8 @@ export type ModelZipContents = {
   mode?: ProjectMode;
   classRanges?: Record<string, ClassRange>;
   smoothing?: number;
+  /** Cover image per class — see TrainedModel.classThumbs. */
+  classThumbs?: Record<string, string>;
   /** The loaded classifier, ready to hand to `classifierModel`. */
   model: any;
 };
@@ -1218,8 +1233,29 @@ export async function readModelZip(file: File): Promise<ModelZipContents> {
     // ZIP's metadata would sit in the map unused.
     classRanges: sanitizeClassRanges(meta.classRanges, classes),
     ...(meta.smoothing !== undefined ? { smoothing: normalizeSmoothing(meta.smoothing) } : {}),
+    classThumbs: sanitizeClassThumbs(meta.classThumbs, classes),
     model
   };
+}
+
+/**
+ * Keep the covers that belong to `classes`, and only ones that read as images.
+ * A ZIP is a file from anywhere: anything else in there would be handed straight
+ * to an `<img src>`.
+ */
+function sanitizeClassThumbs(
+  raw: Record<string, string> | undefined,
+  classes: string[]
+): Record<string, string> | undefined {
+  if (!raw) return undefined;
+  const out: Record<string, string> = {};
+  for (const cls of classes) {
+    const value = raw[cls];
+    if (typeof value === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(value)) {
+      out[cls] = value;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** Keep the windows that belong to `classes`, normalized. */
@@ -1261,6 +1297,7 @@ export async function importModelFromZip(file: File): Promise<string | null> {
     featureExtractor: contents.featureExtractor,
     mode: contents.mode,
     classRanges: contents.classRanges,
+    classThumbs: contents.classThumbs,
     smoothing: contents.smoothing
   });
   classifierModel.set(contents.model);

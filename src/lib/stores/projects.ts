@@ -1,6 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import { idbPut, idbGet, idbGetAll, idbDelete, STORES } from '$lib/db';
 import { normalizeRange, normalizeSmoothing, type ClassRange } from '$lib/calibration';
+import { pickClassThumbs } from '$lib/classThumb';
 import { withIndexedClassRefs } from '$lib/makecode/programFiles';
 
 export type TrainingHistory = {
@@ -143,6 +144,17 @@ export type TrainedModel = {
   options: TrainingOptions;
   /** Classes this model outputs, in the order its output units are in. */
   classes: string[];
+  /**
+   * One cover image per class, keyed by label — copied off the project when the
+   * model was recorded (see $lib/classThumb).
+   *
+   * On the model rather than read from the project for the same reason `classes`
+   * is: Anwenden and Programmieren label their output from the model, and the
+   * project's live class list keeps moving. A cover looked up in the project
+   * would go missing the moment a class is renamed or deleted, and would never
+   * exist at all for an imported model.
+   */
+  classThumbs?: Record<string, string>;
   exampleCounts: Record<string, number>;
   /** Region of the camera frame the model was trained on; absent = whole image. */
   roi?: Roi;
@@ -218,6 +230,12 @@ export type Project = {
   updatedAt: number;
   classes: string[];
   examples: Record<string, { data: string }[]>;
+  /**
+   * The cover image per class, keyed by class name (see $lib/classThumb). Filled
+   * with the first example recorded for a class and replaceable from any other
+   * one; a copy of its own, so clearing or deleting examples leaves it standing.
+   */
+  classThumbs?: Record<string, string>;
   activeClass: string | null;
   trainingOptions: TrainingOptions;
   /**
@@ -276,6 +294,7 @@ export function createBlankProject(name?: string, mode: ProjectMode = 'image'): 
     updatedAt: now,
     classes: [],
     examples: {},
+    classThumbs: {},
     activeClass: null,
     trainingOptions: { ...DEFAULT_TRAINING_OPTIONS },
     trainingHistory: { epochs: [], accuracy: [], loss: [] },
@@ -288,6 +307,10 @@ export function createBlankProject(name?: string, mode: ProjectMode = 'image'): 
 
 // Backfill fields introduced after earlier projects were saved
 function hydrate(p: Project): Project {
+  // Projects saved before class covers existed have none. Left empty rather than
+  // backfilled from `examples`: the cover is a stored copy on purpose, and the
+  // first capture into a class fills it from then on.
+  if (!p.classThumbs) p.classThumbs = {};
   if (!p.modelHistory) p.modelHistory = [];
   if (p.currentModelId === undefined) p.currentModelId = null;
   if (!p.makeCodePrograms) p.makeCodePrograms = [];
@@ -637,6 +660,14 @@ function genModelId(): string {
 function appendModel(model: TrainedModel): string | null {
   let created: string | null = null;
   updateProject((p) => {
+    // The covers for this model's classes are copied on now, the same way its
+    // class list was. Anything the caller already brought — an imported model
+    // whose ZIP carried covers — wins over the project's.
+    const fromProject = pickClassThumbs(p.classThumbs, model.classes);
+    const thumbs = fromProject || model.classThumbs
+      ? { ...fromProject, ...model.classThumbs }
+      : undefined;
+    if (thumbs) model = { ...model, classThumbs: thumbs };
     const next = [...p.modelHistory, model];
     // Cap history at 20 most recent runs to keep storage bounded
     p.modelHistory = next.length > 20 ? next.slice(-20) : next;
@@ -666,6 +697,8 @@ export function recordTrainedModel(
     sampleCounts?: { train: number; validation: number };
   }
 ): string | null {
+  // Nothing to pass for the class covers: appendModel copies them off the
+  // project, so every recorded model gets them the same way.
   return appendModel({
     id: genModelId(),
     trainedAt: Date.now(),
@@ -699,6 +732,8 @@ export function recordImportedModel(init: {
   mode?: ProjectMode;
   classRanges?: Record<string, ClassRange>;
   smoothing?: number;
+  /** Class covers the ZIP carried, if any — see TrainedModel.classThumbs. */
+  classThumbs?: Record<string, string>;
 }): string | null {
   const exampleCounts: Record<string, number> = {};
   for (const c of init.classes) exampleCounts[c] = 0;
@@ -717,6 +752,9 @@ export function recordImportedModel(init: {
     ...(init.roi ? { roi: init.roi } : {}),
     ...(init.classRanges ? { classRanges: init.classRanges } : {}),
     ...(init.smoothing !== undefined ? { smoothing: normalizeSmoothing(init.smoothing) } : {}),
+    // An imported model brings its own covers; appendModel only fills the gaps
+    // from the project, for classes that happen to share a name.
+    ...(init.classThumbs ? { classThumbs: init.classThumbs } : {}),
     featureExtractor: resolveFeatureExtractor(init.featureExtractor)
   });
 }

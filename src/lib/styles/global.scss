@@ -3,6 +3,12 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+// How every camera picture in the app is flipped: -1 mirrored, 1 as the camera
+// sees it. One factor rather than a class per view — see $lib/stores/camera,
+// which owns the switch and sets the class below.
+:root { --cam-mirror: -1; }
+html.cam-unmirrored { --cam-mirror: 1; }
+
 html, body {
   height: 100%;
   margin: 0;
@@ -159,7 +165,7 @@ label.file-label {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transform: scaleX(-1);
+    transform: scaleX(var(--cam-mirror));
   }
 }
 
@@ -347,5 +353,5 @@ label.file-label {
   width: 100%; height: 100%;
   pointer-events: none;
   z-index: 3;
-  transform: scaleX(-1);
+  transform: scaleX(var(--cam-mirror));
 }

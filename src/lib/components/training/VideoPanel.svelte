@@ -18,7 +18,8 @@
     renameClass,
     videoRefs,
     draftRoi,
-    setDraftRoi
+    setDraftRoi,
+    classThumbs
   } from '$lib/stores';
   import {
     initSharedCamera,
@@ -33,7 +34,7 @@
     CAPTURE_SHORT,
     MODEL_INPUT
   } from '$lib/machine';
-  import { selectedCameraId } from '$lib/stores/camera';
+  import { cameraMirror, selectedCameraId } from '$lib/stores/camera';
   import { showNotification } from '$lib/stores/notifications';
   import Button from '$lib/components/ui/Button.svelte';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
@@ -50,7 +51,7 @@
   } from '$lib/stores/app';
   import {
     defaultRoi,
-    mirrorRoi,
+    displayRoi,
     roiSizeLabel,
     roiCropStyle,
     roiPixelSize,
@@ -61,6 +62,7 @@
   import type { Roi } from '$lib/stores/projects';
   import ModelCharts from '$lib/components/training/ModelCharts.svelte';
   import ModelDetailsModal from '$lib/components/training/ModelDetailsModal.svelte';
+  import ClassThumbDialog from '$lib/components/training/ClassThumbDialog.svelte';
   import TrainingProgress from '$lib/components/training/TrainingProgress.svelte';
   import {
     activeModel,
@@ -286,8 +288,8 @@
   /** The region in use, filled in for a project that has not picked one. */
   const shownRoi = $derived($draftRoi ?? defaultRoi(videoAspect));
 
-  /** The box as it appears on the mirrored feed. */
-  const editRoi = $derived(mirrorRoi(shownRoi));
+  /** The box as it appears on the feed, mirrored along with it. */
+  const editRoi = $derived(displayRoi(shownRoi, $cameraMirror));
 
   /**
    * What training will actually crop to. Pose projects have no region editor, so
@@ -313,8 +315,8 @@
    */
   const roiBelowInput = $derived(Math.min(previewCrop.w, previewCrop.h) < MODEL_INPUT);
 
-  function commitEditRoi(displayRoi: Roi) {
-    setDraftRoi(mirrorRoi(displayRoi));
+  function commitEditRoi(shown: Roi) {
+    setDraftRoi(displayRoi(shown, $cameraMirror));
   }
 
   /** Back to the largest centred square — the one reset there is. */
@@ -782,6 +784,8 @@
 
   /** What the confirm dialog is currently asking about; null keeps it closed. */
   let pendingDelete = $state<DeleteTarget | null>(null);
+  /** The class whose cover is being picked, or null while the dialog is closed. */
+  let thumbPickClass = $state<string | null>(null);
 
   function confirmClear(cls: string) {
     pendingDelete = { kind: 'class', name: cls, clear: true };
@@ -1166,6 +1170,11 @@
                 autofocus
               />
             {:else}
+              <!-- The cover, right where the class is named — the one place it is
+                   worth checking that the right picture stands for the class. -->
+              {#if $classThumbs[cls]}
+                <img class="prep-class-thumb" src={$classThumbs[cls]} alt="" />
+              {/if}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <span
                 class="prep-class-name"
@@ -1183,6 +1192,7 @@
               {/snippet}
               {#snippet children()}
                 <DropdownItem onclick={() => startEditClass(cls)}>Umbenennen</DropdownItem>
+                <DropdownItem onclick={() => (thumbPickClass = cls)}>Klassenbild wählen</DropdownItem>
                 <DropdownItem onclick={() => downloadClassImages(cls, imgs)}>Dateien herunterladen</DropdownItem>
                 <DropdownItem onclick={() => confirmClear(cls)}>Klasse leeren</DropdownItem>
                 <DropdownItem onclick={() => confirmDelete(cls)}>Klasse löschen</DropdownItem>
@@ -1400,6 +1410,14 @@
   target={pendingDelete}
   onconfirm={runDelete}
   oncancel={() => (pendingDelete = null)}
+/>
+
+<ClassThumbDialog
+  open={!!thumbPickClass}
+  className={thumbPickClass ?? ''}
+  images={thumbPickClass ? ($examples[thumbPickClass] ?? []) : []}
+  current={thumbPickClass ? $classThumbs[thumbPickClass] : undefined}
+  onclose={() => (thumbPickClass = null)}
 />
 
 <style lang="scss">
@@ -1858,7 +1876,15 @@
     align-items: center;
     gap: 8px;
     font-size: 13.5px;
-    .prep-class-name {
+    .prep-class-thumb {
+    width: 26px;
+    height: 26px;
+    border-radius: var(--md-radius-sm);
+    object-fit: cover;
+    flex-shrink: 0;
+    background: rgba(var(--md-surface-variant), 0.6);
+  }
+  .prep-class-name {
       flex: 1;
       min-width: 0;
       font-weight: 600;
@@ -1907,7 +1933,7 @@
     position: relative;
     overflow: hidden;
     background: #000;
-    transform: scaleX(-1);
+    transform: scaleX(var(--cam-mirror));
     // Purely a viewport: every gesture on a thumb (click-delete, drag-select) is
     // handled by .stack-item, and pointerenter only reaches it from a descendant
     // if nothing in between claims the event.
@@ -2207,7 +2233,7 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
-      transform: scaleX(-1);
+      transform: scaleX(var(--cam-mirror));
       position: relative;
       z-index: 1;
     }
@@ -2215,7 +2241,7 @@
       position: absolute;
       inset: 0;
       object-fit: cover;
-      transform: scale(1.1) scaleX(-1);
+      transform: scale(1.1) scaleX(var(--cam-mirror));
       filter: blur(28px) brightness(0.55) saturate(1.2);
       z-index: 0;
     }
@@ -2232,7 +2258,7 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
-      transform: scaleX(-1);
+      transform: scaleX(var(--cam-mirror));
       z-index: 2;
       pointer-events: none;
       // The canvas is painted with a black background by drawPoseSkeleton; use

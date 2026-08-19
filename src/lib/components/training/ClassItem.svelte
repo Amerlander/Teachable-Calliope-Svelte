@@ -3,12 +3,15 @@
     name,
     count,
     selected,
+    thumb,
     onselect,
     onrename
   }: {
     name: string;
     count: number;
     selected: boolean;
+    /** The class's cover image, if it has one — see $lib/classThumb. */
+    thumb?: string;
     onselect: () => void;
     onrename?: (next: string) => void;
   } = $props();
@@ -63,6 +66,13 @@
       autofocus
     />
   {:else}
+    <!-- A slot is kept even without a cover, so the names in the list stay on one
+         left edge instead of stepping in and out as classes get their first image. -->
+    {#if thumb}
+      <img class="thumb" src={thumb} alt="" />
+    {:else}
+      <span class="thumb empty" aria-hidden="true"></span>
+    {/if}
     <span class="name">{name}</span>
     <button
       class="edit-btn"
@@ -99,6 +109,19 @@
       background: rgba(var(--md-primary-container));
       border-color: rgb(var(--md-primary));
       padding: 9px 11px;
+    }
+  }
+  .thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--md-radius-sm);
+    object-fit: cover;
+    flex-shrink: 0;
+    background: rgba(var(--md-surface-variant), 0.9);
+    &.empty {
+      display: inline-block;
+      border: 1px dashed rgba(var(--md-on-surface), 0.18);
+      background: transparent;
     }
   }
   .name {
