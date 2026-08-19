@@ -137,37 +137,64 @@
 
   <div class="options">
     <button class="option-card" onclick={onCreate}>
-      <div class="icon">＋</div>
-      <div class="title">Neues Projekt</div>
-      <div class="desc">Klassen aufnehmen, Modell trainieren</div>
+      <span class="card-text">
+        <span class="card-title">Neues Projekt</span>
+        <span class="card-desc">Klassen aufnehmen, Modell trainieren</span>
+      </span>
+      <span class="card-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z" />
+        </svg>
+      </span>
     </button>
 
     <button class="option-card" onclick={() => importProjectEl?.click()}>
-      <div class="icon">↥</div>
-      <div class="title">Projekt importieren</div>
-      <div class="desc">Vorhandenes Projekt laden (.zip)</div>
-      <input
-        bind:this={importProjectEl}
-        type="file"
-        accept=".zip"
-        style="display:none"
-        onchange={onProjectImport}
-      />
+      <span class="card-text">
+        <span class="card-title">Projekt importieren</span>
+        <span class="card-desc">Vorhandenes Projekt laden (.zip)</span>
+      </span>
+      <span class="card-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path
+            fill="currentColor"
+            d="M3 21C2.44772 21 2 20.5523 2 20V4C2 3.44772 2.44772 3 3 3H10.4142L12.4142 5H20C20.5523 5 21 5.44772 21 6V9H19V7H11.5858L9.58579 5H4V16.998L5.5 11H22.5L20.1894 20.2425C20.0781 20.6877 19.6781 21 19.2192 21H3ZM19.9384 13H7.06155L5.56155 19H18.4384L19.9384 13Z"
+          />
+        </svg>
+      </span>
     </button>
 
     <button class="option-card" onclick={() => importModelEl?.click()}>
-      <div class="icon">⚙</div>
-      <div class="title">Fertiges Modell importieren</div>
-      <div class="desc">Trainiertes Modell laden (.zip)</div>
-      <input
-        bind:this={importModelEl}
-        type="file"
-        accept=".zip"
-        style="display:none"
-        onchange={onModelImport}
-      />
+      <span class="card-text">
+        <span class="card-title">Fertiges Modell importieren</span>
+        <span class="card-desc">Trainiertes Modell laden (.zip)</span>
+      </span>
+      <span class="card-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path
+            fill="currentColor"
+            d="M6 18H18V6H6V18ZM14 20H10V22H8V20H5C4.44772 20 4 19.5523 4 19V16H2V14H4V10H2V8H4V5C4 4.44772 4.44772 4 5 4H8V2H10V4H14V2H16V4H19C19.5523 4 20 4.44772 20 5V8H22V10H20V14H22V16H20V19C20 19.5523 19.5523 20 19 20H16V22H14V20ZM8 8H16V16H8V8Z"
+          />
+        </svg>
+      </span>
     </button>
   </div>
+
+  <!-- A button may not contain interactive content, so the two file inputs the
+       cards trigger sit outside them. -->
+  <input
+    bind:this={importProjectEl}
+    type="file"
+    accept=".zip"
+    style="display:none"
+    onchange={onProjectImport}
+  />
+  <input
+    bind:this={importModelEl}
+    type="file"
+    accept=".zip"
+    style="display:none"
+    onchange={onModelImport}
+  />
 
   {#if $projectList.length}
     <div class="recent">
@@ -220,6 +247,11 @@
 <style lang="scss">
   .start-screen {
     flex: 1;
+    // Same content width as the ml-trainer's page container, so neither the
+    // cards nor the project list stretch across a wide window.
+    width: 100%;
+    max-width: 1180px;
+    margin-inline: auto;
     padding: 32px;
     overflow-y: auto;
     display: flex;
@@ -242,40 +274,71 @@
   }
   .options {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
   }
+  // Split card like the "Neue Session" choices on ki-training.calliope.cc/new:
+  // heading plus description on the left, a full-height neon square holding an
+  // oversized white icon on the right.
   .option-card {
-    background: rgb(var(--md-surface-variant));
-    border: 2px solid transparent;
-    border-radius: var(--md-radius-lg);
-    padding: 24px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    box-shadow: none;
-    min-height: unset;
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+    overflow: hidden;
+    min-height: 160px;
+    border: none;
+    border-radius: 6px;
+    background: rgb(var(--md-surface));
     color: rgb(var(--md-on-surface));
+    box-shadow:
+      0 10px 15px -3px rgba(0, 0, 0, 0.1),
+      0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    text-align: left;
+    cursor: pointer;
+    transition: box-shadow 0.2s, transform 0.2s;
     &:hover {
-      background: rgb(var(--md-primary-container));
-      border-color: rgb(var(--md-primary));
       transform: translateY(-2px);
-      box-shadow: var(--md-elevation-2);
+      box-shadow:
+        0 20px 25px -5px rgba(0, 0, 0, 0.12),
+        0 8px 10px -6px rgba(0, 0, 0, 0.06);
+      .card-icon {
+        background: var(--btn-green-hover);
+      }
     }
-    .icon {
-      font-size: 40px;
-      margin-bottom: 12px;
-      color: rgb(var(--md-primary));
-      font-weight: 300;
+    &:focus-visible {
+      outline: 3px solid rgb(var(--md-primary));
+      outline-offset: 2px;
     }
-    .title {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-    .desc {
-      font-size: 13px;
-      color: rgb(var(--md-on-surface-variant));
+  }
+  .card-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px;
+  }
+  .card-title {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 24px;
+  }
+  .card-desc {
+    font-size: 16px;
+    line-height: 24px;
+    color: rgb(var(--md-on-surface-variant));
+  }
+  .card-icon {
+    flex: 0 0 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--btn-green);
+    color: #fff;
+    transition: background 0.2s;
+    svg {
+      width: 80px;
+      height: 80px;
     }
   }
   .recent {
@@ -398,6 +461,12 @@
       border-color: #ef4444;
       background: rgba(239, 68, 68, 0.12);
       color: #ef4444;
+    }
+  }
+
+  @media (max-width: 860px) {
+    .options {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 
