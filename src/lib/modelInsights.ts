@@ -425,24 +425,17 @@ export function tipsFor(model: TrainedModel, f: ModelFacts): Finding[] {
     });
   }
 
-  // The model runs in the browser; the Calliope only receives the detected class
-  // over serial. So size matters for storing and exporting, not for the board.
-  if (f.sizeBytes != null) {
-    out.push(
-      f.sizeBytes > 2 * 1024 * 1024
-        ? {
-            id: 'tipp.grossesModell',
-            pane: 'architecture',
-            head: 'Recht groß',
-            body: `${bytes(f.sizeBytes)} bei ${num(model.options?.hiddenUnits)} Hidden Units. Das fällt beim Speichern im Projekt und beim Export ins Gewicht. Weniger Hidden Units machen das Modell kleiner.`
-          }
-        : {
-            id: 'tipp.kompaktesModell',
-            pane: 'architecture',
-            head: 'Kompaktes Modell',
-            body: `${bytes(f.sizeBytes)} für ${num(f.params)} Parameter. Das sind nur die des Klassifikators. MobileNet selbst wird geladen und steckt nicht im Export.`
-          }
-    );
+  // Only the unusual case is worth a line. A head of the normal size says nothing
+  // the Steckbrief does not already show, and the extractors are prebuilt and
+  // small anyway. The model runs in the browser; the Calliope only receives the
+  // detected class over serial, so size matters for storing and exporting.
+  if (f.sizeBytes != null && f.sizeBytes > 2 * 1024 * 1024) {
+    out.push({
+      id: 'tipp.grossesModell',
+      pane: 'architecture',
+      head: 'Recht groß',
+      body: `${bytes(f.sizeBytes)} bei ${num(model.options?.hiddenUnits)} Hidden Units. Das fällt beim Speichern im Projekt und beim Export ins Gewicht. Weniger Hidden Units machen das Modell kleiner.`
+    });
   }
 
   return out;

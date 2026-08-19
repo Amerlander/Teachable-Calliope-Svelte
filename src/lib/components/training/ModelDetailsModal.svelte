@@ -175,7 +175,7 @@
   const flagged = $derived.by(() => {
     const set = new Set<FindingPane>();
     for (const tip of insights?.tips ?? []) {
-      if (tip.id !== 'tipp.kompaktesModell' && tip.id !== 'tipp.augmentierungAn') set.add(tip.pane);
+      if (tip.id !== 'tipp.augmentierungAn') set.add(tip.pane);
     }
     return set;
   });
