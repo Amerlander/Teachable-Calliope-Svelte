@@ -19,7 +19,8 @@
     videoRefs,
     draftRoi,
     setDraftRoi,
-    classThumbs
+    classThumbs,
+    MIN_EXAMPLES_PER_CLASS
   } from '$lib/stores';
   import {
     initSharedCamera,
@@ -1185,7 +1186,15 @@
                 title="Umbenennen"
               >{cls}</span>
             {/if}
-            <span class="prep-class-count">{imgs.length}</span>
+            <!-- A class under the threshold is skipped by training, which is
+                 only findable here, next to the count that causes it. -->
+            <span
+              class="prep-class-count"
+              class:short={imgs.length < MIN_EXAMPLES_PER_CLASS}
+              title={imgs.length < MIN_EXAMPLES_PER_CLASS
+                ? `Erst ab ${MIN_EXAMPLES_PER_CLASS} Bildern wird diese Klasse mittrainiert`
+                : `${imgs.length} Bilder`}
+            >{imgs.length}</span>
             <Dropdown placement="bottom-end">
               {#snippet trigger()}
                 <Button variant="ghost" size="small" aria-label="Klassen-Aktionen" title="Mehr Aktionen">⋯</Button>
@@ -1875,6 +1884,12 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    // A real class carries the ⋯ button, which is 32px tall; the ghost's head
+    // holds nothing but an input and would be a good deal shorter. Pinning the
+    // height keeps the record button on one line through the whole life of a
+    // row — the ghost, the fresh class, and the moment its cover image finishes
+    // decoding and appears in the head.
+    min-height: 32px;
     font-size: 13.5px;
     .prep-class-thumb {
     width: 26px;
@@ -1903,6 +1918,11 @@
       background: rgba(var(--md-surface-variant), 0.6);
       padding: 1px 6px;
       border-radius: 99px;
+
+      &.short {
+        color: rgb(var(--md-error));
+        background: rgba(var(--md-error), 0.12);
+      }
     }
   }
   .class-name-edit {
@@ -2171,7 +2191,22 @@
   // The row below the last class is a class that does not exist yet: it carries
   // the same controls, dimmed, and firms up as soon as it is named or recorded.
   .prep-class.ghost {
+    // Sideways and downwards the frame is drawn outside the row: the negative
+    // margin takes back the padding and the border, so the contents sit on the
+    // same lines as the real classes above. Otherwise the record button — the
+    // one the pointer is on when the class comes into being — would jump the
+    // moment the ghost turns into a real row.
+    //
+    // Upwards it is the other way round. The head below only holds an input and
+    // is 12px shorter than a real one (see there), so the whole row starts 12px
+    // lower to put the record button back on its line. That air goes above the
+    // frame, where it separates it from the class above, rather than inside it
+    // — the title is meant to sit close to its own contour.
+    //
+    // The 9px sideways stay inside .prep-classes' own 12px padding, so nothing
+    // overflows the panel.
     padding: 6px 8px;
+    margin: 5px -9px -7px;
     border: 1px dashed rgba(var(--md-outline), 0.7);
     border-radius: var(--md-radius-md);
     opacity: 0.55;
@@ -2183,13 +2218,22 @@
       border-color: rgb(var(--md-primary));
       background: rgba(var(--md-primary-container), 0.25);
     }
+    // No ⋯ button in this head, so nothing has to be cleared for it: the row is
+    // as high as the input, which .new-class-input pins to 20px.
+    .prep-class-head {
+      min-height: 20px;
+    }
   }
   .new-class-input {
     flex: 1;
     min-width: 0;
     border: none;
     background: transparent;
+    // 16 + 2 + 2 = the 20px the ghost's head is built around. Spelled out
+    // rather than left to the font's own line box, which the offset of the
+    // record button below would otherwise follow.
     padding: 2px 4px;
+    line-height: 16px;
     font: inherit;
     font-size: 12px;
     font-weight: 600;

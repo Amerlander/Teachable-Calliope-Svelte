@@ -57,22 +57,35 @@ export const trainingOptions = derived(
 export const draftRoi = derived(currentProject, (p): Roi | null => p?.draftRoi ?? null);
 
 // --- Training readiness ---
-// Training only makes sense once every class can actually carry an output: the
-// classifier gets one unit per class, so a class left empty becomes a dead
-// output that can never win a prediction. Both thresholds and the hint text
-// live here so the sidebar CTA and the train button can never disagree about
-// what "ready" means.
+// Training only makes sense once enough classes can actually carry an output:
+// the classifier gets one unit per trained class, and a class with too few
+// images would become an output the model can never learn to pick. Classes that
+// stay under the threshold are left out of the run instead of blocking it —
+// see `trainableClasses`. Both thresholds and the hint text live here so the
+// sidebar CTA and the train button can never disagree about what "ready" means.
 export const MIN_CLASSES_FOR_TRAINING = 3;
-export const MIN_EXAMPLES_PER_CLASS = 10;
+export const MIN_EXAMPLES_PER_CLASS = 3;
+
+/**
+ * The classes a training run will actually use: everything that holds at least
+ * MIN_EXAMPLES_PER_CLASS examples, in project order. Training reads this rather
+ * than `classes`, so a half-filled class the user is still working on neither
+ * blocks the run nor turns into a dead output on the model.
+ */
+export const trainableClasses = derived([classes, examples], ([cls, ex]): string[] =>
+  cls.filter((c) => (ex[c]?.length ?? 0) >= MIN_EXAMPLES_PER_CLASS)
+);
 
 export type TrainingReadiness = {
   ready: boolean;
   /** Classes that already hold MIN_EXAMPLES_PER_CLASS examples. */
   readyClasses: number;
-  /** Classes that exist but still have too few examples. */
+  /** Classes that exist but hold too few examples to be trained. */
   shortClasses: number;
   /** What is still missing, or null once ready. */
   hint: string | null;
+  /** That short classes sit this run out, or null when none do. */
+  ignoredHint: string | null;
 };
 
 export const trainingReadiness = derived(
@@ -80,17 +93,17 @@ export const trainingReadiness = derived(
   ([cls, ex]): TrainingReadiness => {
     const short = cls.filter((c) => (ex[c]?.length ?? 0) < MIN_EXAMPLES_PER_CLASS).length;
     const readyClasses = cls.length - short;
-    const ready = cls.length >= MIN_CLASSES_FOR_TRAINING && short === 0;
-    let hint: string | null = null;
-    if (!ready) {
-      hint =
-        cls.length < MIN_CLASSES_FOR_TRAINING
-          ? `Mindestens ${MIN_CLASSES_FOR_TRAINING} Klassen mit je ${MIN_EXAMPLES_PER_CLASS} Bildern nötig (${readyClasses}/${MIN_CLASSES_FOR_TRAINING})`
-          : short === 1
-            ? `Noch eine Klasse braucht mindestens ${MIN_EXAMPLES_PER_CLASS} Bilder`
-            : `Noch ${short} Klassen brauchen mindestens ${MIN_EXAMPLES_PER_CLASS} Bilder`;
-    }
-    return { ready, readyClasses, shortClasses: short, hint };
+    const ready = readyClasses >= MIN_CLASSES_FOR_TRAINING;
+    const hint = ready
+      ? null
+      : `Mindestens ${MIN_CLASSES_FOR_TRAINING} Klassen mit je ${MIN_EXAMPLES_PER_CLASS} Bildern nötig (${readyClasses}/${MIN_CLASSES_FOR_TRAINING})`;
+    const ignoredHint =
+      short === 0
+        ? null
+        : short === 1
+          ? `Eine Klasse mit weniger als ${MIN_EXAMPLES_PER_CLASS} Bildern wird nicht trainiert`
+          : `${short} Klassen mit weniger als ${MIN_EXAMPLES_PER_CLASS} Bildern werden nicht trainiert`;
+    return { ready, readyClasses, shortClasses: short, hint, ignoredHint };
   }
 );
 

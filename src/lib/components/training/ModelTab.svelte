@@ -623,8 +623,12 @@
               Trainieren
             </Button>
           </div>
+          <!-- Either what is still missing, or — once the run can go ahead —
+               that the half-filled classes are being left out of it. -->
           {#if readiness.hint}
             <div class="hint">{readiness.hint}</div>
+          {:else if readiness.ignoredHint}
+            <div class="hint">{readiness.ignoredHint}</div>
           {/if}
         </div>
       </section>

@@ -4,6 +4,7 @@ import { base } from '$app/paths';
 import {
   examples,
   classes,
+  trainableClasses,
   mobilenetModel,
   classifierModel,
   setTrainingHistory,
@@ -634,6 +635,11 @@ export function captureFrameFromVideo(video: HTMLVideoElement, short = CAPTURE_S
  * original, and a held-back image contributes only its unaltered version. A
  * rotated copy of a validation image sitting in the training set would make the
  * checked number look better than it is.
+ *
+ * Only classes that hold enough images are embedded (see `trainableClasses`);
+ * the ones still below the threshold sit the run out. The list that was used is
+ * returned, because everything downstream — the output layer, the recorded
+ * classes, the example counts — has to line up with these very indices.
  */
 export async function prepareDatasetForTraining(
   roi?: Roi | null,
@@ -645,7 +651,7 @@ export async function prepareDatasetForTraining(
   const extractor = resolveFeatureExtractor(requestedExtractor);
   await ensureExtractor(extractor);
 
-  const classesList = get(classes);
+  const classesList = get(trainableClasses);
   const ex = get(examples);
   const split = Math.max(0, Math.min(0.5, validationSplit));
 
@@ -735,7 +741,14 @@ export async function prepareDatasetForTraining(
   dispose(trainY);
   dispose(valX);
   dispose(valY);
-  return { xs: stackedX, ys: stackedY, valXs, valYs, valCount: valX.length };
+  return {
+    xs: stackedX,
+    ys: stackedY,
+    valXs,
+    valYs,
+    valCount: valX.length,
+    classes: classesList
+  };
 }
 
 export type TrainOptions = {
@@ -788,7 +801,10 @@ export async function trainModel(
   if (dropout > 0) {
     model.add(tfModule.layers.dropout({ rate: dropout }));
   }
-  model.add(tfModule.layers.dense({ units: get(classes).length, activation: 'softmax' }));
+  // One unit per class the dataset was actually built from — a class left out
+  // for want of images must not get an output it can never learn to win.
+  const trainedClasses = data.classes;
+  model.add(tfModule.layers.dense({ units: trainedClasses.length, activation: 'softmax' }));
 
   const optimizerName: Optimizer = opts.optimizer ?? 'adam';
   const optimizer =
@@ -841,7 +857,7 @@ export async function trainModel(
   // Update model metadata when training completes
   try {
     const computed = computeModelMetadataFromModel(model);
-    updateModelMetadata({ classes: get(classes), date: new Date().toISOString(), params: computed.params, layers: computed.layers, sizeBytes: computed.sizeBytes });
+    updateModelMetadata({ classes: [...trainedClasses], date: new Date().toISOString(), params: computed.params, layers: computed.layers, sizeBytes: computed.sizeBytes });
   } catch (e) { /* ignore */ }
 
   // Persist artifacts into the current project slot, and record a history entry
@@ -850,7 +866,7 @@ export async function trainModel(
     const tfMod = await import('@tensorflow/tfjs');
     const ex = get(examples);
     const counts: Record<string, number> = {};
-    for (const c of get(classes)) counts[c] = ex[c]?.length ?? 0;
+    for (const c of trainedClasses) counts[c] = ex[c]?.length ?? 0;
     await model.save(
       tfMod.io.withSaveHandler(async (a: any) => {
         recordTrainedModel(
@@ -858,7 +874,7 @@ export async function trainModel(
           get(modelMetadata),
           get(trainingHistory),
           get(trainingOptions),
-          [...get(classes)],
+          [...trainedClasses],
           counts,
           {
             roi: opts.roi ?? undefined,
