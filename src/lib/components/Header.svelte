@@ -15,7 +15,6 @@
   import { activateModel, modelLabel } from '$lib/models';
   import { exportCurrentProject } from '$lib/projects-io';
   import { showNotification } from '$lib/stores/notifications';
-  import { classifierModel } from '$lib/stores';
 
   let settingsOpen = $state(false);
   let editingName = $state(false);
@@ -89,13 +88,13 @@
     if (e.key === 'Escape') editingName = false;
   }
   // The brand is the only way back to the overview now that the back arrow is
-  // gone, so it carries what the arrow did: drop the loaded model and close the
-  // project before navigating. Kept as a real <a href="/"> so it still reads and
-  // behaves like a link (middle-click, open in new tab).
+  // gone, so it carries what the arrow did: close the project before navigating,
+  // which is also what drops the loaded model (see $lib/models). Kept as a real
+  // <a href="/"> so it still reads and behaves like a link (middle-click, open
+  // in new tab).
   function onBrandClick(e: MouseEvent) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
     e.preventDefault();
-    classifierModel.set(null);
     closeCurrentProject();
     goto('/');
   }

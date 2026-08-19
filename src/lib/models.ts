@@ -10,6 +10,7 @@ import { get } from 'svelte/store';
 import { importModelFromZip, loadClassifierFromArtifacts, scoreStoredExamples } from '$lib/machine';
 import { reimportCurrentProgram } from '$lib/makecode';
 import { classifierModel } from '$lib/stores';
+import { modelTrained } from '$lib/stores/app';
 import { resetStreamState } from '$lib/stores/streaming';
 import { rangesFromScores, type ClassRange } from '$lib/calibration';
 import {
@@ -23,6 +24,32 @@ import {
 
 /** The runtime classifier belongs to this model id, or null when nothing is loaded. */
 let loadedModelId: string | null = null;
+
+/**
+ * The project that classifier was loaded from, and the reset that goes with it.
+ * Nothing this module loads is part of a project snapshot — the weights, the id
+ * they came from, the "a model is ready" flag and the smoothing window measured
+ * on that model's output all live in memory only — so the open project changing
+ * has to drop all of it. Without this the previous project's model stays loaded,
+ * and a project created right after opening another one comes up with a models
+ * sidebar and a Modell-Info describing a model it does not have.
+ *
+ * Tied to the project id here instead of repeated at every call site: creating,
+ * opening, importing, deleting and closing a project all swap `currentProject`,
+ * and one of those paths would always end up being the one that forgets. Anything
+ * that loads a model for the *new* project therefore has to run after the swap —
+ * see `importModelAsNewProject`, which does exactly that.
+ */
+let loadedProjectId: string | null = get(currentProject)?.id ?? null;
+currentProject.subscribe((p) => {
+  const id = p?.id ?? null;
+  if (id === loadedProjectId) return;
+  loadedProjectId = id;
+  loadedModelId = null;
+  classifierModel.set(null);
+  modelTrained.set(false);
+  resetStreamState();
+});
 
 /**
  * Select `id` as the project's model and load its weights. Returns the model,

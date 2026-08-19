@@ -52,7 +52,11 @@
   const hasSelectedModel = $derived(!!$activeModel);
   const isPose = $derived($currentProject?.mode === 'pose');
 
-  modelTabView.set(get(classifierModel) ? 'model' : 'new');
+  // The sub-view is persisted across reloads and projects, so it is decided
+  // again on mount: a project with models opens on its list, one without on the
+  // composer. Asked of the project rather than of the loaded classifier — those
+  // agree now, and the project is the one that is right after a switch.
+  modelTabView.set(get(availableModels).length ? 'model' : 'new');
   let newModelName = $state('');
 
   // Composing a new model: name, options and the train button form one entry at

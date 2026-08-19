@@ -7,7 +7,7 @@
   import ProjectWorkspace from '$lib/components/training/ProjectWorkspace.svelte';
   import VideoPanel from '$lib/components/training/VideoPanel.svelte';
   import { currentProject } from '$lib/stores/projects';
-  import { classifierModel, trainingReadiness } from '$lib/stores';
+  import { trainingReadiness } from '$lib/stores';
   import { modelTabView, workspaceTab } from '$lib/stores/app';
 
   // The models sidebar has nothing to offer until the recorded classes could
@@ -15,8 +15,14 @@
   // camera panel gets the full width for recording. Once models exist it stays
   // put regardless — clearing a class must not take away the only access to
   // exporting or deleting a model that is already trained.
+  //
+  // "Models exist" is asked of the project, not of the runtime classifier: that
+  // one is dropped on every project switch (see $lib/models), and reading it
+  // here is what used to keep a fresh project's sidebar open on the previously
+  // opened project's model. `modelArtifacts` is the legacy half of the question
+  // — projects saved before the model list existed carry their only model there.
   const hasModels = $derived(
-    !!$classifierModel || ($currentProject?.modelHistory?.length ?? 0) > 0
+    ($currentProject?.modelHistory?.length ?? 0) > 0 || !!$currentProject?.modelArtifacts
   );
   const showSidebar = $derived($trainingReadiness.ready || hasModels);
 

@@ -10,6 +10,7 @@ import {
 } from '$lib/stores/projects';
 import { idbPut, idbGet, STORES } from '$lib/db';
 import { loadClassifierFromArtifacts, readModelZip } from '$lib/machine';
+import { classifierModel } from '$lib/stores';
 
 type SerializedProject = Omit<Project, 'modelArtifacts'> & {
   modelArtifacts: {
@@ -158,6 +159,11 @@ export async function importModelAsNewProject(file: File): Promise<Project> {
     classThumbs: contents.classThumbs,
     classThumbsVersion: contents.classThumbsVersion
   });
+  // Switching to the new project cleared the runtime classifier (see
+  // $lib/models), so the model the ZIP brought has to be put in — the project
+  // already lists it as selected, and the test view would otherwise face an
+  // empty runtime.
+  classifierModel.set(contents.model);
   await saveCurrentProject();
   await refreshProjectList();
   return get(currentProject) ?? p;

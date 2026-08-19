@@ -11,7 +11,6 @@
     importModelAsNewProject
   } from '$lib/projects-io';
   import { showNotification } from '$lib/stores/notifications';
-  import { classifierModel } from '$lib/stores';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import DropdownItem from '$lib/components/ui/DropdownItem.svelte';
   import DeleteConfirmDialog, {
@@ -77,7 +76,6 @@
   }
 
   function onBackToStart() {
-    classifierModel.set(null);
     closeCurrentProject();
     goto(`/`);
   }
@@ -108,7 +106,6 @@
     const t = pendingDelete;
     pendingDelete = null;
     if (t?.kind !== 'project') return;
-    classifierModel.set(null);
     await deleteProject(t.project.id);
     showNotification('Projekt gelöscht', { type: 'success' });
   }

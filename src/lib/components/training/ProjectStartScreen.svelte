@@ -3,7 +3,6 @@
   import { goto } from '$app/navigation';
   import {
     projectList,
-    currentProject,
     refreshProjectList,
     loadProject,
     deleteProject,
@@ -18,7 +17,6 @@
   } from '$lib/projects-io';
   import { loadClassifierFromArtifacts } from '$lib/machine';
   import { showNotification } from '$lib/stores/notifications';
-  import { classifierModel } from '$lib/stores';
   import NewProjectDialog from './NewProjectDialog.svelte';
   import DeleteConfirmDialog, {
     type DeleteTarget
@@ -103,9 +101,8 @@
     const t = pendingDelete;
     pendingDelete = null;
     if (t?.kind !== 'project') return;
-    // Deleting the project that is currently open also has to drop its loaded
-    // classifier — `deleteProject` only clears the store entry.
-    if ($currentProject?.id === t.project.id) classifierModel.set(null);
+    // Deleting the open project closes it, which is what drops its loaded
+    // classifier (see $lib/models).
     await deleteProject(t.project.id);
     showNotification('Projekt gelöscht', { type: 'success' });
   }
