@@ -27,7 +27,19 @@
     dispatch('confirm', { images, selectedClass });
     open = false;
   }
+
+  function onWindowKey(e) {
+    if (open && e.key === 'Escape') cancel();
+  }
+
+  // Arms the importing button as the dialog opens, so Enter or Space carries the
+  // import out; picking a different class is a step, not the way through.
+  function armed(node) {
+    node.focus();
+  }
 </script>
+
+<svelte:window on:keydown={onWindowKey} />
 
 {#if open}
   <div class="dialog-overlay" role="button" tabindex="0" aria-label="Close import dialog" on:click={cancel} on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') cancel(); }}></div>
@@ -52,7 +64,16 @@
     </div>
     <div class="buttons">
       <button class="ghost" on:click={cancel}>Abbrechen</button>
-      <button on:click={confirm}>Importieren</button>
+      <button use:armed on:click={confirm}>Importieren</button>
     </div>
   </div>
 {/if}
+
+<style>
+  /* The importing button holds the keyboard from the moment the dialog opens, so
+     that has to be visible even when it was opened by mouse. */
+  .buttons button:focus {
+    outline: 3px solid hsl(var(--color-border-focus));
+    outline-offset: 2px;
+  }
+</style>

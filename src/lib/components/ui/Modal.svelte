@@ -1,3 +1,21 @@
+<script lang="ts" module>
+  /**
+   * Every open dialog, innermost last. Escape is answered by the topmost one
+   * only, so a confirm opened from inside another dialog closes itself and
+   * leaves its opener standing.
+   */
+  const stack: symbol[] = [];
+
+  /**
+   * Whether any dialog is open. For the window-level shortcuts of the page
+   * underneath: while a dialog holds the screen, Escape belongs to it and not
+   * to a selection or an inline edit somewhere behind it.
+   */
+  export function anyModalOpen(): boolean {
+    return stack.length > 0;
+  }
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Portal from 'svelte-portal';
@@ -26,16 +44,76 @@
     actions?: Snippet;
   } = $props();
 
+  const id = Symbol('modal');
+  let modalEl: HTMLElement | null = $state(null);
+
   function close() { onclose?.(); }
   function onBackdrop(e: MouseEvent) { if (e.target === e.currentTarget) close(); }
-  function onKey(e: KeyboardEvent) { if (e.key === 'Escape') close(); }
+
+  // On the window rather than on the overlay: a keydown only bubbles through
+  // the dialog while something inside it has the focus, and a click on the
+  // backdrop or on a scroll bar is enough to lose that again.
+  function onKey(e: KeyboardEvent) {
+    if (!isOpen || e.key !== 'Escape') return;
+    if (stack[stack.length - 1] !== id) return;
+    close();
+  }
+
+  $effect(() => {
+    if (!isOpen) return;
+    stack.push(id);
+    return () => {
+      const i = stack.indexOf(id);
+      if (i >= 0) stack.splice(i, 1);
+    };
+  });
+
+  // Arms the default action while the dialog is up, and hands the focus back
+  // where it came from afterwards — otherwise Tab resumes at the top of the
+  // page instead of next to the button the dialog was opened from.
+  $effect(() => {
+    if (!isOpen || !modalEl) return;
+    const opener = document.activeElement as HTMLElement | null;
+    focusInitial(modalEl);
+    return () => {
+      if (opener && document.contains(opener)) opener.focus();
+    };
+  });
+
+  function focusInitial(root: HTMLElement) {
+    // A body that brings its own `autofocus` wants the caret there — naming the
+    // new project comes before the button that creates it.
+    if (root.querySelector('[autofocus]')) return;
+    // The dialog itself as the fallback, so Escape and a screen reader still
+    // land inside it when there is nothing to arm.
+    (defaultAction(root) ?? root).focus();
+  }
+
+  /**
+   * The last enabled button of the footer. Every dialog in the app puts the
+   * confirming action last and the way out before it, so this is the one a
+   * press of Space or Enter should carry out.
+   */
+  function defaultAction(root: HTMLElement): HTMLElement | null {
+    const buttons = root.querySelectorAll<HTMLElement>('.modal-footer button:not([disabled])');
+    return buttons[buttons.length - 1] ?? null;
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <Portal>
   {#if isOpen}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="overlay" onclick={onBackdrop} onkeydown={onKey} role="dialog" tabindex="-1" aria-modal="true">
-      <div class="modal size-{size}">
+    <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+    <div class="overlay" onclick={onBackdrop}>
+      <div
+        bind:this={modalEl}
+        class="modal size-{size}"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title || undefined}
+        tabindex="-1"
+      >
         <div class="modal-header">
           {#if title || subtitle}
             <div class="modal-titles">
@@ -79,6 +157,9 @@
     max-height: 90vh;
     overflow: hidden;
     animation: modalIn 0.25s ease-out;
+    // Focused on open as a mechanism, not as an affordance: the ring belongs on
+    // the button that is armed, never around the whole dialog.
+    &:focus { outline: none; }
     &.size-small    { width: 90%; max-width: 400px; }
     &.size-medium   { width: 90%; max-width: 600px; }
     &.size-large    { width: 90%; max-width: 860px; }
@@ -133,6 +214,13 @@
     display: flex;
     justify-content: flex-end;
     gap: 12px;
+    // The default action holds the keyboard from the moment the dialog opens, so
+    // that has to be visible even when it was opened by mouse — which is
+    // exactly the case `:focus-visible` leaves unmarked on a button.
+    :global(button:focus) {
+      outline: 3px solid hsl(var(--color-border-focus));
+      outline-offset: 2px;
+    }
   }
   @keyframes modalIn {
     from { opacity: 0; transform: scale(0.92) translateY(-16px); }
